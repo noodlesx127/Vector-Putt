@@ -140,6 +140,79 @@ const CLICK_SWALLOW_MS = 180; // shorten delay for snappier feel
 let changelogText: string | null = null;
 let changelogLines: string[] = [];
 let changelogScrollY = 0;
+let isChangelogDragging = false;
+let changelogDragStartY = 0;
+let changelogScrollStartY = 0;
+
+function getChangelogBackRect() {
+  const w = 120, h = 28;
+  const x = WIDTH / 2 - w / 2;
+  const y = HEIGHT - 90;
+  return { x, y, w, h };
+}
+
+function getChangelogContentRect() {
+  const left = 60, top = 100, right = WIDTH - 60, bottom = HEIGHT - 140;
+  return { x: left, y: top, w: right - left, h: bottom - top };
+}
+
+async function ensureChangelogLoaded(): Promise<void> {
+  if (changelogText !== null) return;
+  try {
+    const res = await fetch('/CHANGELOG.md');
+    if (res.ok) {
+      changelogText = await res.text();
+    } else {
+      changelogText = 'Failed to load CHANGELOG.md';
+    }
+  } catch (err) {
+    console.error('Failed to load changelog', err);
+    changelogText = 'Failed to load CHANGELOG.md';
+  }
+}
+
+function wrapChangelog(context: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const rawLines = text.split('\n');
+  const wrapped: string[] = [];
+  for (let raw of rawLines) {
+    // simple markdown-ish tweaks
+    if (raw.startsWith('## ')) {
+      wrapped.push('');
+      raw = raw.substring(3);
+    } else if (raw.startsWith('- ')) {
+      raw = '• ' + raw.substring(2);
+    }
+    if (raw.trim() === '') { wrapped.push(''); continue; }
+    const words = raw.split(/\s+/);
+    let line = '';
+    for (const word of words) {
+      const test = line ? line + ' ' + word : word;
+      const w = context.measureText(test).width;
+      if (w > maxWidth && line) {
+        wrapped.push(line);
+        line = word;
+      } else {
+        line = test;
+      }
+    }
+    if (line) wrapped.push(line);
+  }
+  return wrapped;
+}
+
+function clampChangelogScroll(): void {
+  const r = getChangelogContentRect();
+  const visibleHeight = r.h;
+  const contentHeight = changelogLines.length * 20;
+  const maxScroll = Math.max(0, contentHeight - visibleHeight);
+  if (changelogScrollY < 0) changelogScrollY = 0;
+  if (changelogScrollY > maxScroll) changelogScrollY = maxScroll;
+}
+
+// Changelog screen state and helpers
+let changelogText: string | null = null;
+let changelogLines: string[] = [];
+let changelogScrollY = 0;
 
 function getChangelogBackRect() {
   const w = 120, h = 28;
@@ -334,6 +407,14 @@ canvas.addEventListener('mousedown', (e) => {
       gameState = 'menu';
       return;
     }
+    // drag-to-scroll start
+    const cr = getChangelogContentRect();
+    if (p.x >= cr.x && p.x <= cr.x + cr.w && p.y >= cr.y && p.y <= cr.y + cr.h) {
+      isChangelogDragging = true;
+      changelogDragStartY = p.y;
+      changelogScrollStartY = changelogScrollY;
+      return;
+    }
   }
   // Click-to-continue via mousedown for immediate feedback
   if (!paused && gameState === 'sunk') { advanceAfterSunk(); return; }
@@ -373,6 +454,11 @@ canvas.addEventListener('mousemove', (e) => {
   if (gameState === 'changelog') {
     const bk = getChangelogBackRect();
     hoverChangelogBack = p.x >= bk.x && p.x <= bk.x + bk.w && p.y >= bk.y && p.y <= bk.y + bk.h;
+    if (isChangelogDragging) {
+      const dy = p.y - changelogDragStartY;
+      changelogScrollY = changelogScrollStartY - dy;
+      clampChangelogScroll();
+    }
     canvas.style.cursor = hoverChangelogBack ? 'pointer' : 'default';
     return;
   }
@@ -398,6 +484,9 @@ canvas.addEventListener('mousemove', (e) => {
 });
 
 canvas.addEventListener('mouseup', (e) => {
+  if (gameState === 'changelog') {
+    isChangelogDragging = false;
+  }
   if (!isAiming || paused || gameState !== 'play') return;
   const p = worldFromEvent(e);
   const dx = p.x - aimStart.x;
@@ -422,6 +511,7 @@ canvas.addEventListener('mouseup', (e) => {
 // Click handler to be extra robust for continue actions on banners
 canvas.addEventListener('click', () => {
   if (paused) return;
+  if (gameState === 'changelog') return; // clicks do nothing on the changelog surface
   const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
   if (now - lastAdvanceFromSunkMs < CLICK_SWALLOW_MS) {
     // Swallow the click that follows a mousedown-driven advance
@@ -440,6 +530,15 @@ canvas.addEventListener('click', () => {
     loadLevelByIndex(currentLevelIndex).catch(console.error);
   }
 });
+
+// Scroll wheel support (changelog)
+canvas.addEventListener('wheel', (e) => {
+  if (gameState !== 'changelog') return;
+  e.preventDefault();
+  const delta = Math.sign(e.deltaY) * 40;
+  changelogScrollY += delta;
+  clampChangelogScroll();
+}, { passive: false });
 
 // Hover handling for Pause overlay buttons
 canvas.addEventListener('mousemove', (e) => {
@@ -814,27 +913,43 @@ function draw() {
     ctx.font = '28px system-ui, sans-serif';
     ctx.fillText('Changelog', WIDTH/2, 52);
     // content area
-    const left = 60, top = 100, right = WIDTH - 60, bottom = HEIGHT - 140;
-    const width = right - left;
+    const cr = getChangelogContentRect();
     ctx.font = '14px system-ui, sans-serif';
     if (changelogText === null) {
       ctx.textAlign = 'center';
       ctx.fillText('Loading…', WIDTH/2, HEIGHT/2);
     } else {
       if (changelogLines.length === 0) {
-        changelogLines = wrapChangelog(ctx, changelogText, width);
+        changelogLines = wrapChangelog(ctx, changelogText, cr.w);
       }
+      clampChangelogScroll();
       ctx.save();
       ctx.beginPath();
-      ctx.rect(left, top, width, bottom - top);
+      ctx.rect(cr.x, cr.y, cr.w, cr.h);
       ctx.clip();
-      let y = top - changelogScrollY;
+      let y = cr.y - changelogScrollY;
       ctx.textAlign = 'left';
       for (const line of changelogLines) {
-        ctx.fillText(line, left, y);
+        ctx.fillText(line, cr.x, y);
         y += 20;
       }
       ctx.restore();
+
+      // simple scrollbar
+      const contentHeight = changelogLines.length * 20;
+      if (contentHeight > cr.h) {
+        const trackX = cr.x + cr.w + 6;
+        const trackY = cr.y;
+        const trackW = 6;
+        const trackH = cr.h;
+        ctx.fillStyle = 'rgba(255,255,255,0.15)';
+        ctx.fillRect(trackX, trackY, trackW, trackH);
+        const thumbH = Math.max(20, (cr.h / contentHeight) * trackH);
+        const maxScroll = contentHeight - cr.h;
+        const thumbY = trackY + (maxScroll ? (changelogScrollY / maxScroll) * (trackH - thumbH) : 0);
+        ctx.fillStyle = 'rgba(255,255,255,0.35)';
+        ctx.fillRect(trackX, thumbY, trackW, thumbH);
+      }
     }
     // Back button
     const bk = getChangelogBackRect();
@@ -1207,6 +1322,12 @@ boot().catch(console.error);
 
 // Restart flow after sink
 window.addEventListener('keydown', (e) => {
+  if (gameState === 'changelog') {
+    if (e.code === 'ArrowDown' || e.code === 'PageDown') { changelogScrollY += (e.code === 'PageDown' ? 200 : 40); clampChangelogScroll(); }
+    if (e.code === 'ArrowUp' || e.code === 'PageUp') { changelogScrollY -= (e.code === 'PageUp' ? 200 : 40); clampChangelogScroll(); }
+    if (e.code === 'Home') { changelogScrollY = 0; }
+    if (e.code === 'End') { const r = getChangelogContentRect(); changelogScrollY = Math.max(0, changelogLines.length * 20 - r.h); }
+  }
   if (e.code === 'Space' && gameState === 'sunk') {
     // Restart current hole immediately (snappy)
     loadLevelByIndex(currentLevelIndex).catch(console.error);

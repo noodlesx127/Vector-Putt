@@ -389,7 +389,6 @@ canvas.addEventListener('mousedown', (e) => {
   // If on summary screen, clicking restarts the course
   if (!paused && gameState === 'summary') {
     // If clicking the Main Menu button area, go to menu
-    const p = worldFromEvent(new MouseEvent('mousemove'));
     const back = getCourseBackRect();
     if (p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h) {
       gameState = 'menu';

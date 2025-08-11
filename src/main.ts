@@ -150,6 +150,15 @@ function getChangelogBackRect() {
   return { x, y, w, h };
 }
 
+// Changelog content viewport
+function getChangelogContentRect() {
+  const left = 60;
+  const top = 100;
+  const right = WIDTH - 60;
+  const bottom = HEIGHT - 140;
+  return { x: left, y: top, w: right - left, h: bottom - top };
+}
+
 async function ensureChangelogLoaded(): Promise<void> {
   if (changelogText !== null) return;
   try {
@@ -304,7 +313,7 @@ canvas.addEventListener('mousedown', (e) => {
     const cg = getMainChangelogRect();
     if (p.x >= cg.x && p.x <= cg.x + cg.w && p.y >= cg.y && p.y <= cg.y + cg.h) {
       gameState = 'changelog';
-      ensureChangelogLoaded().then(() => { changelogLines = []; }).catch(() => {});
+      ensureChangelogLoaded().then(() => { changelogLines = []; changelogScrollY = 0; }).catch(() => {});
       return;
     }
   }

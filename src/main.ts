@@ -37,7 +37,8 @@ const COLORS = {
   wallStroke: '#bdbdbd', // wall outline
   holeFill: '#0a1a0b',   // cup interior
   holeRim:  '#0f3f19',   // cup rim color
-  hudText: '#ffffff'
+  hudText: '#ffffff',
+  hudBg: 'rgba(0,0,0,0.35)'
 } as const;
 const COURSE_MARGIN = 40; // inset for fairway rect
 
@@ -81,9 +82,9 @@ let aimCurrent = { x: 0, y: 0 };
 
 // UI: Replay button (simple rect on top strip)
 function getReplayRect() {
-  const w = 86, h = 24;
+  const w = 72, h = 22;
   const x = WIDTH - 12 - w; // align to right margin
-  const y = 8 + 18; // below the rightText row
+  const y = 8; // within HUD strip
   return { x, y, w, h };
 }
 let hoverReplay = false;
@@ -290,15 +291,6 @@ function draw() {
   ctx.strokeStyle = COLORS.fairwayLine;
   ctx.strokeRect(COURSE_MARGIN + 1, COURSE_MARGIN + 1, WIDTH - COURSE_MARGIN * 2 - 2, HEIGHT - COURSE_MARGIN * 2 - 2);
 
-  // hole cup
-  ctx.fillStyle = COLORS.holeFill;
-  ctx.beginPath();
-  ctx.arc(hole.x, hole.y, hole.r, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = COLORS.holeRim;
-  ctx.stroke();
-
   // terrain zones (draw before walls)
   for (const r of waters) {
     ctx.fillStyle = '#1f6dff';
@@ -343,6 +335,15 @@ function draw() {
     ctx.strokeRect(w.x, w.y, w.w, w.h);
   }
 
+  // hole cup (draw after walls so it is visible)
+  ctx.fillStyle = COLORS.holeFill;
+  ctx.beginPath();
+  ctx.arc(hole.x, hole.y, hole.r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = COLORS.holeRim;
+  ctx.stroke();
+
   // ball
   ctx.fillStyle = '#ffffff';
   ctx.beginPath();
@@ -357,6 +358,9 @@ function draw() {
   if (isAiming) drawAim();
 
   // HUD (single row across the top)
+  // background strip to avoid visual clutter from decorations
+  ctx.fillStyle = COLORS.hudBg;
+  ctx.fillRect(0, 0, WIDTH, 36);
   ctx.fillStyle = COLORS.hudText;
   ctx.font = '16px system-ui, sans-serif';
   ctx.textBaseline = 'top';

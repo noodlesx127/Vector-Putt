@@ -234,6 +234,12 @@ canvas.addEventListener('mousedown', (e) => {
       gameState = 'options';
       return;
     }
+    const cg = getMainChangelogRect();
+    if (p.x >= cg.x && p.x <= cg.x + cg.w && p.y >= cg.y && p.y <= cg.y + cg.h) {
+      gameState = 'changelog';
+      ensureChangelogLoaded().then(() => { changelogLines = []; }).catch(() => {});
+      return;
+    }
   }
   // Handle Course Select buttons
   if (gameState === 'course') {
@@ -254,6 +260,13 @@ canvas.addEventListener('mousedown', (e) => {
     const r = getMenuRect();
     if (p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h) {
       paused = !paused;
+      return;
+    }
+  }
+  if (gameState === 'changelog') {
+    const bk = getChangelogBackRect();
+    if (p.x >= bk.x && p.x <= bk.x + bk.w && p.y >= bk.y && p.y <= bk.y + bk.h) {
+      gameState = 'menu';
       return;
     }
   }
@@ -287,7 +300,15 @@ canvas.addEventListener('mousemove', (e) => {
     const o = getMainOptionsRect();
     hoverMainStart = p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h;
     hoverMainOptions = p.x >= o.x && p.x <= o.x + o.w && p.y >= o.y && p.y <= o.y + o.h;
-    canvas.style.cursor = (hoverMainStart || hoverMainOptions) ? 'pointer' : 'default';
+    const cg = getMainChangelogRect();
+    hoverMainChangelog = p.x >= cg.x && p.x <= cg.x + cg.w && p.y >= cg.y && p.y <= cg.y + cg.h;
+    canvas.style.cursor = (hoverMainStart || hoverMainOptions || hoverMainChangelog) ? 'pointer' : 'default';
+    return;
+  }
+  if (gameState === 'changelog') {
+    const bk = getChangelogBackRect();
+    hoverChangelogBack = p.x >= bk.x && p.x <= bk.x + bk.w && p.y >= bk.y && p.y <= bk.y + bk.h;
+    canvas.style.cursor = hoverChangelogBack ? 'pointer' : 'default';
     return;
   }
   if (gameState === 'course') {
@@ -641,6 +662,17 @@ function draw() {
     ctx.fillStyle = '#ffffff';
     ctx.font = '18px system-ui, sans-serif';
     ctx.fillText('Options', o.x + o.w/2, o.y + o.h/2 + 0.5);
+    // Changelog button bottom-right
+    const cg = getMainChangelogRect();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = hoverMainChangelog ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverMainChangelog ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillRect(cg.x, cg.y, cg.w, cg.h);
+    ctx.strokeRect(cg.x, cg.y, cg.w, cg.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Changelog', cg.x + cg.w/2, cg.y + cg.h/2 + 0.5);
     // Version bottom-left
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.font = '12px system-ui, sans-serif';
@@ -703,6 +735,54 @@ function draw() {
     // Back hint
     ctx.font = '14px system-ui, sans-serif';
     ctx.fillText('Press Esc to go back', WIDTH/2, HEIGHT - 90);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
+    return;
+  }
+  // Changelog screen
+  if (gameState === 'changelog') {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.font = '28px system-ui, sans-serif';
+    ctx.fillText('Changelog', WIDTH/2, 52);
+    // content area
+    const left = 60, top = 100, right = WIDTH - 60, bottom = HEIGHT - 140;
+    const width = right - left;
+    ctx.font = '14px system-ui, sans-serif';
+    if (changelogText === null) {
+      ctx.textAlign = 'center';
+      ctx.fillText('Loading…', WIDTH/2, HEIGHT/2);
+    } else {
+      if (changelogLines.length === 0) {
+        changelogLines = wrapChangelog(ctx, changelogText, width);
+      }
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(left, top, width, bottom - top);
+      ctx.clip();
+      let y = top - changelogScrollY;
+      ctx.textAlign = 'left';
+      for (const line of changelogLines) {
+        ctx.fillText(line, left, y);
+        y += 20;
+      }
+      ctx.restore();
+    }
+    // Back button
+    const bk = getChangelogBackRect();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = hoverChangelogBack ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverChangelogBack ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillRect(bk.x, bk.y, bk.w, bk.h);
+    ctx.strokeRect(bk.x, bk.y, bk.w, bk.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Back', bk.x + bk.w/2, bk.y + bk.h/2 + 0.5);
+    // Version bottom-left
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.font = '12px system-ui, sans-serif';
     ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);

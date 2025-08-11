@@ -491,7 +491,7 @@ canvas.addEventListener('mouseup', (e) => {
 });
 
 // Click handler to be extra robust for continue actions on banners
-canvas.addEventListener('click', () => {
+canvas.addEventListener('click', (e) => {
   if (paused) return;
   if (gameState === 'changelog') return; // clicks do nothing on the changelog surface
   const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -504,7 +504,14 @@ canvas.addEventListener('click', () => {
     if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
     advanceAfterSunk();
   } else if (gameState === 'summary') {
-    // Restart course
+    const p = worldFromEvent(e);
+    const back = getCourseBackRect();
+    // If clicking the Main Menu button, go to menu instead of restart
+    if (p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h) {
+      gameState = 'menu';
+      return;
+    }
+    // Otherwise restart course
     courseScores = [];
     currentLevelIndex = 0;
     gameState = 'play';

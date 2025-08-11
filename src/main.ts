@@ -331,6 +331,8 @@ function draw() {
       }
     }
   }
+  // Remove clip so subsequent layers (walls, HUD) are not clipped out
+  ctx.restore();
 
   // walls
   ctx.fillStyle = COLORS.wallFill;

@@ -386,21 +386,8 @@ canvas.addEventListener('mousedown', (e) => {
   }
   // Click-to-continue via mousedown for immediate feedback
   if (!paused && gameState === 'sunk') { advanceAfterSunk(); return; }
-  // If on summary screen, clicking restarts the course
-  if (!paused && gameState === 'summary') {
-    // If clicking the Main Menu button area, go to menu
-    const back = getCourseBackRect();
-    if (p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h) {
-      gameState = 'menu';
-      return;
-    }
-    // Otherwise restart course
-    courseScores = [];
-    currentLevelIndex = 0;
-    gameState = 'play';
-    loadLevelByIndex(currentLevelIndex).catch(console.error);
-    return;
-  }
+  // Do not handle summary actions on mousedown to avoid double-trigger with click
+  if (!paused && gameState === 'summary') { return; }
   if (paused || gameState !== 'play') return; // disable while paused or not in play state
   if (ball.moving) return;
   const dx = p.x - ball.x;

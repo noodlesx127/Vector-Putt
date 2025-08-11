@@ -9,7 +9,7 @@ All notable changes to this project will be documented in this file.
 - Bugfixes: stabilized sunk/summary transitions and input swallowing.
 - Decorations: auto-snap near the fairway edges to the table area to avoid overlapping the playfield.
 - Summary: added a Main Menu button and Esc/ M key shortcut to return to the main menu after finishing a course.
-- Fix: Summary "Main Menu" button now returns to main menu instead of restarting the course.
+- Fix: Summary "Main Menu" button now correctly returns to main menu; prevented mousedown from triggering restart, click uses correct event position.
 
 ## v0.3.0 — 2025-08-11
 

@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.3.1 — 2025-08-11
+
+- Changelog screen: added scrollable viewer (wheel, drag, keyboard) with clipping and scrollbar. Bundles `CHANGELOG.md` via raw import fallback.
+- Main Menu: restored Changelog button and bottom-left version text. Fixed various menu state/hover bugs.
+- Bugfixes: stabilized sunk/summary transitions and input swallowing.
+- Decorations: auto-snap near the fairway edges to the table area to avoid overlapping the playfield.
+- Summary: added a Main Menu button and Esc/ M key shortcut to return to the main menu after finishing a course.
+- Fix: Summary "Main Menu" button now returns to main menu instead of restarting the course.
+
+## v0.3.0 — 2025-08-11
+
+- Synced docs with current implementation:
+  - Marked friction/exponential damping tuning complete in `PROGRESS.md`.
+  - Marked HUD hole title and Replay button complete in `PROGRESS.md`.
+  - Ticked off "ball in hole" detection, water penalty/reset, and post-hole score label in `TODO.md`.
+  - Noted terrain tiles coverage as complete (fairway, sand, water).
+  - Moved HUD Replay button below the top strip to avoid overlapping right-side HUD text.
+  - Repositioned Replay to left side of HUD and shifted left HUD text right of the button to ensure no overlap.
+  - Added hills (slope) prototype: new `hills` array in level JSON with directional acceleration; rendered as subtle gradient; updated `level3.json` with a sample SE slope.
+  - Added `levels/course.json` and HUD running total; records strokes on Next.
+  - Added Course Summary overlay at end of course with per-hole strokes and total; Enter restarts course.
+  - Fix: auto-show Course Summary ~1.2s after sinking the last hole; updated sink banner hint.
+  - UX: Added click-to-continue — clicking after sinking the last hole opens Summary; clicking on Summary restarts course. Updated summary text to “Click or Press Enter to Restart Game”.
+  - Level 3: moved cup inside boxed area for sensible play path.
+  - Fix: sunk banner always shown before summary on final hole; summary requires click/N.
+  - Fix: correct final-hole detection by using `courseInfo.index/total` for banner hints and transitions.
+  - Fix: prevent double-advance and accidental Total increments using `transitioning` guard.
+  - Fix: swallow trailing click after mousedown to avoid instant summary close.
+  - Perf: cache loaded levels and preload the next one to speed level switches; preload after summary restart too.
+  - Controls: Click or N from sunk banner to continue; Space to replay current hole; Enter on Summary to restart course; P/Esc to Pause/Resume; Replay button in HUD.
+  - UI: Added Main Menu and Course Select (Dev Levels); version shown bottom-left on menus; HUD has Menu button instead of Replay; Pause menu refined with Replay and Close buttons.
+
 ## v0.1.0 — 2025-08-10
 
 - Added level loading with custom JSON schema (`levels/level1.json`).
@@ -40,34 +72,3 @@ All notable changes to this project will be documented in this file.
  - HUD/UI:
    - Added Replay button in top HUD with hover and click to restart current hole.
    - Optional hole title shown next to hole index when provided by level JSON.
-
-## v0.3.1 — 2025-08-11
-
-- Changelog screen: added scrollable viewer (wheel, drag, keyboard) with clipping and scrollbar. Bundles `CHANGELOG.md` via raw import fallback.
-- Main Menu: restored Changelog button and bottom-left version text. Fixed various menu state/hover bugs.
-- Bugfixes: stabilized sunk/summary transitions and input swallowing.
-- Decorations: auto-snap near the fairway edges to the table area to avoid overlapping the playfield.
- - Summary: added a Main Menu button and Esc/ M key shortcut to return to the main menu after finishing a course.
-
-## v0.3.0 — 2025-08-11
-
-- Synced docs with current implementation:
-  - Marked friction/exponential damping tuning complete in `PROGRESS.md`.
-  - Marked HUD hole title and Replay button complete in `PROGRESS.md`.
-  - Ticked off "ball in hole" detection, water penalty/reset, and post-hole score label in `TODO.md`.
-  - Noted terrain tiles coverage as complete (fairway, sand, water).
-  - Moved HUD Replay button below the top strip to avoid overlapping right-side HUD text.
-  - Repositioned Replay to left side of HUD and shifted left HUD text right of the button to ensure no overlap.
-  - Added hills (slope) prototype: new `hills` array in level JSON with directional acceleration; rendered as subtle gradient; updated `level3.json` with a sample SE slope.
-  - Added `levels/course.json` and HUD running total; records strokes on Next.
-  - Added Course Summary overlay at end of course with per-hole strokes and total; Enter restarts course.
-  - Fix: auto-show Course Summary ~1.2s after sinking the last hole; updated sink banner hint.
-  - UX: Added click-to-continue — clicking after sinking the last hole opens Summary; clicking on Summary restarts course. Updated summary text to “Click or Press Enter to Restart Game”.
-  - Level 3: moved cup inside boxed area for sensible play path.
-  - Fix: sunk banner always shown before summary on final hole; summary requires click/N.
-  - Fix: correct final-hole detection by using `courseInfo.index/total` for banner hints and transitions.
-  - Fix: prevent double-advance and accidental Total increments using `transitioning` guard.
-  - Fix: swallow trailing click after mousedown to avoid instant summary close.
-  - Perf: cache loaded levels and preload the next one to speed level switches; preload after summary restart too.
-  - Controls: Click or N from sunk banner to continue; Space to replay current hole; Enter on Summary to restart course; P/Esc to Pause/Resume; Replay button in HUD.
-  - UI: Added Main Menu and Course Select (Dev Levels); version shown bottom-left on menus; HUD has Menu button instead of Replay; Pause menu refined with Replay and Close buttons.

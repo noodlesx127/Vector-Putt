@@ -96,8 +96,11 @@ function getReplayRect() {
   return { x, y, w, h };
 }
 let hoverReplay = false;
+let transitioning = false; // prevent double-advance while changing holes
 
 function advanceAfterSunk() {
+  if (transitioning) return;
+  transitioning = true;
   // Continue to next step depending on whether this is the last hole
   if (!holeRecorded) {
     courseScores[currentLevelIndex] = strokes;
@@ -107,10 +110,13 @@ function advanceAfterSunk() {
   if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
   if (isLastHole) {
     gameState = 'summary';
+    transitioning = false;
   } else {
-    currentLevelIndex += 1;
-    holeRecorded = false;
-    loadLevelByIndex(currentLevelIndex).catch(console.error);
+    const next = currentLevelIndex + 1;
+    currentLevelIndex = next;
+    loadLevelByIndex(currentLevelIndex)
+      .then(() => { transitioning = false; })
+      .catch((err) => { console.error(err); transitioning = false; });
   }
 }
 
@@ -144,7 +150,8 @@ canvas.addEventListener('mousedown', (e) => {
     loadLevelByIndex(currentLevelIndex).catch(console.error);
     return;
   }
-  if (paused || ball.moving || gameState !== 'play') return; // disable while moving, sunk, or paused
+  if (paused || gameState !== 'play') return; // disable while paused or not in play state
+  if (ball.moving) return;
   const dx = p.x - ball.x;
   const dy = p.y - ball.y;
   const dist2 = dx * dx + dy * dy;

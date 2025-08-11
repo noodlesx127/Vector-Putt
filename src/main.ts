@@ -89,14 +89,22 @@ let isAiming = false;
 let aimStart = { x: 0, y: 0 };
 let aimCurrent = { x: 0, y: 0 };
 
-// UI: Replay button (simple rect on top strip)
-function getReplayRect() {
+// UI: Menu button in HUD (toggles pause)
+function getMenuRect() {
   const w = 72, h = 22;
   const x = 12; // left margin inside HUD
   const y = 5;  // within HUD strip
   return { x, y, w, h };
 }
-let hoverReplay = false;
+// UI: Replay button on Pause overlay
+function getPauseReplayRect() {
+  const w = 120, h = 28;
+  const x = WIDTH / 2 - w / 2;
+  const y = HEIGHT / 2 + 84;
+  return { x, y, w, h };
+}
+let hoverMenu = false;
+let hoverPauseReplay = false;
 let transitioning = false; // prevent double-advance while changing holes
 let lastAdvanceFromSunkMs = 0; // used to swallow trailing click after mousedown
 const CLICK_SWALLOW_MS = 180; // shorten delay for snappier feel
@@ -138,11 +146,11 @@ function worldFromEvent(e: MouseEvent) {
 
 canvas.addEventListener('mousedown', (e) => {
   const p = worldFromEvent(e);
-  // Handle Replay button first (works both during play and sunk; disabled when paused)
+  // Handle HUD Menu button first (toggles pause)
   if (!paused) {
-    const r = getReplayRect();
+    const r = getMenuRect();
     if (p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h) {
-      loadLevelByIndex(currentLevelIndex).catch(console.error);
+      paused = !paused;
       return;
     }
   }
@@ -170,11 +178,11 @@ canvas.addEventListener('mousedown', (e) => {
 
 canvas.addEventListener('mousemove', (e) => {
   const p = worldFromEvent(e);
-  // Hover state for Replay button
-  const r = getReplayRect();
+  // Hover state for Menu button
+  const r = getMenuRect();
   const over = !paused && p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
-  hoverReplay = over;
-  if (hoverReplay && !isAiming) {
+  hoverMenu = over;
+  if (hoverMenu && !isAiming) {
     canvas.style.cursor = 'pointer';
   } else if (!isAiming) {
     canvas.style.cursor = 'default';
@@ -223,6 +231,27 @@ canvas.addEventListener('click', () => {
     currentLevelIndex = 0;
     gameState = 'play';
     preloadLevelByIndex(1);
+    loadLevelByIndex(currentLevelIndex).catch(console.error);
+  }
+});
+
+// Hover handling for Pause overlay buttons
+canvas.addEventListener('mousemove', (e) => {
+  if (!paused) return;
+  const p = worldFromEvent(e);
+  const pr = getPauseReplayRect();
+  const overReplay = p.x >= pr.x && p.x <= pr.x + pr.w && p.y >= pr.y && p.y <= pr.y + pr.h;
+  hoverPauseReplay = overReplay;
+  canvas.style.cursor = overReplay ? 'pointer' : 'default';
+});
+
+canvas.addEventListener('mousedown', (e) => {
+  if (!paused) return;
+  const p = worldFromEvent(e);
+  const pr = getPauseReplayRect();
+  if (p.x >= pr.x && p.x <= pr.x + pr.w && p.y >= pr.y && p.y <= pr.y + pr.h) {
+    // Replay current hole from pause
+    paused = false;
     loadLevelByIndex(currentLevelIndex).catch(console.error);
   }
 });
@@ -487,7 +516,7 @@ function draw() {
   ctx.fillStyle = COLORS.hudText;
   ctx.font = '16px system-ui, sans-serif';
   ctx.textBaseline = 'top';
-  const rrHUD = getReplayRect();
+  const rrHUD = getMenuRect();
   const toBirdieRaw = (courseInfo.par - 1) - strokes;
   const toBirdie = toBirdieRaw >= 0 ? toBirdieRaw : null;
   const speed = Math.hypot(ball.vx, ball.vy).toFixed(1);
@@ -508,18 +537,18 @@ function draw() {
   // restore defaults used later
   ctx.textAlign = 'start';
 
-  // HUD Replay button
+  // HUD Menu button
   const rr = rrHUD;
   ctx.lineWidth = 1.5;
-  ctx.strokeStyle = hoverReplay ? '#ffffff' : '#cfd2cf';
-  ctx.fillStyle = hoverReplay ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+  ctx.strokeStyle = hoverMenu ? '#ffffff' : '#cfd2cf';
+  ctx.fillStyle = hoverMenu ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
   ctx.fillRect(rr.x, rr.y, rr.w, rr.h);
   ctx.strokeRect(rr.x, rr.y, rr.w, rr.h);
   ctx.fillStyle = '#ffffff';
   ctx.font = '14px system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('Replay', rr.x + rr.w/2, rr.y + rr.h/2 + 0.5);
+  ctx.fillText('Menu', rr.x + rr.w/2, rr.y + rr.h/2 + 0.5);
   ctx.textAlign = 'start';
   ctx.textBaseline = 'top';
 
@@ -597,6 +626,18 @@ function draw() {
     ];
     let y = HEIGHT/2 - 56;
     for (const line of lines) { ctx.fillText(line, WIDTH/2, y); y += 22; }
+    // Pause overlay Replay button
+    const pr = getPauseReplayRect();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = hoverPauseReplay ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverPauseReplay ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillRect(pr.x, pr.y, pr.w, pr.h);
+    ctx.strokeRect(pr.x, pr.y, pr.w, pr.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Replay', pr.x + pr.w/2, pr.y + pr.h/2 + 0.5);
     ctx.textAlign = 'start';
     ctx.textBaseline = 'top';
   }

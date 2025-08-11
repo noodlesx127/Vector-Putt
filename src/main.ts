@@ -117,6 +117,26 @@ canvas.addEventListener('mousedown', (e) => {
       return;
     }
   }
+  // Click-to-continue behaviors
+  // If last hole is sunk, clicking anywhere proceeds to summary
+  if (!paused && gameState === 'sunk') {
+    const isLastHole = currentLevelIndex >= levelPaths.length - 1;
+    if (isLastHole) {
+      if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
+      // Ensure last hole strokes are recorded
+      if (!holeRecorded) { courseScores[currentLevelIndex] = strokes; holeRecorded = true; }
+      gameState = 'summary';
+      return;
+    }
+  }
+  // If on summary screen, clicking restarts the course
+  if (!paused && gameState === 'summary') {
+    courseScores = [];
+    currentLevelIndex = 0;
+    gameState = 'play';
+    loadLevelByIndex(currentLevelIndex).catch(console.error);
+    return;
+  }
   if (paused || ball.moving || gameState !== 'play') return; // disable while moving, sunk, or paused
   const dx = p.x - ball.x;
   const dy = p.y - ball.y;
@@ -623,7 +643,7 @@ window.addEventListener('keydown', (e) => {
   } else if (e.code === 'KeyP' || e.code === 'Escape') {
     paused = !paused;
   } else if ((e.code === 'Enter' || e.code === 'NumpadEnter') && gameState === 'summary') {
-    // restart course
+    // restart course (keyboard)
     courseScores = [];
     currentLevelIndex = 0;
     gameState = 'play';

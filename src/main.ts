@@ -46,7 +46,7 @@ type Rect = { x: number; y: number; w: number; h: number };
 type Decoration = { x: number; y: number; w: number; h: number; kind: 'flowers' };
 type Level = {
   canvas: { width: number; height: number };
-  course: { index: number; total: number };
+  course: { index: number; total: number; title?: string };
   par: number;
   tee: { x: number; y: number };
   cup: { x: number; y: number; r: number };
@@ -70,7 +70,7 @@ let walls: Wall[] = [];
 let sands: Rect[] = [];
 let waters: Rect[] = [];
 let decorations: Decoration[] = [];
-let courseInfo = { index: 1, total: 1, par: 3 };
+let courseInfo: { index: number; total: number; par: number; title?: string } = { index: 1, total: 1, par: 3 };
 let strokes = 0;
 let preShot = { x: 0, y: 0 }; // position before current shot, for water reset
 
@@ -78,6 +78,15 @@ let preShot = { x: 0, y: 0 }; // position before current shot, for water reset
 let isAiming = false;
 let aimStart = { x: 0, y: 0 };
 let aimCurrent = { x: 0, y: 0 };
+
+// UI: Replay button (simple rect on top strip)
+function getReplayRect() {
+  const w = 86, h = 24;
+  const x = WIDTH - 12 - w; // align to right margin
+  const y = 8 + 18; // below the rightText row
+  return { x, y, w, h };
+}
+let hoverReplay = false;
 
 function worldFromEvent(e: MouseEvent) {
   const rect = canvas.getBoundingClientRect();
@@ -90,8 +99,16 @@ function worldFromEvent(e: MouseEvent) {
 }
 
 canvas.addEventListener('mousedown', (e) => {
-  if (paused || ball.moving || gameState !== 'play') return; // disable while moving, sunk, or paused
   const p = worldFromEvent(e);
+  // Handle Replay button first (works both during play and sunk; disabled when paused)
+  if (!paused) {
+    const r = getReplayRect();
+    if (p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h) {
+      loadLevelByIndex(currentLevelIndex).catch(console.error);
+      return;
+    }
+  }
+  if (paused || ball.moving || gameState !== 'play') return; // disable while moving, sunk, or paused
   const dx = p.x - ball.x;
   const dy = p.y - ball.y;
   const dist2 = dx * dx + dy * dy;
@@ -103,8 +120,18 @@ canvas.addEventListener('mousedown', (e) => {
 });
 
 canvas.addEventListener('mousemove', (e) => {
+  const p = worldFromEvent(e);
+  // Hover state for Replay button
+  const r = getReplayRect();
+  const over = !paused && p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+  hoverReplay = over;
+  if (hoverReplay && !isAiming) {
+    canvas.style.cursor = 'pointer';
+  } else if (!isAiming) {
+    canvas.style.cursor = 'default';
+  }
   if (!isAiming) return;
-  aimCurrent = worldFromEvent(e);
+  aimCurrent = p;
 });
 
 canvas.addEventListener('mouseup', (e) => {
@@ -336,7 +363,8 @@ function draw() {
   const toBirdieRaw = (courseInfo.par - 1) - strokes;
   const toBirdie = toBirdieRaw >= 0 ? toBirdieRaw : null;
   const speed = Math.hypot(ball.vx, ball.vy).toFixed(1);
-  const leftText = `Hole ${courseInfo.index}/${courseInfo.total}`;
+  const leftTextBase = `Hole ${courseInfo.index}/${courseInfo.total}`;
+  const leftText = courseInfo.title ? `${leftTextBase} — ${courseInfo.title}` : leftTextBase;
   const centerText = `Par ${courseInfo.par}   Strokes ${strokes}`;
   const rightText = `To Birdie: ${toBirdie === null ? '—' : toBirdie}   Speed ${speed}`;
   // left
@@ -350,6 +378,21 @@ function draw() {
   ctx.fillText(rightText, WIDTH - 12, 8);
   // restore defaults used later
   ctx.textAlign = 'start';
+
+  // HUD Replay button
+  const rr = getReplayRect();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = hoverReplay ? '#ffffff' : '#cfd2cf';
+  ctx.fillStyle = hoverReplay ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+  ctx.fillRect(rr.x, rr.y, rr.w, rr.h);
+  ctx.strokeRect(rr.x, rr.y, rr.w, rr.h);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '14px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Replay', rr.x + rr.w/2, rr.y + rr.h/2 + 0.5);
+  ctx.textAlign = 'start';
+  ctx.textBaseline = 'top';
 
   // Post-hole banner
   if (gameState === 'sunk') {
@@ -411,7 +454,7 @@ requestAnimationFrame(loop);
 async function loadLevel(path: string) {
   const res = await fetch(path);
   const lvl = (await res.json()) as Level;
-  courseInfo = { index: lvl.course.index, total: lvl.course.total, par: lvl.par };
+  courseInfo = { index: lvl.course.index, total: lvl.course.total, par: lvl.par, title: lvl.course.title };
   walls = lvl.walls ?? [];
   sands = lvl.sand ?? [];
   waters = lvl.water ?? [];

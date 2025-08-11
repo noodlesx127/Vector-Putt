@@ -22,7 +22,7 @@ let gameState: 'play' | 'sunk' | 'summary' = 'play';
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
-const APP_VERSION = '0.0.1-proto';
+const APP_VERSION = '0.2.0';
 const restitution = 0.9; // wall bounce energy retention
 const frictionK = 1.2; // base exponential damping (reduced for less "sticky" green)
 const stopSpeed = 5; // px/s threshold to consider stopped (tunable)
@@ -590,7 +590,7 @@ function draw() {
       `Hole ${courseInfo.index}/${courseInfo.total}  Par ${courseInfo.par}  Strokes ${strokes}`,
       `To Birdie: ${toBirdie === null ? '—' : toBirdie}`,
       `Version: ${APP_VERSION}`,
-      'Shortcuts: P Pause/Resume, R Restart, N Next, Space Replay after sink'
+      'Shortcuts: P/Esc Pause-Resume, R Restart, N Next (from banner), Space Replay, Enter Summary→Restart, HUD Replay button'
     ];
     let y = HEIGHT/2 - 30;
     for (const line of lines) { ctx.fillText(line, WIDTH/2, y); y += 24; }

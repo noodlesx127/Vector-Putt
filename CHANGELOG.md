@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## 2025-08-10
+## v0.1.0 — 2025-08-10
 
 - Added level loading with custom JSON schema (`levels/level1.json`).
 - Implemented axis-aligned walls rendering and circle–rect collision with restitution in `src/main.ts`.
@@ -41,7 +41,7 @@ All notable changes to this project will be documented in this file.
    - Added Replay button in top HUD with hover and click to restart current hole.
    - Optional hole title shown next to hole index when provided by level JSON.
 
-## 2025-08-11
+## v0.2.0 — 2025-08-11
 
 - Synced docs with current implementation:
   - Marked friction/exponential damping tuning complete in `PROGRESS.md`.
@@ -61,3 +61,4 @@ All notable changes to this project will be documented in this file.
   - Fix: prevent double-advance and accidental Total increments using `transitioning` guard.
   - Fix: swallow trailing click after mousedown to avoid instant summary close.
   - Perf: cache loaded levels and preload the next one to speed level switches; preload after summary restart too.
+  - Controls: Click or N from sunk banner to continue; Space to replay current hole; Enter on Summary to restart course; P/Esc to Pause/Resume; Replay button in HUD.

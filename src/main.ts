@@ -84,8 +84,8 @@ let aimCurrent = { x: 0, y: 0 };
 // UI: Replay button (simple rect on top strip)
 function getReplayRect() {
   const w = 72, h = 22;
-  const x = WIDTH - 12 - w; // align to right margin
-  const y = HUD_HEIGHT + 6; // place just below HUD strip to avoid overlapping HUD text
+  const x = 12; // left margin inside HUD
+  const y = 5;  // within HUD strip
   return { x, y, w, h };
 }
 let hoverReplay = false;
@@ -371,6 +371,7 @@ function draw() {
   ctx.fillStyle = COLORS.hudText;
   ctx.font = '16px system-ui, sans-serif';
   ctx.textBaseline = 'top';
+  const rrHUD = getReplayRect();
   const toBirdieRaw = (courseInfo.par - 1) - strokes;
   const toBirdie = toBirdieRaw >= 0 ? toBirdieRaw : null;
   const speed = Math.hypot(ball.vx, ball.vy).toFixed(1);
@@ -380,7 +381,7 @@ function draw() {
   const rightText = `To Birdie: ${toBirdie === null ? '—' : toBirdie}   Speed ${speed}`;
   // left
   ctx.textAlign = 'left';
-  ctx.fillText(leftText, 12, 6);
+  ctx.fillText(leftText, rrHUD.x + rrHUD.w + 12, 6);
   // center
   ctx.textAlign = 'center';
   ctx.fillText(centerText, WIDTH / 2, 6);
@@ -391,7 +392,7 @@ function draw() {
   ctx.textAlign = 'start';
 
   // HUD Replay button
-  const rr = getReplayRect();
+  const rr = rrHUD;
   ctx.lineWidth = 1.5;
   ctx.strokeStyle = hoverReplay ? '#ffffff' : '#cfd2cf';
   ctx.fillStyle = hoverReplay ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';

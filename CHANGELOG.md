@@ -49,3 +49,4 @@ All notable changes to this project will be documented in this file.
   - Ticked off "ball in hole" detection, water penalty/reset, and post-hole score label in `TODO.md`.
   - Noted terrain tiles coverage as complete (fairway, sand, water).
   - Moved HUD Replay button below the top strip to avoid overlapping right-side HUD text.
+  - Repositioned Replay to left side of HUD and shifted left HUD text right of the button to ensure no overlap.

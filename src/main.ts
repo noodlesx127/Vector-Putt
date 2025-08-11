@@ -136,78 +136,7 @@ let transitioning = false; // prevent double-advance while changing holes
 let lastAdvanceFromSunkMs = 0; // used to swallow trailing click after mousedown
 const CLICK_SWALLOW_MS = 180; // shorten delay for snappier feel
 
-// Changelog screen state and helpers
-let changelogText: string | null = null;
-let changelogLines: string[] = [];
-let changelogScrollY = 0;
-let isChangelogDragging = false;
-let changelogDragStartY = 0;
-let changelogScrollStartY = 0;
-
-function getChangelogBackRect() {
-  const w = 120, h = 28;
-  const x = WIDTH / 2 - w / 2;
-  const y = HEIGHT - 90;
-  return { x, y, w, h };
-}
-
-function getChangelogContentRect() {
-  const left = 60, top = 100, right = WIDTH - 60, bottom = HEIGHT - 140;
-  return { x: left, y: top, w: right - left, h: bottom - top };
-}
-
-async function ensureChangelogLoaded(): Promise<void> {
-  if (changelogText !== null) return;
-  try {
-    const res = await fetch('/CHANGELOG.md');
-    if (res.ok) {
-      changelogText = await res.text();
-    } else {
-      changelogText = 'Failed to load CHANGELOG.md';
-    }
-  } catch (err) {
-    console.error('Failed to load changelog', err);
-    changelogText = 'Failed to load CHANGELOG.md';
-  }
-}
-
-function wrapChangelog(context: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
-  const rawLines = text.split('\n');
-  const wrapped: string[] = [];
-  for (let raw of rawLines) {
-    // simple markdown-ish tweaks
-    if (raw.startsWith('## ')) {
-      wrapped.push('');
-      raw = raw.substring(3);
-    } else if (raw.startsWith('- ')) {
-      raw = '• ' + raw.substring(2);
-    }
-    if (raw.trim() === '') { wrapped.push(''); continue; }
-    const words = raw.split(/\s+/);
-    let line = '';
-    for (const word of words) {
-      const test = line ? line + ' ' + word : word;
-      const w = context.measureText(test).width;
-      if (w > maxWidth && line) {
-        wrapped.push(line);
-        line = word;
-      } else {
-        line = test;
-      }
-    }
-    if (line) wrapped.push(line);
-  }
-  return wrapped;
-}
-
-function clampChangelogScroll(): void {
-  const r = getChangelogContentRect();
-  const visibleHeight = r.h;
-  const contentHeight = changelogLines.length * 20;
-  const maxScroll = Math.max(0, contentHeight - visibleHeight);
-  if (changelogScrollY < 0) changelogScrollY = 0;
-  if (changelogScrollY > maxScroll) changelogScrollY = maxScroll;
-}
+// (duplicate block removed)
 
 // Changelog screen state and helpers
 let changelogText: string | null = null;

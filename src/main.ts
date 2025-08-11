@@ -18,7 +18,7 @@ resize();
 
 // Game state
 let lastTime = performance.now();
-let gameState: 'menu' | 'course' | 'options' | 'loading' | 'play' | 'sunk' | 'summary' = 'menu';
+let gameState: 'menu' | 'course' | 'options' | 'changelog' | 'loading' | 'play' | 'sunk' | 'summary' = 'menu';
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
@@ -128,8 +128,10 @@ let hoverPauseClose = false;
 let hoverPauseBack = false;
 let hoverMainStart = false;
 let hoverMainOptions = false;
+let hoverMainChangelog = false;
 let hoverCourseDev = false;
 let hoverCourseBack = false;
+let hoverChangelogBack = false;
 let transitioning = false; // prevent double-advance while changing holes
 let lastAdvanceFromSunkMs = 0; // used to swallow trailing click after mousedown
 const CLICK_SWALLOW_MS = 180; // shorten delay for snappier feel

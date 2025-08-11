@@ -4,7 +4,7 @@
 
 # Project Progress — Vector Putt
 
-Updated: 2025-08-11 00:00 (local)
+Updated: 2025-08-11 00:10 (local)
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 
@@ -16,6 +16,7 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [x] Post-Hole banner and simple “next hole” flow (single-hole for now)
 - [x] Visual pass: retro palette, mustard table, inset fairway frame, light gray walls, subtle shading band
 - [x] Terrain zones: water (penalty+reset), sand (higher friction), tuning pass (sand 4.2x)
+- [x] Hills prototype: directional acceleration zones (visual gradient) per reference videos
 - [x] Level 1: move flower decorations outside play area
 - [x] Level 2: add doorway into inner box and move cup inside; reachable sand
 
@@ -24,6 +25,7 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [ ] Auto-snap decorations to table when near outer walls
 - [ ] Diagonal/chamfered wall support (schema + collision)
 - [x] Prepare 1–2 additional prototype holes using the same JSON schema
+- [ ] Tune hill strength and boundaries to match reference feel
 
 ## Soon (After MVP Slice Works)
 - [ ] Water tiles: splash SFX → +1 stroke → reset to pre-shot location

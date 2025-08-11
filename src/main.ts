@@ -42,10 +42,12 @@ const COLORS = {
 } as const;
 const COURSE_MARGIN = 40; // inset for fairway rect
 const HUD_HEIGHT = 32;
+const SLOPE_ACCEL = 600; // base acceleration applied by hills (px/s^2)
 
 type Wall = { x: number; y: number; w: number; h: number };
 type Rect = { x: number; y: number; w: number; h: number };
 type Decoration = { x: number; y: number; w: number; h: number; kind: 'flowers' };
+type Slope = { x: number; y: number; w: number; h: number; dir: 'N'|'S'|'E'|'W'|'NE'|'NW'|'SE'|'SW'; strength?: number };
 type Level = {
   canvas: { width: number; height: number };
   course: { index: number; total: number; title?: string };
@@ -56,6 +58,7 @@ type Level = {
   sand?: Rect[];
   water?: Rect[];
   decorations?: Decoration[];
+  hills?: Slope[];
 };
 
 const ball = {
@@ -72,6 +75,7 @@ let walls: Wall[] = [];
 let sands: Rect[] = [];
 let waters: Rect[] = [];
 let decorations: Decoration[] = [];
+let hills: Slope[] = [];
 let courseInfo: { index: number; total: number; par: number; title?: string } = { index: 1, total: 1, par: 3 };
 let strokes = 0;
 let preShot = { x: 0, y: 0 }; // position before current shot, for water reset
@@ -197,6 +201,24 @@ function update(dt: number) {
     ball.vx *= friction;
     ball.vy *= friction;
 
+    // Hills (slopes): apply directional acceleration inside hill zones
+    if (hills.length > 0) {
+      let ax = 0, ay = 0;
+      for (const h of hills) {
+        if (!pointInRect(ball.x, ball.y, h)) continue;
+        const s = (h.strength ?? 1) * SLOPE_ACCEL;
+        const d = h.dir;
+        const dx = (d.includes('E') ? 1 : 0) + (d.includes('W') ? -1 : 0);
+        const dy = (d.includes('S') ? 1 : 0) + (d.includes('N') ? -1 : 0);
+        // normalize diagonal so total accel magnitude stays consistent
+        const inv = (dx !== 0 && dy !== 0) ? Math.SQRT1_2 : 1;
+        ax += dx * s * inv;
+        ay += dy * s * inv;
+      }
+      ball.vx += ax * dt;
+      ball.vy += ay * dt;
+    }
+
     // Collide with walls (axis-aligned)
     for (const w of walls) {
       const hit = circleRectResolve(ball.x, ball.y, ball.r, w);
@@ -300,6 +322,26 @@ function draw() {
   for (const r of sands) {
     ctx.fillStyle = '#d4b36a';
     ctx.fillRect(r.x, r.y, r.w, r.h);
+  }
+  // hills (visualize with directional gradient overlay)
+  for (const h of hills) {
+    const grad = (() => {
+      const d = h.dir;
+      let x0 = h.x, y0 = h.y, x1 = h.x + h.w, y1 = h.y + h.h;
+      if (d === 'N') { x0 = h.x; y0 = h.y + h.h; x1 = h.x; y1 = h.y; }
+      else if (d === 'S') { x0 = h.x; y0 = h.y; x1 = h.x; y1 = h.y + h.h; }
+      else if (d === 'W') { x0 = h.x + h.w; y0 = h.y; x1 = h.x; y1 = h.y; }
+      else if (d === 'E') { x0 = h.x; y0 = h.y; x1 = h.x + h.w; y1 = h.y; }
+      else if (d === 'NE') { x0 = h.x; y0 = h.y + h.h; x1 = h.x + h.w; y1 = h.y; }
+      else if (d === 'NW') { x0 = h.x + h.w; y0 = h.y + h.h; x1 = h.x; y1 = h.y; }
+      else if (d === 'SE') { x0 = h.x; y0 = h.y; x1 = h.x + h.w; y1 = h.y + h.h; }
+      else /* SW */ { x0 = h.x + h.w; y0 = h.y; x1 = h.x; y1 = h.y + h.h; }
+      return ctx.createLinearGradient(x0, y0, x1, y1);
+    })();
+    grad.addColorStop(0, 'rgba(255,255,255,0.10)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.10)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(h.x, h.y, h.w, h.h);
   }
 
   // decorations (non-colliding visuals) — clip to avoid drawing under HUD bar
@@ -471,6 +513,7 @@ async function loadLevel(path: string) {
   sands = lvl.sand ?? [];
   waters = lvl.water ?? [];
   decorations = lvl.decorations ?? [];
+  hills = lvl.hills ?? [];
   ball.x = lvl.tee.x; ball.y = lvl.tee.y; ball.vx = 0; ball.vy = 0; ball.moving = false;
   hole.x = lvl.cup.x; hole.y = lvl.cup.y; (hole as any).r = lvl.cup.r;
   strokes = 0;

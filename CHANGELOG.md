@@ -50,3 +50,4 @@ All notable changes to this project will be documented in this file.
   - Noted terrain tiles coverage as complete (fairway, sand, water).
   - Moved HUD Replay button below the top strip to avoid overlapping right-side HUD text.
   - Repositioned Replay to left side of HUD and shifted left HUD text right of the button to ensure no overlap.
+  - Added hills (slope) prototype: new `hills` array in level JSON with directional acceleration; rendered as subtle gradient; updated `level3.json` with a sample SE slope.

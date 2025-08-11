@@ -53,6 +53,7 @@ Notes:
   - [x] Water (OOB): +1 stroke, reset to pre-shot position
 - [ ] Velocity affects terrain (e.g., hard shot may skim sand)
 - [ ] Ramps/Hills (slope affects speed/direction; phase 2)
+  - [x] Hills (prototype): directional acceleration zones with visual gradient
 - [ ] Moving obstacles (timed collisions; phase 2)
 - [ ] Boosters/Accelerators (apply impulse; phase 2)
 - [ ] Tunnels/Teleporters (enter/exit mapping; phase 2)

@@ -52,3 +52,4 @@ All notable changes to this project will be documented in this file.
   - Repositioned Replay to left side of HUD and shifted left HUD text right of the button to ensure no overlap.
   - Added hills (slope) prototype: new `hills` array in level JSON with directional acceleration; rendered as subtle gradient; updated `level3.json` with a sample SE slope.
   - Added `levels/course.json` and HUD running total; records strokes on Next.
+  - Added Course Summary overlay at end of course with per-hole strokes and total; Enter restarts course.

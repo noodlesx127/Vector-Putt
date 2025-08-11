@@ -18,7 +18,7 @@ resize();
 
 // Game state
 let lastTime = performance.now();
-let gameState: 'play' | 'sunk' = 'play';
+let gameState: 'play' | 'sunk' | 'summary' = 'play';
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
@@ -471,7 +471,34 @@ function draw() {
     ctx.fillStyle = '#ffffff';
     ctx.fillText(text, WIDTH/2, HEIGHT/2);
     ctx.font = '14px system-ui, sans-serif';
-    ctx.fillText('Press Space to play again', WIDTH/2, HEIGHT/2 + 24);
+    ctx.fillText('Press N for next hole or Space to replay', WIDTH/2, HEIGHT/2 + 24);
+    ctx.textAlign = 'start';
+    ctx.textBaseline = 'top';
+  }
+  // Course summary overlay
+  if (gameState === 'summary') {
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.font = '26px system-ui, sans-serif';
+    ctx.fillText('Course Summary', WIDTH/2, 40);
+    const total = courseScores.reduce((a, b) => a + (b ?? 0), 0);
+    ctx.font = '16px system-ui, sans-serif';
+    let y = 80;
+    for (let i = 0; i < levelPaths.length; i++) {
+      const s = courseScores[i] ?? 0;
+      const line = `Hole ${i+1}: ${s} strokes`;
+      ctx.fillText(line, WIDTH/2, y);
+      y += 22;
+    }
+    y += 10;
+    ctx.font = '18px system-ui, sans-serif';
+    ctx.fillText(`Total: ${total}`, WIDTH/2, y);
+    y += 28;
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.fillText('Press Enter to restart course', WIDTH/2, y);
     ctx.textAlign = 'start';
     ctx.textBaseline = 'top';
   }
@@ -574,13 +601,19 @@ window.addEventListener('keydown', (e) => {
       courseScores[currentLevelIndex] = strokes;
       holeRecorded = true;
     }
-    currentLevelIndex += 1;
-    if (currentLevelIndex >= levelPaths.length) {
-      currentLevelIndex = 0; // wrap
-      courseScores = []; // new round
+    if (currentLevelIndex >= levelPaths.length - 1) {
+      gameState = 'summary';
+    } else {
+      currentLevelIndex += 1;
+      loadLevelByIndex(currentLevelIndex).catch(console.error);
     }
-    loadLevelByIndex(currentLevelIndex).catch(console.error);
   } else if (e.code === 'KeyP' || e.code === 'Escape') {
     paused = !paused;
+  } else if ((e.code === 'Enter' || e.code === 'NumpadEnter') && gameState === 'summary') {
+    // restart course
+    courseScores = [];
+    currentLevelIndex = 0;
+    gameState = 'play';
+    loadLevelByIndex(currentLevelIndex).catch(console.error);
   }
 });

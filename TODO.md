@@ -62,8 +62,9 @@ Notes:
 - [x] Stroke count per hole (+1 per shot)
 - [x] Par per hole (data-driven)
 - [x] Score evaluation at end of hole (Birdie/Par/Bogey, etc.)
-- [ ] Running total across course
+- [x] Running total across course
   - [x] Show running total (HUD) and record per-hole strokes when advancing
+  - [x] Course summary overlay with per-hole strokes and total
 - [x] Water penalty and reset logic
 
 ## Level System

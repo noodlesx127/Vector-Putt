@@ -19,7 +19,7 @@ resize();
 // Game state
 let lastTime = performance.now();
 let gameState: 'play' | 'sunk' = 'play';
-const levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
+let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
 const APP_VERSION = '0.0.1-proto';
@@ -79,6 +79,8 @@ let hills: Slope[] = [];
 let courseInfo: { index: number; total: number; par: number; title?: string } = { index: 1, total: 1, par: 3 };
 let strokes = 0;
 let preShot = { x: 0, y: 0 }; // position before current shot, for water reset
+let courseScores: number[] = []; // strokes per completed hole
+let holeRecorded = false; // guard to prevent double-recording
 
 // Aim state
 let isAiming = false;
@@ -272,6 +274,7 @@ function update(dt: number) {
     ball.moving = false;
     if (gameState !== 'sunk') {
       gameState = 'sunk';
+      holeRecorded = false;
     }
   }
 }
@@ -419,7 +422,8 @@ function draw() {
   const speed = Math.hypot(ball.vx, ball.vy).toFixed(1);
   const leftTextBase = `Hole ${courseInfo.index}/${courseInfo.total}`;
   const leftText = courseInfo.title ? `${leftTextBase} — ${courseInfo.title}` : leftTextBase;
-  const centerText = `Par ${courseInfo.par}   Strokes ${strokes}`;
+  const totalSoFar = courseScores.reduce((a, b) => a + b, 0) + (gameState === 'sunk' ? 0 : 0);
+  const centerText = `Par ${courseInfo.par}   Strokes ${strokes}   Total ${totalSoFar}`;
   const rightText = `To Birdie: ${toBirdie === null ? '—' : toBirdie}   Speed ${speed}`;
   // left
   ctx.textAlign = 'left';
@@ -541,7 +545,22 @@ function loadLevelByIndex(i: number) {
   return loadLevel(levelPaths[clamped]);
 }
 
-loadLevelByIndex(0).catch(console.error);
+// Attempt to load course definition first; fallback to static list
+async function boot() {
+  try {
+    const res = await fetch('/levels/course.json');
+    if (res.ok) {
+      const data = (await res.json()) as { levels: string[] };
+      if (Array.isArray(data.levels) && data.levels.length > 0) {
+        levelPaths = data.levels;
+      }
+    }
+  } catch {}
+  courseScores = [];
+  currentLevelIndex = 0;
+  await loadLevelByIndex(0);
+}
+boot().catch(console.error);
 
 // Restart flow after sink
 window.addEventListener('keydown', (e) => {
@@ -550,7 +569,17 @@ window.addEventListener('keydown', (e) => {
   } else if (e.code === 'KeyR') {
     loadLevelByIndex(currentLevelIndex).catch(console.error);
   } else if (e.code === 'KeyN') {
-    loadLevelByIndex(currentLevelIndex + 1).catch(console.error);
+    // If current hole is sunk and not yet recorded, record strokes
+    if (gameState === 'sunk' && !holeRecorded) {
+      courseScores[currentLevelIndex] = strokes;
+      holeRecorded = true;
+    }
+    currentLevelIndex += 1;
+    if (currentLevelIndex >= levelPaths.length) {
+      currentLevelIndex = 0; // wrap
+      courseScores = []; // new round
+    }
+    loadLevelByIndex(currentLevelIndex).catch(console.error);
   } else if (e.code === 'KeyP' || e.code === 'Escape') {
     paused = !paused;
   }

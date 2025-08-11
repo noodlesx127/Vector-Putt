@@ -26,6 +26,7 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [ ] Diagonal/chamfered wall support (schema + collision)
 - [x] Prepare 1–2 additional prototype holes using the same JSON schema
 - [ ] Tune hill strength and boundaries to match reference feel
+- [x] Course definition file and running total across course
 
 ## Soon (After MVP Slice Works)
 - [ ] Water tiles: splash SFX → +1 stroke → reset to pre-shot location

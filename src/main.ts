@@ -81,7 +81,6 @@ let strokes = 0;
 let preShot = { x: 0, y: 0 }; // position before current shot, for water reset
 let courseScores: number[] = []; // strokes per completed hole
 let holeRecorded = false; // guard to prevent double-recording
-let summaryTimer: number | null = null; // auto-show summary after last hole sink
 
 // Aim state
 let isAiming = false;
@@ -293,18 +292,16 @@ function update(dt: number) {
     ball.y = hole.y;
     ball.vx = 0; ball.vy = 0;
     ball.moving = false;
-    if (gameState !== 'sunk') {
-      gameState = 'sunk';
-      holeRecorded = false;
+    if (gameState !== 'sunk' && gameState !== 'summary') {
       const isLastHole = currentLevelIndex >= levelPaths.length - 1;
       if (isLastHole) {
-        if (!holeRecorded) {
-          courseScores[currentLevelIndex] = strokes;
-          holeRecorded = true;
-        }
-        if (summaryTimer === null) {
-          summaryTimer = window.setTimeout(() => { gameState = 'summary'; }, 1200);
-        }
+        // record and go straight to summary (no delay)
+        courseScores[currentLevelIndex] = strokes;
+        holeRecorded = true;
+        gameState = 'summary';
+      } else {
+        gameState = 'sunk';
+        holeRecorded = false;
       }
     }
   }
@@ -502,9 +499,7 @@ function draw() {
     ctx.fillStyle = '#ffffff';
     ctx.fillText(text, WIDTH/2, HEIGHT/2);
     ctx.font = '14px system-ui, sans-serif';
-    const isLastHole = currentLevelIndex >= levelPaths.length - 1;
-    const hint = isLastHole ? 'Enter: Summary   Space: Replay' : 'N: Next   Space: Replay';
-    ctx.fillText(hint, WIDTH/2, HEIGHT/2 + 24);
+    ctx.fillText('N: Next   Space: Replay', WIDTH/2, HEIGHT/2 + 24);
     ctx.textAlign = 'start';
     ctx.textBaseline = 'top';
   }

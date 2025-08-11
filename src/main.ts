@@ -715,6 +715,8 @@ async function loadLevel(path: string) {
   currentLevelIndex = Math.max(0, levelPaths.indexOf(path));
   preShot = { x: ball.x, y: ball.y };
   if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
+  // Preload the subsequent level to avoid first-transition delay
+  preloadLevelByIndex(currentLevelIndex + 1);
 
   // Safety: nudge ball out if tee overlaps a wall
   for (let i = 0; i < 8; i++) {
@@ -760,6 +762,8 @@ async function boot() {
   } catch {}
   courseScores = [];
   currentLevelIndex = 0;
+  // Preload next level before player finishes the first hole
+  preloadLevelByIndex(1);
   await loadLevelByIndex(0);
 }
 boot().catch(console.error);

@@ -43,6 +43,7 @@ const COLORS = {
 const COURSE_MARGIN = 40; // inset for fairway rect
 const HUD_HEIGHT = 32;
 const SLOPE_ACCEL = 600; // base acceleration applied by hills (px/s^2)
+const levelCache = new Map<string, Level>();
 
 type Wall = { x: number; y: number; w: number; h: number };
 type Rect = { x: number; y: number; w: number; h: number };
@@ -116,6 +117,8 @@ function advanceAfterSunk() {
     transitioning = false;
   } else {
     const next = currentLevelIndex + 1;
+    // kick off preload of the following level to reduce perceived delay later
+    preloadLevelByIndex(next + 1);
     currentLevelIndex = next;
     loadLevelByIndex(currentLevelIndex)
       .then(() => { transitioning = false; })
@@ -219,6 +222,7 @@ canvas.addEventListener('click', () => {
     courseScores = [];
     currentLevelIndex = 0;
     gameState = 'play';
+    preloadLevelByIndex(1);
     loadLevelByIndex(currentLevelIndex).catch(console.error);
   }
 });
@@ -606,8 +610,14 @@ requestAnimationFrame(loop);
 
 // Load level JSON and init positions (run once on startup)
 async function loadLevel(path: string) {
-  const res = await fetch(path);
-  const lvl = (await res.json()) as Level;
+  let lvl: Level;
+  if (levelCache.has(path)) {
+    lvl = levelCache.get(path)!;
+  } else {
+    const res = await fetch(path);
+    lvl = (await res.json()) as Level;
+    levelCache.set(path, lvl);
+  }
   courseInfo = { index: lvl.course.index, total: lvl.course.total, par: lvl.par, title: lvl.course.title };
   walls = lvl.walls ?? [];
   sands = lvl.sand ?? [];
@@ -642,6 +652,17 @@ function loadLevelByIndex(i: number) {
   return loadLevel(levelPaths[clamped]);
 }
 
+// Preload helper (non-blocking)
+function preloadLevelByIndex(i: number): void {
+  const clamped = ((i % levelPaths.length) + levelPaths.length) % levelPaths.length;
+  const path = levelPaths[clamped];
+  if (levelCache.has(path)) return;
+  fetch(path)
+    .then((res) => res.json())
+    .then((lvl: Level) => { levelCache.set(path, lvl); })
+    .catch(() => {});
+}
+
 // Attempt to load course definition first; fallback to static list
 async function boot() {
   try {
@@ -662,6 +683,7 @@ boot().catch(console.error);
 // Restart flow after sink
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Space' && gameState === 'sunk') {
+    // Restart current hole immediately (snappy)
     loadLevelByIndex(currentLevelIndex).catch(console.error);
   } else if (e.code === 'KeyR') {
     loadLevelByIndex(currentLevelIndex).catch(console.error);
@@ -675,7 +697,9 @@ window.addEventListener('keydown', (e) => {
         // Only show summary when on last hole
         gameState = 'summary';
       } else {
-        currentLevelIndex += 1;
+        const next = currentLevelIndex + 1;
+        preloadLevelByIndex(next + 1);
+        currentLevelIndex = next;
         loadLevelByIndex(currentLevelIndex).catch(console.error);
       }
     } else if (gameState === 'play') {

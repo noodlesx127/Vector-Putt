@@ -115,9 +115,17 @@ function getPauseCloseRect() {
   const y = pr.y;
   return { x, y, w, h };
 }
+// UI: Back to Main Menu button on Pause overlay (centered above bottom buttons)
+function getPauseBackRect() {
+  const w = 180, h = 28;
+  const x = WIDTH / 2 - w / 2;
+  const y = HEIGHT - 130;
+  return { x, y, w, h };
+}
 let hoverMenu = false;
 let hoverPauseReplay = false;
 let hoverPauseClose = false;
+let hoverPauseBack = false;
 let hoverMainStart = false;
 let hoverMainOptions = false;
 let hoverCourseDev = false;
@@ -350,9 +358,12 @@ canvas.addEventListener('mousemove', (e) => {
   const overReplay = p.x >= pr.x && p.x <= pr.x + pr.w && p.y >= pr.y && p.y <= pr.y + pr.h;
   const pc = getPauseCloseRect();
   const overClose = p.x >= pc.x && p.x <= pc.x + pc.w && p.y >= pc.y && p.y <= pc.y + pc.h;
+  const pb = getPauseBackRect();
+  const overBack = p.x >= pb.x && p.x <= pb.x + pb.w && p.y >= pb.y && p.y <= pb.y + pb.h;
   hoverPauseReplay = overReplay;
   hoverPauseClose = overClose;
-  canvas.style.cursor = (overReplay || overClose) ? 'pointer' : 'default';
+  hoverPauseBack = overBack;
+  canvas.style.cursor = (overReplay || overClose || overBack) ? 'pointer' : 'default';
 });
 
 canvas.addEventListener('mousedown', (e) => {
@@ -368,6 +379,14 @@ canvas.addEventListener('mousedown', (e) => {
   if (p.x >= pc.x && p.x <= pc.x + pc.w && p.y >= pc.y && p.y <= pc.y + pc.h) {
     // Close pause
     paused = false;
+  }
+  const pb = getPauseBackRect();
+  if (p.x >= pb.x && p.x <= pb.x + pb.w && p.y >= pb.y && p.y <= pb.y + pb.h) {
+    // Back to main menu (reset state)
+    paused = false;
+    gameState = 'menu';
+    isAiming = false;
+    ball.vx = 0; ball.vy = 0; ball.moving = false;
   }
 });
 
@@ -839,6 +858,17 @@ function draw() {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('Replay', pr.x + pr.w/2, pr.y + pr.h/2 + 0.5);
+    // Pause overlay Back to Main Menu
+    const pb = getPauseBackRect();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = hoverPauseBack ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverPauseBack ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillRect(pb.x, pb.y, pb.w, pb.h);
+    ctx.strokeRect(pb.x, pb.y, pb.w, pb.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Back to Main Menu', pb.x + pb.w/2, pb.y + pb.h/2 + 0.5);
     // Pause overlay Close button
     const pc = getPauseCloseRect();
     ctx.lineWidth = 1.5;

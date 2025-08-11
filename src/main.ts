@@ -526,7 +526,7 @@ function draw() {
     ctx.fillText(`Total: ${total}`, WIDTH/2, y);
     y += 28;
     ctx.font = '14px system-ui, sans-serif';
-    ctx.fillText('Press Enter to restart course', WIDTH/2, y);
+    ctx.fillText('Click or Press Enter to Restart Game', WIDTH/2, y);
     ctx.textAlign = 'start';
     ctx.textBaseline = 'top';
   }

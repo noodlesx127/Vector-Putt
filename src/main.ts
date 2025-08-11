@@ -1,3 +1,5 @@
+import CHANGELOG_RAW from '../CHANGELOG.md?raw';
+
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
 
@@ -139,7 +141,7 @@ const CLICK_SWALLOW_MS = 180; // shorten delay for snappier feel
 // (duplicate block removed)
 
 // Changelog screen state and helpers
-let changelogText: string | null = null;
+let changelogText: string | null = (typeof CHANGELOG_RAW === 'string' && CHANGELOG_RAW.trim().length > 0) ? CHANGELOG_RAW : null;
 let changelogLines: string[] = [];
 let changelogScrollY = 0;
 
@@ -172,6 +174,10 @@ async function ensureChangelogLoaded(): Promise<void> {
         return;
       }
     } catch {}
+  }
+  if (changelogText === null && typeof CHANGELOG_RAW === 'string' && CHANGELOG_RAW.trim().length > 0) {
+    changelogText = CHANGELOG_RAW;
+    return;
   }
   console.error('Failed to load changelog from', candidates);
   changelogText = 'Failed to load CHANGELOG.md';

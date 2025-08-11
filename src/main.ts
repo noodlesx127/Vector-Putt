@@ -126,7 +126,9 @@ canvas.addEventListener('mousedown', (e) => {
     if (isLastHole) {
       gameState = 'summary';
     } else {
+      // advance to next hole
       currentLevelIndex += 1;
+      holeRecorded = false;
       loadLevelByIndex(currentLevelIndex).catch(console.error);
     }
     return;
@@ -511,8 +513,8 @@ function draw() {
     ctx.textAlign = 'start';
     ctx.textBaseline = 'top';
   }
-  // Course summary overlay
-  if (gameState === 'summary') {
+  // Course summary overlay (only on final hole and after recording)
+  if (gameState === 'summary' && currentLevelIndex >= levelPaths.length - 1 && holeRecorded) {
     ctx.fillStyle = 'rgba(0,0,0,0.65)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
     ctx.fillStyle = '#ffffff';
@@ -638,14 +640,14 @@ window.addEventListener('keydown', (e) => {
       if (!holeRecorded) { courseScores[currentLevelIndex] = strokes; holeRecorded = true; }
       if (currentLevelIndex >= levelPaths.length - 1) {
         if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
+        // Only show summary when on last hole
         gameState = 'summary';
       } else {
         currentLevelIndex += 1;
         loadLevelByIndex(currentLevelIndex).catch(console.error);
       }
     } else if (gameState === 'play') {
-      currentLevelIndex += 1;
-      loadLevelByIndex(currentLevelIndex).catch(console.error);
+      // Ignore N during play to avoid accidental hole skip triggering summary logic
     }
   } else if (e.code === 'KeyP' || e.code === 'Escape') {
     paused = !paused;

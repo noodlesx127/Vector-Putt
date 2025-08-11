@@ -103,7 +103,7 @@ function getPauseReplayRect() {
   const gap = 16;
   const totalW = w * 2 + gap;
   const x = WIDTH / 2 - totalW / 2;
-  const y = HEIGHT - 60;
+  const y = HEIGHT - 90;
   return { x, y, w, h };
 }
 // UI: Close button on Pause overlay
@@ -641,7 +641,6 @@ function draw() {
     const lines = [
       `Hole ${courseInfo.index}/${courseInfo.total}  Par ${courseInfo.par}  Strokes ${strokes}`,
       `To Birdie: ${toBirdie === null ? '—' : toBirdie}`,
-      `Version: ${APP_VERSION}`,
       'Shortcuts:',
       '  P/Esc Pause-Resume   R Restart',
       '  N Next (from banner)   Space Replay',

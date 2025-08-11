@@ -38,9 +38,10 @@ const COLORS = {
   holeFill: '#0a1a0b',   // cup interior
   holeRim:  '#0f3f19',   // cup rim color
   hudText: '#ffffff',
-  hudBg: 'rgba(0,0,0,0.35)'
+  hudBg: '#0d1f10'       // solid dark strip for HUD
 } as const;
 const COURSE_MARGIN = 40; // inset for fairway rect
+const HUD_HEIGHT = 32;
 
 type Wall = { x: number; y: number; w: number; h: number };
 type Rect = { x: number; y: number; w: number; h: number };
@@ -84,7 +85,7 @@ let aimCurrent = { x: 0, y: 0 };
 function getReplayRect() {
   const w = 72, h = 22;
   const x = WIDTH - 12 - w; // align to right margin
-  const y = 8; // within HUD strip
+  const y = 5; // within HUD strip
   return { x, y, w, h };
 }
 let hoverReplay = false;
@@ -109,6 +110,7 @@ canvas.addEventListener('mousedown', (e) => {
       return;
     }
   }
+  ctx.restore();
   if (paused || ball.moving || gameState !== 'play') return; // disable while moving, sunk, or paused
   const dx = p.x - ball.x;
   const dy = p.y - ball.y;
@@ -301,7 +303,11 @@ function draw() {
     ctx.fillRect(r.x, r.y, r.w, r.h);
   }
 
-  // decorations (non-colliding visuals)
+  // decorations (non-colliding visuals) — clip to avoid drawing under HUD bar
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, HUD_HEIGHT, WIDTH, HEIGHT - HUD_HEIGHT);
+  ctx.clip();
   for (const d of decorations) {
     if (d.kind === 'flowers') {
       const step = 16;
@@ -360,7 +366,7 @@ function draw() {
   // HUD (single row across the top)
   // background strip to avoid visual clutter from decorations
   ctx.fillStyle = COLORS.hudBg;
-  ctx.fillRect(0, 0, WIDTH, 36);
+  ctx.fillRect(0, 0, WIDTH, HUD_HEIGHT);
   ctx.fillStyle = COLORS.hudText;
   ctx.font = '16px system-ui, sans-serif';
   ctx.textBaseline = 'top';
@@ -373,13 +379,13 @@ function draw() {
   const rightText = `To Birdie: ${toBirdie === null ? '—' : toBirdie}   Speed ${speed}`;
   // left
   ctx.textAlign = 'left';
-  ctx.fillText(leftText, 12, 8);
+  ctx.fillText(leftText, 12, 6);
   // center
   ctx.textAlign = 'center';
-  ctx.fillText(centerText, WIDTH / 2, 8);
+  ctx.fillText(centerText, WIDTH / 2, 6);
   // right
   ctx.textAlign = 'right';
-  ctx.fillText(rightText, WIDTH - 12, 8);
+  ctx.fillText(rightText, WIDTH - 12, 6);
   // restore defaults used later
   ctx.textAlign = 'start';
 

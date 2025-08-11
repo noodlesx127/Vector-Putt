@@ -924,9 +924,9 @@ async function boot() {
   } catch {}
   courseScores = [];
   currentLevelIndex = 0;
-  // Preload next level before player finishes the first hole
+  // Stay on main menu; optionally warm the first level in the background
+  preloadLevelByIndex(0);
   preloadLevelByIndex(1);
-  await loadLevelByIndex(0);
 }
 boot().catch(console.error);
 

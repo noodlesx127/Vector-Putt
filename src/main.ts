@@ -81,6 +81,7 @@ let strokes = 0;
 let preShot = { x: 0, y: 0 }; // position before current shot, for water reset
 let courseScores: number[] = []; // strokes per completed hole
 let holeRecorded = false; // guard to prevent double-recording
+let summaryTimer: number | null = null; // timer to auto-open summary after last-hole banner
 
 // Aim state
 let isAiming = false;
@@ -294,14 +295,17 @@ function update(dt: number) {
     ball.moving = false;
     if (gameState !== 'sunk' && gameState !== 'summary') {
       const isLastHole = currentLevelIndex >= levelPaths.length - 1;
+      // Always show sunk banner first
+      gameState = 'sunk';
+      holeRecorded = false;
       if (isLastHole) {
-        // record and go straight to summary (no delay)
+        // record now and schedule summary after brief banner view
         courseScores[currentLevelIndex] = strokes;
         holeRecorded = true;
-        gameState = 'summary';
-      } else {
-        gameState = 'sunk';
-        holeRecorded = false;
+        if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
+        summaryTimer = window.setTimeout(() => {
+          if (gameState === 'sunk') { gameState = 'summary'; }
+        }, 1200);
       }
     }
   }
@@ -579,6 +583,7 @@ async function loadLevel(path: string) {
   gameState = 'play';
   currentLevelIndex = Math.max(0, levelPaths.indexOf(path));
   preShot = { x: ball.x, y: ball.y };
+  if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
 
   // Safety: nudge ball out if tee overlaps a wall
   for (let i = 0; i < 8; i++) {

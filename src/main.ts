@@ -119,7 +119,7 @@ canvas.addEventListener('mousedown', (e) => {
   }
   // Click-to-continue behaviors while sunk banner is showing
   if (!paused && gameState === 'sunk') {
-    const isLastHole = currentLevelIndex >= levelPaths.length - 1;
+    const isLastHole = courseInfo.index >= courseInfo.total;
     if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
     // Record strokes once
     if (!holeRecorded) { courseScores[currentLevelIndex] = strokes; holeRecorded = true; }
@@ -298,7 +298,7 @@ function update(dt: number) {
     ball.vx = 0; ball.vy = 0;
     ball.moving = false;
     if (gameState !== 'sunk' && gameState !== 'summary') {
-      const isLastHole = currentLevelIndex >= levelPaths.length - 1;
+      const isLastHole = courseInfo.index >= courseInfo.total;
       // Always show sunk banner first
       gameState = 'sunk';
       holeRecorded = false;
@@ -507,7 +507,7 @@ function draw() {
     ctx.fillStyle = '#ffffff';
     ctx.fillText(text, WIDTH/2, HEIGHT/2);
     ctx.font = '14px system-ui, sans-serif';
-    const isLastHole = currentLevelIndex >= levelPaths.length - 1;
+    const isLastHole = courseInfo.index >= courseInfo.total;
     const hint = isLastHole ? 'Click or N: Summary   Space: Replay' : 'Click or N: Next   Space: Replay';
     ctx.fillText(hint, WIDTH/2, HEIGHT/2 + 24);
     ctx.textAlign = 'start';
@@ -638,7 +638,8 @@ window.addEventListener('keydown', (e) => {
     // Continue from sunk banner or during play
     if (gameState === 'sunk') {
       if (!holeRecorded) { courseScores[currentLevelIndex] = strokes; holeRecorded = true; }
-      if (currentLevelIndex >= levelPaths.length - 1) {
+      const isLastHole = courseInfo.index >= courseInfo.total;
+      if (isLastHole) {
         if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
         // Only show summary when on last hole
         gameState = 'summary';

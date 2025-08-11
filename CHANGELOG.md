@@ -47,6 +47,7 @@ All notable changes to this project will be documented in this file.
 - Main Menu: restored Changelog button and bottom-left version text. Fixed various menu state/hover bugs.
 - Bugfixes: stabilized sunk/summary transitions and input swallowing.
 - Decorations: auto-snap near the fairway edges to the table area to avoid overlapping the playfield.
+ - Summary: added a Main Menu button and Esc/ M key shortcut to return to the main menu after finishing a course.
 
 ## v0.3.0 — 2025-08-11
 

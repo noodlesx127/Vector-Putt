@@ -134,6 +134,7 @@ let hoverMainChangelog = false;
 let hoverCourseDev = false;
 let hoverCourseBack = false;
 let hoverChangelogBack = false;
+let hoverSummaryBack = false;
 let transitioning = false; // prevent double-advance while changing holes
 let lastAdvanceFromSunkMs = 0; // used to swallow trailing click after mousedown
 const CLICK_SWALLOW_MS = 180; // shorten delay for snappier feel
@@ -387,6 +388,14 @@ canvas.addEventListener('mousedown', (e) => {
   if (!paused && gameState === 'sunk') { advanceAfterSunk(); return; }
   // If on summary screen, clicking restarts the course
   if (!paused && gameState === 'summary') {
+    // If clicking the Main Menu button area, go to menu
+    const p = worldFromEvent(new MouseEvent('mousemove'));
+    const back = getCourseBackRect();
+    if (p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h) {
+      gameState = 'menu';
+      return;
+    }
+    // Otherwise restart course
     courseScores = [];
     currentLevelIndex = 0;
     gameState = 'play';
@@ -435,6 +444,12 @@ canvas.addEventListener('mousemove', (e) => {
     hoverCourseDev = p.x >= dev.x && p.x <= dev.x + dev.w && p.y >= dev.y && p.y <= dev.y + dev.h;
     hoverCourseBack = p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h;
     canvas.style.cursor = (hoverCourseDev || hoverCourseBack) ? 'pointer' : 'default';
+    return;
+  }
+  if (gameState === 'summary') {
+    const back = getCourseBackRect();
+    hoverSummaryBack = p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h;
+    canvas.style.cursor = hoverSummaryBack ? 'pointer' : 'default';
     return;
   }
   // Hover state for Menu button
@@ -1133,6 +1148,18 @@ function draw() {
     y += 28;
     ctx.font = '14px system-ui, sans-serif';
     ctx.fillText('Click or Press Enter to Restart Game', WIDTH/2, y);
+    // Back to Main Menu button (bottom center)
+    const back = getCourseBackRect();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = hoverSummaryBack ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverSummaryBack ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillRect(back.x, back.y, back.w, back.h);
+    ctx.strokeRect(back.x, back.y, back.w, back.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Main Menu', back.x + back.w/2, back.y + back.h/2 + 0.5);
+    // restore defaults
     ctx.textAlign = 'start';
     ctx.textBaseline = 'top';
   }
@@ -1378,5 +1405,8 @@ window.addEventListener('keydown', (e) => {
     currentLevelIndex = 0;
     gameState = 'play';
     loadLevelByIndex(currentLevelIndex).catch(console.error);
+  } else if ((e.code === 'Escape' || e.code === 'KeyM') && gameState === 'summary') {
+    // go back to main menu from summary
+    gameState = 'menu';
   }
 });

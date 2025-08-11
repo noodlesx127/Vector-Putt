@@ -53,3 +53,4 @@ All notable changes to this project will be documented in this file.
   - Added hills (slope) prototype: new `hills` array in level JSON with directional acceleration; rendered as subtle gradient; updated `level3.json` with a sample SE slope.
   - Added `levels/course.json` and HUD running total; records strokes on Next.
   - Added Course Summary overlay at end of course with per-hole strokes and total; Enter restarts course.
+  - Fix: auto-show Course Summary ~1.2s after sinking the last hole; updated sink banner hint.

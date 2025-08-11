@@ -329,13 +329,10 @@ function update(dt: number) {
       gameState = 'sunk';
       holeRecorded = false;
       if (isLastHole) {
-        // record now and schedule summary after brief banner view
+        // record now; stay on sunk banner until user clicks or presses N
         courseScores[currentLevelIndex] = strokes;
         holeRecorded = true;
         if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
-        summaryTimer = window.setTimeout(() => {
-          if (gameState === 'sunk') { gameState = 'summary'; }
-        }, 1200);
       }
     }
   }

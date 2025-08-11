@@ -858,24 +858,27 @@ function draw() {
       ctx.fillText('Loading…', WIDTH/2, HEIGHT/2);
     } else {
       if (changelogLines.length === 0) {
-        changelogLines = wrapChangelog(ctx, changelogText, cr.w);
+        ctx.textAlign = 'left';
+        changelogLines = wrapChangelog(ctx, (changelogText ?? '').toString(), cr.w);
       }
       clampChangelogScroll();
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(cr.x, cr.y, cr.w, cr.h);
-      ctx.clip();
-      let y = cr.y - changelogScrollY;
-      ctx.textAlign = 'left';
-      for (const line of changelogLines) {
-        ctx.fillText(line, cr.x, y);
-        y += 20;
+      if (changelogLines.length > 0) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(cr.x, cr.y, cr.w, cr.h);
+        ctx.clip();
+        let y = cr.y - changelogScrollY;
+        ctx.textAlign = 'left';
+        for (const line of changelogLines) {
+          ctx.fillText(line, cr.x, y);
+          y += 20;
+        }
+        ctx.restore();
       }
-      ctx.restore();
 
       // simple scrollbar
       const contentHeight = changelogLines.length * 20;
-      if (contentHeight > cr.h) {
+      if (contentHeight > cr.h && changelogLines.length > 0) {
         const trackX = cr.x + cr.w + 6;
         const trackY = cr.y;
         const trackW = 6;

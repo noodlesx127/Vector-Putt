@@ -37,3 +37,6 @@ All notable changes to this project will be documented in this file.
   - Level fixes:
     - Level 1: Flower borders repositioned to table area (outside playfield).
     - Level 2: Added doorway into inner box and moved cup inside; sand now reachable.
+ - HUD/UI:
+   - Added Replay button in top HUD with hover and click to restart current hole.
+   - Optional hole title shown next to hole index when provided by level JSON.

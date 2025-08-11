@@ -91,8 +91,8 @@ Notes:
 - [x] Pause menu overlay with info/shortcuts/version (P/Escape)
 - [x] Restart hole (R) and Next level (N)
 - [ ] Responsive layout for target platforms
-- [ ] HUD: optional hole title display
-- [ ] HUD: simple Replay button on top strip
+- [x] HUD: optional hole title display (per-level `course.title`)
+- [x] HUD: simple Replay button on top strip (hover + click to restart)
 
 ## Audio
 - [ ] SFX list and placeholders

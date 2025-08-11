@@ -85,7 +85,7 @@ let aimCurrent = { x: 0, y: 0 };
 function getReplayRect() {
   const w = 72, h = 22;
   const x = WIDTH - 12 - w; // align to right margin
-  const y = 5; // within HUD strip
+  const y = HUD_HEIGHT + 6; // place just below HUD strip to avoid overlapping HUD text
   return { x, y, w, h };
 }
 let hoverReplay = false;

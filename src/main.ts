@@ -110,7 +110,6 @@ canvas.addEventListener('mousedown', (e) => {
       return;
     }
   }
-  ctx.restore();
   if (paused || ball.moving || gameState !== 'play') return; // disable while moving, sunk, or paused
   const dx = p.x - ball.x;
   const dy = p.y - ball.y;

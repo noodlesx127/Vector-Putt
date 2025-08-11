@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vector Putt (Prototype)</title>
+    <style>
+      html, body { height: 100%; margin: 0; background: #222; color: #eee; font-family: system-ui, sans-serif; }
+      #root { height: 100%; display: grid; place-items: center; }
+      canvas { background: #1f4d21; /* fairway green */ outline: 2px solid #0e2a10; image-rendering: pixelated; }
+      .letterbox { width: 100%; height: 100%; display: grid; place-items: center; }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div class="letterbox">
+        <canvas id="game" width="800" height="600"></canvas>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

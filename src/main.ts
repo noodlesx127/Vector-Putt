@@ -1,0 +1,459 @@
+const canvas = document.getElementById('game') as HTMLCanvasElement;
+const ctx = canvas.getContext('2d')!;
+
+// Fixed logical size
+const WIDTH = canvas.width;
+const HEIGHT = canvas.height;
+
+// Letterbox scaling to fit window while keeping aspect
+function resize() {
+  const container = canvas.parentElement as HTMLElement;
+  const ww = container.clientWidth;
+  const wh = container.clientHeight;
+  const scale = Math.min(ww / WIDTH, wh / HEIGHT);
+  canvas.style.transform = `scale(${scale})`;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Game state
+let lastTime = performance.now();
+let gameState: 'play' | 'sunk' = 'play';
+const levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
+let currentLevelIndex = 0;
+let paused = false;
+const APP_VERSION = '0.0.1-proto';
+const restitution = 0.9; // wall bounce energy retention
+const frictionK = 1.2; // base exponential damping (reduced for less "sticky" green)
+const stopSpeed = 5; // px/s threshold to consider stopped (tunable)
+
+// Visual palette (retro mini-golf style)
+const COLORS = {
+  table: '#7a7b1e',      // mustard/dark-olive table
+  fairway: '#126a23',    // classic green fairway
+  fairwayBand: '#115e20',// subtle darker band
+  fairwayLine: '#0b3b14',// dark outline for fairway
+  wallFill: '#e2e2e2',   // light gray walls
+  wallStroke: '#bdbdbd', // wall outline
+  holeFill: '#0a1a0b',   // cup interior
+  holeRim:  '#0f3f19',   // cup rim color
+  hudText: '#ffffff'
+} as const;
+const COURSE_MARGIN = 40; // inset for fairway rect
+
+type Wall = { x: number; y: number; w: number; h: number };
+type Rect = { x: number; y: number; w: number; h: number };
+type Decoration = { x: number; y: number; w: number; h: number; kind: 'flowers' };
+type Level = {
+  canvas: { width: number; height: number };
+  course: { index: number; total: number };
+  par: number;
+  tee: { x: number; y: number };
+  cup: { x: number; y: number; r: number };
+  walls: Wall[];
+  sand?: Rect[];
+  water?: Rect[];
+  decorations?: Decoration[];
+};
+
+const ball = {
+  x: WIDTH * 0.3,
+  y: HEIGHT * 0.6,
+  r: 8,
+  vx: 0,
+  vy: 0,
+  moving: false,
+};
+
+const hole = { x: WIDTH * 0.75, y: HEIGHT * 0.4, r: 12 };
+let walls: Wall[] = [];
+let sands: Rect[] = [];
+let waters: Rect[] = [];
+let decorations: Decoration[] = [];
+let courseInfo = { index: 1, total: 1, par: 3 };
+let strokes = 0;
+let preShot = { x: 0, y: 0 }; // position before current shot, for water reset
+
+// Aim state
+let isAiming = false;
+let aimStart = { x: 0, y: 0 };
+let aimCurrent = { x: 0, y: 0 };
+
+function worldFromEvent(e: MouseEvent) {
+  const rect = canvas.getBoundingClientRect();
+  // Use rect size to derive scale; robust to any CSS transform/zoom
+  const scaleX = rect.width / WIDTH;
+  const scaleY = rect.height / HEIGHT;
+  const x = (e.clientX - rect.left) / scaleX;
+  const y = (e.clientY - rect.top) / scaleY;
+  return { x, y };
+}
+
+canvas.addEventListener('mousedown', (e) => {
+  if (paused || ball.moving || gameState !== 'play') return; // disable while moving, sunk, or paused
+  const p = worldFromEvent(e);
+  const dx = p.x - ball.x;
+  const dy = p.y - ball.y;
+  const dist2 = dx * dx + dy * dy;
+  if (dist2 <= (ball.r + 4) * (ball.r + 4)) {
+    isAiming = true;
+    aimStart = { x: ball.x, y: ball.y };
+    aimCurrent = p;
+  }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (!isAiming) return;
+  aimCurrent = worldFromEvent(e);
+});
+
+canvas.addEventListener('mouseup', (e) => {
+  if (!isAiming || paused || gameState !== 'play') return;
+  const p = worldFromEvent(e);
+  const dx = p.x - aimStart.x;
+  const dy = p.y - aimStart.y;
+  const drag = Math.hypot(dx, dy);
+  const minDrag = 4;
+  isAiming = false; // always clear aim so meter hides
+  if (drag < minDrag) return; // ignore tiny taps
+  // clamp and scale; pull back to shoot forward
+  const maxDrag = 120;
+  const clamped = Math.min(drag, maxDrag);
+  const power = clamped * 4; // original tuning
+  const angle = Math.atan2(dy, dx);
+  ball.vx = Math.cos(angle) * power * -1;
+  ball.vy = Math.sin(angle) * power * -1;
+  // remember position to reset if water
+  preShot = { x: aimStart.x, y: aimStart.y };
+  ball.moving = true;
+  strokes += 1;
+});
+
+function circleRectResolve(bx: number, by: number, br: number, rect: Wall) {
+  // Closest point on rect to circle center
+  const cx = Math.max(rect.x, Math.min(bx, rect.x + rect.w));
+  const cy = Math.max(rect.y, Math.min(by, rect.y + rect.h));
+  const dx = bx - cx;
+  const dy = by - cy;
+  const dist2 = dx * dx + dy * dy;
+  if (dist2 >= br * br) return null;
+  // Penetration depth along minimal axis (treat AABB sides)
+  // Determine which side is hit by comparing penetration distances
+  const leftPen = (bx + br) - rect.x;
+  const rightPen = (rect.x + rect.w) - (bx - br);
+  const topPen = (by + br) - rect.y;
+  const botPen = (rect.y + rect.h) - (by - br);
+  const minPen = Math.min(leftPen, rightPen, topPen, botPen);
+  if (minPen === leftPen) return { nx: -1, ny: 0, depth: leftPen };
+  if (minPen === rightPen) return { nx: 1, ny: 0, depth: rightPen };
+  if (minPen === topPen) return { nx: 0, ny: -1, depth: topPen };
+  return { nx: 0, ny: 1, depth: botPen };
+}
+
+function pointInRect(px: number, py: number, r: Rect): boolean {
+  return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+}
+
+function update(dt: number) {
+  if (paused) return; // freeze simulation
+  if (ball.moving && gameState === 'play') {
+    ball.x += ball.vx * dt;
+    ball.y += ball.vy * dt;
+
+    // friction (boosted in sand)
+    let inSand = false;
+    for (const s of sands) { if (pointInRect(ball.x, ball.y, s)) { inSand = true; break; } }
+    const k = frictionK * (inSand ? 4.2 : 1.0);
+    const friction = Math.exp(-k * dt);
+    ball.vx *= friction;
+    ball.vy *= friction;
+
+    // Collide with walls (axis-aligned)
+    for (const w of walls) {
+      const hit = circleRectResolve(ball.x, ball.y, ball.r, w);
+      if (hit) {
+        // push out along normal
+        ball.x += hit.nx * hit.depth;
+        ball.y += hit.ny * hit.depth;
+        // reflect velocity on the normal axis
+        const vn = ball.vx * hit.nx + ball.vy * hit.ny; // component along normal
+        ball.vx -= (1 + restitution) * vn * hit.nx;
+        ball.vy -= (1 + restitution) * vn * hit.ny;
+      }
+    }
+
+    // Fallback canvas bounds (if no outer walls present)
+    if (ball.x - ball.r < 0) { ball.x = ball.r; ball.vx *= -restitution; }
+    if (ball.x + ball.r > WIDTH) { ball.x = WIDTH - ball.r; ball.vx *= -restitution; }
+    if (ball.y - ball.r < 0) { ball.y = ball.r; ball.vy *= -restitution; }
+    if (ball.y + ball.r > HEIGHT) { ball.y = HEIGHT - ball.r; ball.vy *= -restitution; }
+
+    // Note: no extra global damping here; handled above (with sand boost)
+
+    const speed = Math.hypot(ball.vx, ball.vy);
+    const disp = Math.hypot(ball.vx * dt, ball.vy * dt);
+    if (speed < stopSpeed || disp < 0.25) {
+      ball.vx = 0; ball.vy = 0; ball.moving = false;
+    }
+  }
+
+  // Water OOB: if ball center is inside any water rect, apply penalty and reset
+  for (const w of waters) {
+    if (pointInRect(ball.x, ball.y, w)) {
+      // penalty is +1 stroke; reset to pre-shot position
+      strokes += 1;
+      ball.x = preShot.x; ball.y = preShot.y;
+      ball.vx = 0; ball.vy = 0; ball.moving = false;
+      break;
+    }
+  }
+
+  // hole capture (simple radius check)
+  const dx = ball.x - hole.x;
+  const dy = ball.y - hole.y;
+  const dist = Math.hypot(dx, dy);
+  const capture = hole.r - ball.r * 0.25; // small suction
+  if (!paused && dist < capture) {
+    // snap into cup
+    ball.x = hole.x;
+    ball.y = hole.y;
+    ball.vx = 0; ball.vy = 0;
+    ball.moving = false;
+    if (gameState !== 'sunk') {
+      gameState = 'sunk';
+    }
+  }
+}
+
+function drawAim() {
+  const dx = aimCurrent.x - aimStart.x;
+  const dy = aimCurrent.y - aimStart.y;
+  const len = Math.hypot(dx, dy);
+  const max = 120;
+  const clamped = Math.min(len, max);
+  const ux = (dx / (len || 1));
+  const uy = (dy / (len || 1));
+  const endX = aimStart.x + ux * clamped;
+  const endY = aimStart.y + uy * clamped;
+
+  // arrow (color strengthens with power)
+  const t = clamped / max;
+  const color = `hsl(${Math.round(120 - 120 * t)}, 90%, 60%)`;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(aimStart.x, aimStart.y);
+  ctx.lineTo(endX, endY);
+  ctx.stroke();
+}
+
+function draw() {
+  // clear
+  // background table felt
+  ctx.fillStyle = COLORS.table;
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  // fairway area
+  ctx.fillStyle = COLORS.fairway;
+  ctx.fillRect(COURSE_MARGIN, COURSE_MARGIN, WIDTH - COURSE_MARGIN * 2, HEIGHT - COURSE_MARGIN * 2);
+  // subtle horizontal shading band
+  ctx.fillStyle = COLORS.fairwayBand;
+  const bandH = Math.floor((HEIGHT - COURSE_MARGIN * 2) * 0.22);
+  ctx.fillRect(COURSE_MARGIN, COURSE_MARGIN + bandH, WIDTH - COURSE_MARGIN * 2, bandH);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = COLORS.fairwayLine;
+  ctx.strokeRect(COURSE_MARGIN + 1, COURSE_MARGIN + 1, WIDTH - COURSE_MARGIN * 2 - 2, HEIGHT - COURSE_MARGIN * 2 - 2);
+
+  // hole cup
+  ctx.fillStyle = COLORS.holeFill;
+  ctx.beginPath();
+  ctx.arc(hole.x, hole.y, hole.r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = COLORS.holeRim;
+  ctx.stroke();
+
+  // terrain zones (draw before walls)
+  for (const r of waters) {
+    ctx.fillStyle = '#1f6dff';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+  }
+  for (const r of sands) {
+    ctx.fillStyle = '#d4b36a';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+  }
+
+  // decorations (non-colliding visuals)
+  for (const d of decorations) {
+    if (d.kind === 'flowers') {
+      const step = 16;
+      for (let y = d.y; y < d.y + d.h; y += step) {
+        for (let x = d.x; x < d.x + d.w; x += step) {
+          // simple flower: 4 petals + center
+          ctx.save();
+          ctx.translate(x + 8, y + 8);
+          ctx.fillStyle = '#ffffff';
+          for (let i = 0; i < 4; i++) {
+            const ang = (i * Math.PI) / 2;
+            ctx.beginPath();
+            ctx.arc(Math.cos(ang) * 5, Math.sin(ang) * 5, 3, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.fillStyle = '#d11e2a';
+          ctx.beginPath();
+          ctx.arc(0, 0, 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+    }
+  }
+
+  // walls
+  ctx.fillStyle = COLORS.wallFill;
+  ctx.strokeStyle = COLORS.wallStroke;
+  for (const w of walls) {
+    ctx.fillRect(w.x, w.y, w.w, w.h);
+    ctx.strokeRect(w.x, w.y, w.w, w.h);
+  }
+
+  // ball
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+  ctx.fill();
+  // simple shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.beginPath();
+  ctx.ellipse(ball.x + 2, ball.y + 3, ball.r * 0.9, ball.r * 0.6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (isAiming) drawAim();
+
+  // HUD (single row across the top)
+  ctx.fillStyle = COLORS.hudText;
+  ctx.font = '16px system-ui, sans-serif';
+  ctx.textBaseline = 'top';
+  const toBirdieRaw = (courseInfo.par - 1) - strokes;
+  const toBirdie = toBirdieRaw >= 0 ? toBirdieRaw : null;
+  const speed = Math.hypot(ball.vx, ball.vy).toFixed(1);
+  const leftText = `Hole ${courseInfo.index}/${courseInfo.total}`;
+  const centerText = `Par ${courseInfo.par}   Strokes ${strokes}`;
+  const rightText = `To Birdie: ${toBirdie === null ? '—' : toBirdie}   Speed ${speed}`;
+  // left
+  ctx.textAlign = 'left';
+  ctx.fillText(leftText, 12, 8);
+  // center
+  ctx.textAlign = 'center';
+  ctx.fillText(centerText, WIDTH / 2, 8);
+  // right
+  ctx.textAlign = 'right';
+  ctx.fillText(rightText, WIDTH - 12, 8);
+  // restore defaults used later
+  ctx.textAlign = 'start';
+
+  // Post-hole banner
+  if (gameState === 'sunk') {
+    const label = (() => {
+      const diff = strokes - courseInfo.par;
+      if (diff <= -2) return 'Eagle';
+      if (diff === -1) return 'Birdie';
+      if (diff === 0) return 'Par';
+      if (diff === 1) return 'Bogey';
+      return `${diff} Over`;
+    })();
+    const text = `${label}!  Strokes ${strokes}  (Par ${courseInfo.par})`;
+    ctx.font = '28px system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, HEIGHT/2 - 40, WIDTH, 80);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(text, WIDTH/2, HEIGHT/2);
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.fillText('Press Space to play again', WIDTH/2, HEIGHT/2 + 24);
+    ctx.textAlign = 'start';
+    ctx.textBaseline = 'top';
+  }
+  
+  // Pause overlay (render last so it sits on top)
+  if (paused) {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '28px system-ui, sans-serif';
+    ctx.fillText('Paused', WIDTH/2, HEIGHT/2 - 80);
+    ctx.font = '16px system-ui, sans-serif';
+    const lines = [
+      `Hole ${courseInfo.index}/${courseInfo.total}  Par ${courseInfo.par}  Strokes ${strokes}`,
+      `To Birdie: ${toBirdie === null ? '—' : toBirdie}`,
+      `Version: ${APP_VERSION}`,
+      'Shortcuts: P Pause/Resume, R Restart, N Next, Space Replay after sink'
+    ];
+    let y = HEIGHT/2 - 30;
+    for (const line of lines) { ctx.fillText(line, WIDTH/2, y); y += 24; }
+    ctx.textAlign = 'start';
+    ctx.textBaseline = 'top';
+  }
+}
+
+function loop(t: number) {
+  const dt = Math.min(1, (t - lastTime) / 1000); // clamp dt to avoid jumps
+  lastTime = t;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// Load level JSON and init positions (run once on startup)
+async function loadLevel(path: string) {
+  const res = await fetch(path);
+  const lvl = (await res.json()) as Level;
+  courseInfo = { index: lvl.course.index, total: lvl.course.total, par: lvl.par };
+  walls = lvl.walls ?? [];
+  sands = lvl.sand ?? [];
+  waters = lvl.water ?? [];
+  decorations = lvl.decorations ?? [];
+  ball.x = lvl.tee.x; ball.y = lvl.tee.y; ball.vx = 0; ball.vy = 0; ball.moving = false;
+  hole.x = lvl.cup.x; hole.y = lvl.cup.y; (hole as any).r = lvl.cup.r;
+  strokes = 0;
+  gameState = 'play';
+  currentLevelIndex = Math.max(0, levelPaths.indexOf(path));
+  preShot = { x: ball.x, y: ball.y };
+
+  // Safety: nudge ball out if tee overlaps a wall
+  for (let i = 0; i < 8; i++) {
+    let fixed = false;
+    for (const w of walls) {
+      const hit = circleRectResolve(ball.x, ball.y, ball.r, w);
+      if (hit) {
+        ball.x += hit.nx * (hit.depth + 0.5);
+        ball.y += hit.ny * (hit.depth + 0.5);
+        fixed = true;
+      }
+    }
+    if (!fixed) break;
+  }
+}
+
+function loadLevelByIndex(i: number) {
+  const clamped = ((i % levelPaths.length) + levelPaths.length) % levelPaths.length;
+  return loadLevel(levelPaths[clamped]);
+}
+
+loadLevelByIndex(0).catch(console.error);
+
+// Restart flow after sink
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && gameState === 'sunk') {
+    loadLevelByIndex(currentLevelIndex).catch(console.error);
+  } else if (e.code === 'KeyR') {
+    loadLevelByIndex(currentLevelIndex).catch(console.error);
+  } else if (e.code === 'KeyN') {
+    loadLevelByIndex(currentLevelIndex + 1).catch(console.error);
+  } else if (e.code === 'KeyP' || e.code === 'Escape') {
+    paused = !paused;
+  }
+});

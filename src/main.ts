@@ -99,12 +99,25 @@ function getMenuRect() {
 // UI: Replay button on Pause overlay
 function getPauseReplayRect() {
   const w = 120, h = 28;
-  const x = WIDTH / 2 - w / 2;
-  const y = HEIGHT / 2 + 84;
+  // Positioned near bottom center (left of close button)
+  const gap = 16;
+  const totalW = w * 2 + gap;
+  const x = WIDTH / 2 - totalW / 2;
+  const y = HEIGHT - 60;
+  return { x, y, w, h };
+}
+// UI: Close button on Pause overlay
+function getPauseCloseRect() {
+  const w = 120, h = 28;
+  const gap = 16;
+  const pr = getPauseReplayRect();
+  const x = pr.x + pr.w + gap;
+  const y = pr.y;
   return { x, y, w, h };
 }
 let hoverMenu = false;
 let hoverPauseReplay = false;
+let hoverPauseClose = false;
 let transitioning = false; // prevent double-advance while changing holes
 let lastAdvanceFromSunkMs = 0; // used to swallow trailing click after mousedown
 const CLICK_SWALLOW_MS = 180; // shorten delay for snappier feel
@@ -241,8 +254,11 @@ canvas.addEventListener('mousemove', (e) => {
   const p = worldFromEvent(e);
   const pr = getPauseReplayRect();
   const overReplay = p.x >= pr.x && p.x <= pr.x + pr.w && p.y >= pr.y && p.y <= pr.y + pr.h;
+  const pc = getPauseCloseRect();
+  const overClose = p.x >= pc.x && p.x <= pc.x + pc.w && p.y >= pc.y && p.y <= pc.y + pc.h;
   hoverPauseReplay = overReplay;
-  canvas.style.cursor = overReplay ? 'pointer' : 'default';
+  hoverPauseClose = overClose;
+  canvas.style.cursor = (overReplay || overClose) ? 'pointer' : 'default';
 });
 
 canvas.addEventListener('mousedown', (e) => {
@@ -253,6 +269,11 @@ canvas.addEventListener('mousedown', (e) => {
     // Replay current hole from pause
     paused = false;
     loadLevelByIndex(currentLevelIndex).catch(console.error);
+  }
+  const pc = getPauseCloseRect();
+  if (p.x >= pc.x && p.x <= pc.x + pc.w && p.y >= pc.y && p.y <= pc.y + pc.h) {
+    // Close pause
+    paused = false;
   }
 });
 
@@ -610,10 +631,12 @@ function draw() {
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
     ctx.fillStyle = '#ffffff';
+    // Title near top center
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    ctx.textBaseline = 'top';
     ctx.font = '28px system-ui, sans-serif';
-    ctx.fillText('Paused', WIDTH/2, HEIGHT/2 - 80);
+    ctx.fillText('Pause Menu', WIDTH/2, 60);
+    // Controls list in middle
     ctx.font = '16px system-ui, sans-serif';
     const lines = [
       `Hole ${courseInfo.index}/${courseInfo.total}  Par ${courseInfo.par}  Strokes ${strokes}`,
@@ -622,9 +645,9 @@ function draw() {
       'Shortcuts:',
       '  P/Esc Pause-Resume   R Restart',
       '  N Next (from banner)   Space Replay',
-      '  Enter Summary→Restart   HUD Replay'
+      '  Enter Summary→Restart'
     ];
-    let y = HEIGHT/2 - 56;
+    let y = 110;
     for (const line of lines) { ctx.fillText(line, WIDTH/2, y); y += 22; }
     // Pause overlay Replay button
     const pr = getPauseReplayRect();
@@ -638,6 +661,24 @@ function draw() {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('Replay', pr.x + pr.w/2, pr.y + pr.h/2 + 0.5);
+    // Pause overlay Close button
+    const pc = getPauseCloseRect();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = hoverPauseClose ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverPauseClose ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillRect(pc.x, pc.y, pc.w, pc.h);
+    ctx.strokeRect(pc.x, pc.y, pc.w, pc.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Close', pc.x + pc.w/2, pc.y + pc.h/2 + 0.5);
+    // Version bottom-left small
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
+    // restore defaults
     ctx.textAlign = 'start';
     ctx.textBaseline = 'top';
   }

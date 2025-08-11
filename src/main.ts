@@ -590,10 +590,13 @@ function draw() {
       `Hole ${courseInfo.index}/${courseInfo.total}  Par ${courseInfo.par}  Strokes ${strokes}`,
       `To Birdie: ${toBirdie === null ? '—' : toBirdie}`,
       `Version: ${APP_VERSION}`,
-      'Shortcuts: P/Esc Pause-Resume, R Restart, N Next (from banner), Space Replay, Enter Summary→Restart, HUD Replay button'
+      'Shortcuts:',
+      '  P/Esc Pause-Resume   R Restart',
+      '  N Next (from banner)   Space Replay',
+      '  Enter Summary→Restart   HUD Replay'
     ];
-    let y = HEIGHT/2 - 30;
-    for (const line of lines) { ctx.fillText(line, WIDTH/2, y); y += 24; }
+    let y = HEIGHT/2 - 56;
+    for (const line of lines) { ctx.fillText(line, WIDTH/2, y); y += 22; }
     ctx.textAlign = 'start';
     ctx.textBaseline = 'top';
   }

@@ -97,10 +97,12 @@ function getReplayRect() {
 }
 let hoverReplay = false;
 let transitioning = false; // prevent double-advance while changing holes
+let lastAdvanceFromSunkMs = 0; // used to swallow trailing click after mousedown
 
 function advanceAfterSunk() {
   if (transitioning) return;
   transitioning = true;
+  lastAdvanceFromSunkMs = (typeof performance !== 'undefined' ? performance.now() : Date.now());
   // Continue to next step depending on whether this is the last hole
   if (!holeRecorded) {
     courseScores[currentLevelIndex] = strokes;
@@ -202,6 +204,11 @@ canvas.addEventListener('mouseup', (e) => {
 // Click handler to be extra robust for continue actions on banners
 canvas.addEventListener('click', () => {
   if (paused) return;
+  const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  if (now - lastAdvanceFromSunkMs < 350) {
+    // Swallow the click that follows a mousedown-driven advance
+    return;
+  }
   if (gameState === 'sunk') {
     // Clear any pending summary timer and advance immediately
     if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }

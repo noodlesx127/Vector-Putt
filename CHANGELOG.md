@@ -40,3 +40,11 @@ All notable changes to this project will be documented in this file.
  - HUD/UI:
    - Added Replay button in top HUD with hover and click to restart current hole.
    - Optional hole title shown next to hole index when provided by level JSON.
+
+## 2025-08-11
+
+- Synced docs with current implementation:
+  - Marked friction/exponential damping tuning complete in `PROGRESS.md`.
+  - Marked HUD hole title and Replay button complete in `PROGRESS.md`.
+  - Ticked off "ball in hole" detection, water penalty/reset, and post-hole score label in `TODO.md`.
+  - Noted terrain tiles coverage as complete (fairway, sand, water).

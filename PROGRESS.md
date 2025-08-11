@@ -4,7 +4,7 @@
 
 # Project Progress — Vector Putt
 
-Updated: 2025-08-10 20:53 (local)
+Updated: 2025-08-11 00:00 (local)
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 
@@ -12,7 +12,7 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [x] Axis-aligned walls + deterministic reflections (angle in = angle out)
 - [x] Minimal HUD (Hole x/y, Par n, Strokes m); increment strokes on release
 - [x] Level JSON: tee, hole cup, rectangular walls; load at startup
-- [ ] Tune friction model (exponential damping) and stop epsilon
+- [x] Tune friction model (exponential damping) and stop epsilon
 - [x] Post-Hole banner and simple “next hole” flow (single-hole for now)
 - [x] Visual pass: retro palette, mustard table, inset fairway frame, light gray walls, subtle shading band
 - [x] Terrain zones: water (penalty+reset), sand (higher friction), tuning pass (sand 4.2x)
@@ -20,10 +20,10 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [x] Level 2: add doorway into inner box and move cup inside; reachable sand
 
 ## Next Up (Short Horizon)
-- [ ] HUD: optional hole title and Replay button
+- [x] HUD: optional hole title and Replay button
 - [ ] Auto-snap decorations to table when near outer walls
 - [ ] Diagonal/chamfered wall support (schema + collision)
-- [ ] Prepare 1–2 additional prototype holes using the same JSON schema
+- [x] Prepare 1–2 additional prototype holes using the same JSON schema
 
 ## Soon (After MVP Slice Works)
 - [ ] Water tiles: splash SFX → +1 stroke → reset to pre-shot location

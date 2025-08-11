@@ -42,7 +42,7 @@ Notes:
 - [ ] Ball lifecycle
   - [x] Ball spawns at tee
   - [x] Detect “ball stopped” threshold
-  - [ ] Detect “ball in hole” and transition to Post-Hole
+  - [x] Detect “ball in hole” and transition to Post-Hole
 
 ## Physics & Interactions
 - [x] Ball motion with friction (tunable)
@@ -60,9 +60,9 @@ Notes:
 ## Scoring & Rules
 - [x] Stroke count per hole (+1 per shot)
 - [x] Par per hole (data-driven)
-- [ ] Score evaluation at end of hole (Birdie/Par/Bogey, etc.)
+- [x] Score evaluation at end of hole (Birdie/Par/Bogey, etc.)
 - [ ] Running total across course
-- [ ] Water penalty and reset logic
+- [x] Water penalty and reset logic
 
 ## Level System
 - [x] Level data format decision (Custom JSON)
@@ -70,10 +70,10 @@ Notes:
 - [ ] Placeable components
   - [x] Tee start, hole cup
   - [x] Walls/boundaries
-  - [ ] Terrain tiles (fairway, sand, water)
+  - [x] Terrain tiles (fairway, sand, water)
   - [ ] Optional: slopes, moving blocks, boosters, tunnels
-- [ ] Course definition (ordered list of holes + par values)
-- [ ] Author 3–5 MVP holes to validate mechanics
+ - [ ] Course definition (ordered list of holes + par values)
+ - [ ] Author 3–5 MVP holes to validate mechanics
 - [x] Adjust L1 decorations to sit outside playfield
 - [x] L2: add doorway into box and place cup inside; reachable sand
 
@@ -85,12 +85,12 @@ Notes:
   - [x] Align HUD across the very top (left/center/right)
   - [x] Show Birdie helper (strokes remaining for birdie)
 - [x] Aiming arrow visual design (power feedback via length/color)
-- [ ] Post-Hole scorecard screen with performance label
-- [ ] Main Menu (Start Game, Select Course, Options)
+ - [x] Post-Hole scorecard screen with performance label
+ - [ ] Main Menu (Start Game, Select Course, Options)
 - [ ] Options: audio volumes (SFX/Music), accessibility toggles
 - [x] Pause menu overlay with info/shortcuts/version (P/Escape)
 - [x] Restart hole (R) and Next level (N)
-- [ ] Responsive layout for target platforms
+ - [ ] Responsive layout for target platforms
 - [x] HUD: optional hole title display (per-level `course.title`)
 - [x] HUD: simple Replay button on top strip (hover + click to restart)
 

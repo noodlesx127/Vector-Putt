@@ -18,7 +18,7 @@ resize();
 
 // Game state
 let lastTime = performance.now();
-let gameState: 'menu' | 'course' | 'play' | 'sunk' | 'summary' = 'menu';
+let gameState: 'menu' | 'course' | 'options' | 'play' | 'sunk' | 'summary' = 'menu';
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
@@ -119,7 +119,7 @@ let hoverMenu = false;
 let hoverPauseReplay = false;
 let hoverPauseClose = false;
 let hoverMainStart = false;
-let hoverMainCourses = false;
+let hoverMainOptions = false;
 let hoverCourseDev = false;
 let hoverCourseBack = false;
 let transitioning = false; // prevent double-advance while changing holes
@@ -175,7 +175,7 @@ function getMainStartRect() {
   const y = HEIGHT / 2 - 10;
   return { x, y, w, h };
 }
-function getMainCoursesRect() {
+function getMainOptionsRect() {
   const w = 160, h = 36;
   const x = WIDTH / 2 - w / 2;
   const y = HEIGHT / 2 + 40;
@@ -212,14 +212,13 @@ canvas.addEventListener('mousedown', (e) => {
   if (gameState === 'menu') {
     const s = getMainStartRect();
     if (p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h) {
-      // Default to Dev Levels
-      gameState = 'play';
-      startCourseFromFile('/levels/course.json').catch(console.error);
+      // Go to Course Select
+      gameState = 'course';
       return;
     }
-    const c = getMainCoursesRect();
-    if (p.x >= c.x && p.x <= c.x + c.w && p.y >= c.y && p.y <= c.y + c.h) {
-      gameState = 'course';
+    const o = getMainOptionsRect();
+    if (p.x >= o.x && p.x <= o.x + o.w && p.y >= o.y && p.y <= o.y + o.h) {
+      gameState = 'options';
       return;
     }
   }
@@ -272,10 +271,10 @@ canvas.addEventListener('mousemove', (e) => {
   // Hover for menus
   if (gameState === 'menu') {
     const s = getMainStartRect();
-    const c = getMainCoursesRect();
+    const o = getMainOptionsRect();
     hoverMainStart = p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h;
-    hoverMainCourses = p.x >= c.x && p.x <= c.x + c.w && p.y >= c.y && p.y <= c.y + c.h;
-    canvas.style.cursor = (hoverMainStart || hoverMainCourses) ? 'pointer' : 'default';
+    hoverMainOptions = p.x >= o.x && p.x <= o.x + o.w && p.y >= o.y && p.y <= o.y + o.h;
+    canvas.style.cursor = (hoverMainStart || hoverMainOptions) ? 'pointer' : 'default';
     return;
   }
   if (gameState === 'course') {
@@ -540,16 +539,16 @@ function draw() {
     ctx.fillStyle = '#ffffff';
     ctx.font = '18px system-ui, sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('Start Game', s.x + s.w/2, s.y + s.h/2 + 0.5);
-    const c = getMainCoursesRect();
+    ctx.fillText('Start', s.x + s.w/2, s.y + s.h/2 + 0.5);
+    const o = getMainOptionsRect();
     ctx.lineWidth = 1.5;
-    ctx.strokeStyle = hoverMainCourses ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = hoverMainCourses ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
-    ctx.fillRect(c.x, c.y, c.w, c.h);
-    ctx.strokeRect(c.x, c.y, c.w, c.h);
+    ctx.strokeStyle = hoverMainOptions ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverMainOptions ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillRect(o.x, o.y, o.w, o.h);
+    ctx.strokeRect(o.x, o.y, o.w, o.h);
     ctx.fillStyle = '#ffffff';
     ctx.font = '18px system-ui, sans-serif';
-    ctx.fillText('Course Select', c.x + c.w/2, c.y + c.h/2 + 0.5);
+    ctx.fillText('Options', o.x + o.w/2, o.y + o.h/2 + 0.5);
     // Version bottom-left
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.font = '12px system-ui, sans-serif';
@@ -562,6 +561,8 @@ function draw() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     ctx.font = '28px system-ui, sans-serif';
     ctx.fillText('Select Course', WIDTH/2, 60);
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.fillText('Dev Levels (test course)', WIDTH/2, 86);
     // Dev Levels option
     const dev = getCourseDevRect();
     ctx.lineWidth = 1.5;
@@ -584,6 +585,22 @@ function draw() {
     ctx.font = '16px system-ui, sans-serif';
     ctx.fillText('Back', back.x + back.w/2, back.y + back.h/2 + 0.5);
     // Version bottom-left
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
+    return;
+  }
+  // Options placeholder screen
+  if (gameState === 'options') {
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.font = '28px system-ui, sans-serif';
+    ctx.fillText('Options', WIDTH/2, 60);
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.fillText('Coming Soon', WIDTH/2, 110);
+    // Back hint
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.fillText('Press Esc to go back', WIDTH/2, HEIGHT - 90);
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.font = '12px system-ui, sans-serif';
     ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
@@ -956,7 +973,11 @@ window.addEventListener('keydown', (e) => {
       // Ignore N during play to avoid accidental hole skip triggering summary logic
     }
   } else if (e.code === 'KeyP' || e.code === 'Escape') {
-    paused = !paused;
+    if (gameState === 'play' || gameState === 'sunk') {
+      paused = !paused;
+    } else if (gameState === 'options') {
+      gameState = 'menu';
+    }
   } else if ((e.code === 'Enter' || e.code === 'NumpadEnter') && gameState === 'summary') {
     // restart course (keyboard)
     courseScores = [];

@@ -41,6 +41,13 @@ All notable changes to this project will be documented in this file.
    - Added Replay button in top HUD with hover and click to restart current hole.
    - Optional hole title shown next to hole index when provided by level JSON.
 
+## v0.3.1 — 2025-08-11
+
+- Changelog screen: added scrollable viewer (wheel, drag, keyboard) with clipping and scrollbar. Bundles `CHANGELOG.md` via raw import fallback.
+- Main Menu: restored Changelog button and bottom-left version text. Fixed various menu state/hover bugs.
+- Bugfixes: stabilized sunk/summary transitions and input swallowing.
+- Decorations: auto-snap near the fairway edges to the table area to avoid overlapping the playfield.
+
 ## v0.3.0 — 2025-08-11
 
 - Synced docs with current implementation:

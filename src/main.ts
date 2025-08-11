@@ -24,7 +24,7 @@ let gameState: 'menu' | 'course' | 'options' | 'changelog' | 'loading' | 'play' 
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
-const APP_VERSION = '0.3.0';
+const APP_VERSION = '0.3.1';
 const restitution = 0.9; // wall bounce energy retention
 const frictionK = 1.2; // base exponential damping (reduced for less "sticky" green)
 const stopSpeed = 5; // px/s threshold to consider stopped (tunable)
@@ -1229,6 +1229,8 @@ async function loadLevel(path: string) {
   sands = lvl.sand ?? [];
   waters = lvl.water ?? [];
   decorations = lvl.decorations ?? [];
+  // Ensure decorations sit on the table outside the fairway if placed near edges
+  snapDecorationsToTable();
   hills = lvl.hills ?? [];
   ball.x = lvl.tee.x; ball.y = lvl.tee.y; ball.vx = 0; ball.vy = 0; ball.moving = false;
   hole.x = lvl.cup.x; hole.y = lvl.cup.y; (hole as any).r = lvl.cup.r;
@@ -1252,6 +1254,49 @@ async function loadLevel(path: string) {
       }
     }
     if (!fixed) break;
+  }
+}
+
+function snapDecorationsToTable(): void {
+  if (!decorations || decorations.length === 0) return;
+  const fairX = COURSE_MARGIN;
+  const fairY = COURSE_MARGIN;
+  const fairW = WIDTH - COURSE_MARGIN * 2;
+  const fairH = HEIGHT - COURSE_MARGIN * 2;
+  const snapGap = 4; // pixels outside the fairway after snapping
+  const near = 10;   // threshold to consider a decoration "near" the fairway edge (or overlapping)
+
+  for (const d of decorations) {
+    const cx = d.x + d.w / 2;
+    const cy = d.y + d.h / 2;
+    const insideX = cx >= fairX && cx <= fairX + fairW;
+    const insideY = cy >= fairY && cy <= fairY + fairH;
+    const overlaps = insideX && insideY;
+
+    // Distance from center to each fairway edge
+    const distLeft = Math.abs(cx - fairX);
+    const distRight = Math.abs(fairX + fairW - cx);
+    const distTop = Math.abs(cy - fairY);
+    const distBottom = Math.abs(fairY + fairH - cy);
+    const minDist = Math.min(distLeft, distRight, distTop, distBottom);
+
+    // Only snap if overlapping the fairway or very near an edge
+    if (!overlaps && minDist > near) continue;
+
+    if (minDist === distLeft) {
+      d.x = fairX - d.w - snapGap;
+    } else if (minDist === distRight) {
+      d.x = fairX + fairW + snapGap;
+    } else if (minDist === distTop) {
+      d.y = fairY - d.h - snapGap;
+    } else {
+      d.y = fairY + fairH + snapGap;
+    }
+    // Clamp to canvas bounds
+    if (d.x < 0) d.x = 0;
+    if (d.y < 0) d.y = 0;
+    if (d.x + d.w > WIDTH) d.x = WIDTH - d.w;
+    if (d.y + d.h > HEIGHT) d.y = HEIGHT - d.h;
   }
 }
 

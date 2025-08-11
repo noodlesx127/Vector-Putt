@@ -4,7 +4,7 @@
 
 # Project Progress — Vector Putt
 
-Updated: 2025-08-11 01:05 (local)
+Updated: 2025-08-11 01:25 (local)
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 
@@ -22,7 +22,7 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 
 ## Next Up (Short Horizon)
 - [x] HUD: optional hole title and Replay button
-- [ ] Auto-snap decorations to table when near outer walls
+- [x] Auto-snap decorations to table when near outer walls
 - [ ] Diagonal/chamfered wall support (schema + collision)
 - [x] Prepare 1–2 additional prototype holes using the same JSON schema
 - [ ] Tune hill strength and boundaries to match reference feel
@@ -32,7 +32,8 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
  - [x] Faster level switch: cached level data + preloading next
  - [x] Main Menu with Start/Options and Course Select (Dev Levels)
  - [x] Pause menu improvements: Replay, Close, Back to Main Menu; version bottom-left
- - [x] Loading state on first launch into Dev Levels; prefetch level 2
+  - [x] Loading state on first launch into Dev Levels; prefetch level 2
+  - [x] Changelog screen (scrollable) and Main Menu Changelog button
 
 ## Soon (After MVP Slice Works)
 - [ ] Water tiles: splash SFX → +1 stroke → reset to pre-shot location

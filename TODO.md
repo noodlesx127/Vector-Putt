@@ -118,7 +118,7 @@ Notes:
 - [ ] Simple, legible UI fonts and icons
 - [ ] Reusable shapes for walls/terrain (rects, circles, polygons)
 - [x] Flower decorations pass (non-colliding), positioned outside playfield
-- [ ] Auto-snap decorations near outer walls to table area (avoid playfield overlap)
+- [x] Auto-snap decorations near outer walls to table area (avoid playfield overlap)
 - [ ] Per-level palette overrides (wall/fairway/decor variations)
 - [ ] Diagonal/chamfered walls support in schema + rendering
 

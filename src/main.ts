@@ -98,6 +98,7 @@ function getReplayRect() {
 let hoverReplay = false;
 let transitioning = false; // prevent double-advance while changing holes
 let lastAdvanceFromSunkMs = 0; // used to swallow trailing click after mousedown
+const CLICK_SWALLOW_MS = 180; // shorten delay for snappier feel
 
 function advanceAfterSunk() {
   if (transitioning) return;
@@ -205,7 +206,7 @@ canvas.addEventListener('mouseup', (e) => {
 canvas.addEventListener('click', () => {
   if (paused) return;
   const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-  if (now - lastAdvanceFromSunkMs < 350) {
+  if (now - lastAdvanceFromSunkMs < CLICK_SWALLOW_MS) {
     // Swallow the click that follows a mousedown-driven advance
     return;
   }

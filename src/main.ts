@@ -144,6 +144,9 @@ const CLICK_SWALLOW_MS = 180; // shorten delay for snappier feel
 let changelogText: string | null = (typeof CHANGELOG_RAW === 'string' && CHANGELOG_RAW.trim().length > 0) ? CHANGELOG_RAW : null;
 let changelogLines: string[] = [];
 let changelogScrollY = 0;
+let isChangelogDragging = false;
+let changelogDragStartY = 0;
+let changelogScrollStartY = 0;
 
 function getChangelogBackRect() {
   const w = 120, h = 28;
@@ -159,6 +162,15 @@ function getChangelogContentRect() {
   const right = WIDTH - 60;
   const bottom = HEIGHT - 140;
   return { x: left, y: top, w: right - left, h: bottom - top };
+}
+
+function clampChangelogScroll(): void {
+  const r = getChangelogContentRect();
+  const visibleHeight = r.h;
+  const contentHeight = changelogLines.length * 20;
+  const maxScroll = Math.max(0, contentHeight - visibleHeight);
+  if (changelogScrollY < 0) changelogScrollY = 0;
+  if (changelogScrollY > maxScroll) changelogScrollY = maxScroll;
 }
 
 async function ensureChangelogLoaded(): Promise<void> {

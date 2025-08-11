@@ -18,11 +18,11 @@ resize();
 
 // Game state
 let lastTime = performance.now();
-let gameState: 'play' | 'sunk' | 'summary' = 'play';
+let gameState: 'menu' | 'course' | 'play' | 'sunk' | 'summary' = 'menu';
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
-const APP_VERSION = '0.2.0';
+const APP_VERSION = '0.3.0';
 const restitution = 0.9; // wall bounce energy retention
 const frictionK = 1.2; // base exponential damping (reduced for less "sticky" green)
 const stopSpeed = 5; // px/s threshold to consider stopped (tunable)
@@ -118,6 +118,10 @@ function getPauseCloseRect() {
 let hoverMenu = false;
 let hoverPauseReplay = false;
 let hoverPauseClose = false;
+let hoverMainStart = false;
+let hoverMainCourses = false;
+let hoverCourseDev = false;
+let hoverCourseBack = false;
 let transitioning = false; // prevent double-advance while changing holes
 let lastAdvanceFromSunkMs = 0; // used to swallow trailing click after mousedown
 const CLICK_SWALLOW_MS = 180; // shorten delay for snappier feel
@@ -147,6 +151,51 @@ function advanceAfterSunk() {
   }
 }
 
+async function startCourseFromFile(courseJsonPath: string): Promise<void> {
+  try {
+    const res = await fetch(courseJsonPath);
+    const data = (await res.json()) as { levels: string[] };
+    if (Array.isArray(data.levels) && data.levels.length > 0) {
+      levelPaths = data.levels;
+      courseScores = [];
+      currentLevelIndex = 0;
+      await loadLevelByIndex(0);
+      // Preload next for snappy transition
+      preloadLevelByIndex(1);
+    }
+  } catch (err) {
+    console.error('Failed to load course', err);
+  }
+}
+
+// Main Menu layout helpers
+function getMainStartRect() {
+  const w = 160, h = 36;
+  const x = WIDTH / 2 - w / 2;
+  const y = HEIGHT / 2 - 10;
+  return { x, y, w, h };
+}
+function getMainCoursesRect() {
+  const w = 160, h = 36;
+  const x = WIDTH / 2 - w / 2;
+  const y = HEIGHT / 2 + 40;
+  return { x, y, w, h };
+}
+
+// Course Select layout
+function getCourseDevRect() {
+  const w = 220, h = 48;
+  const x = WIDTH / 2 - w / 2;
+  const y = HEIGHT / 2 - 10;
+  return { x, y, w, h };
+}
+function getCourseBackRect() {
+  const w = 120, h = 28;
+  const x = WIDTH / 2 - w / 2;
+  const y = HEIGHT - 90;
+  return { x, y, w, h };
+}
+
 function worldFromEvent(e: MouseEvent) {
   const rect = canvas.getBoundingClientRect();
   // Use rect size to derive scale; robust to any CSS transform/zoom
@@ -159,6 +208,35 @@ function worldFromEvent(e: MouseEvent) {
 
 canvas.addEventListener('mousedown', (e) => {
   const p = worldFromEvent(e);
+  // Handle Main Menu buttons
+  if (gameState === 'menu') {
+    const s = getMainStartRect();
+    if (p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h) {
+      // Default to Dev Levels
+      gameState = 'play';
+      startCourseFromFile('/levels/course.json').catch(console.error);
+      return;
+    }
+    const c = getMainCoursesRect();
+    if (p.x >= c.x && p.x <= c.x + c.w && p.y >= c.y && p.y <= c.y + c.h) {
+      gameState = 'course';
+      return;
+    }
+  }
+  // Handle Course Select buttons
+  if (gameState === 'course') {
+    const dev = getCourseDevRect();
+    if (p.x >= dev.x && p.x <= dev.x + dev.w && p.y >= dev.y && p.y <= dev.y + dev.h) {
+      gameState = 'play';
+      startCourseFromFile('/levels/course.json').catch(console.error);
+      return;
+    }
+    const back = getCourseBackRect();
+    if (p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h) {
+      gameState = 'menu';
+      return;
+    }
+  }
   // Handle HUD Menu button first (toggles pause)
   if (!paused) {
     const r = getMenuRect();
@@ -191,6 +269,23 @@ canvas.addEventListener('mousedown', (e) => {
 
 canvas.addEventListener('mousemove', (e) => {
   const p = worldFromEvent(e);
+  // Hover for menus
+  if (gameState === 'menu') {
+    const s = getMainStartRect();
+    const c = getMainCoursesRect();
+    hoverMainStart = p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h;
+    hoverMainCourses = p.x >= c.x && p.x <= c.x + c.w && p.y >= c.y && p.y <= c.y + c.h;
+    canvas.style.cursor = (hoverMainStart || hoverMainCourses) ? 'pointer' : 'default';
+    return;
+  }
+  if (gameState === 'course') {
+    const dev = getCourseDevRect();
+    const back = getCourseBackRect();
+    hoverCourseDev = p.x >= dev.x && p.x <= dev.x + dev.w && p.y >= dev.y && p.y <= dev.y + dev.h;
+    hoverCourseBack = p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h;
+    canvas.style.cursor = (hoverCourseDev || hoverCourseBack) ? 'pointer' : 'default';
+    return;
+  }
   // Hover state for Menu button
   const r = getMenuRect();
   const over = !paused && p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
@@ -427,6 +522,73 @@ function draw() {
   // background table felt
   ctx.fillStyle = COLORS.table;
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  // Main Menu screen
+  if (gameState === 'menu') {
+    // Title top center
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.font = '32px system-ui, sans-serif';
+    ctx.fillText('Vector Putt', WIDTH/2, 52);
+    // Buttons
+    const s = getMainStartRect();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = hoverMainStart ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverMainStart ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillRect(s.x, s.y, s.w, s.h);
+    ctx.strokeRect(s.x, s.y, s.w, s.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '18px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Start Game', s.x + s.w/2, s.y + s.h/2 + 0.5);
+    const c = getMainCoursesRect();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = hoverMainCourses ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverMainCourses ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillRect(c.x, c.y, c.w, c.h);
+    ctx.strokeRect(c.x, c.y, c.w, c.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '18px system-ui, sans-serif';
+    ctx.fillText('Course Select', c.x + c.w/2, c.y + c.h/2 + 0.5);
+    // Version bottom-left
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
+    return;
+  }
+  // Course Select screen
+  if (gameState === 'course') {
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.font = '28px system-ui, sans-serif';
+    ctx.fillText('Select Course', WIDTH/2, 60);
+    // Dev Levels option
+    const dev = getCourseDevRect();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = hoverCourseDev ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverCourseDev ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillRect(dev.x, dev.y, dev.w, dev.h);
+    ctx.strokeRect(dev.x, dev.y, dev.w, dev.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '18px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Dev Levels', dev.x + dev.w/2, dev.y + dev.h/2 + 0.5);
+    // Back button
+    const back = getCourseBackRect();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = hoverCourseBack ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverCourseBack ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillRect(back.x, back.y, back.w, back.h);
+    ctx.strokeRect(back.x, back.y, back.w, back.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.fillText('Back', back.x + back.w/2, back.y + back.h/2 + 0.5);
+    // Version bottom-left
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
+    return;
+  }
   // fairway area
   ctx.fillStyle = COLORS.fairway;
   ctx.fillRect(COURSE_MARGIN, COURSE_MARGIN, WIDTH - COURSE_MARGIN * 2, HEIGHT - COURSE_MARGIN * 2);

@@ -4,7 +4,7 @@
 
 # Project Progress — Vector Putt
 
-Updated: 2025-08-11 00:20 (local)
+Updated: 2025-08-11 00:40 (local)
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 
@@ -28,6 +28,8 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [ ] Tune hill strength and boundaries to match reference feel
 - [x] Course definition file and running total across course
  - [x] Course Summary overlay with per-hole list and total
+ - [x] Final-hole UX: banner first, manual continue to Summary; robust click/N handling
+ - [x] Faster level switch: cached level data + preloading next
 
 ## Soon (After MVP Slice Works)
 - [ ] Water tiles: splash SFX → +1 stroke → reset to pre-shot location

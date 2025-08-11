@@ -56,3 +56,8 @@ All notable changes to this project will be documented in this file.
   - Fix: auto-show Course Summary ~1.2s after sinking the last hole; updated sink banner hint.
   - UX: Added click-to-continue — clicking after sinking the last hole opens Summary; clicking on Summary restarts course. Updated summary text to “Click or Press Enter to Restart Game”.
   - Level 3: moved cup inside boxed area for sensible play path.
+  - Fix: sunk banner always shown before summary on final hole; summary requires click/N.
+  - Fix: correct final-hole detection by using `courseInfo.index/total` for banner hints and transitions.
+  - Fix: prevent double-advance and accidental Total increments using `transitioning` guard.
+  - Fix: swallow trailing click after mousedown to avoid instant summary close.
+  - Perf: cache loaded levels and preload the next one to speed level switches; preload after summary restart too.

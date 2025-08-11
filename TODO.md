@@ -65,6 +65,7 @@ Notes:
 - [x] Running total across course
   - [x] Show running total (HUD) and record per-hole strokes when advancing
   - [x] Course summary overlay with per-hole strokes and total
+  - [x] Final-hole UX: require click/N from sunk banner; prevent accidental auto-close
 - [x] Water penalty and reset logic
 
 ## Level System
@@ -93,6 +94,7 @@ Notes:
 - [ ] Options: audio volumes (SFX/Music), accessibility toggles
 - [x] Pause menu overlay with info/shortcuts/version (P/Escape)
 - [x] Restart hole (R) and Next level (N)
+  - [x] Robust transitions (no double-advance); cached/preloaded next level for snappier switches
  - [ ] Responsive layout for target platforms
 - [x] HUD: optional hole title display (per-level `course.title`)
 - [x] HUD: simple Replay button on top strip (hover + click to restart)

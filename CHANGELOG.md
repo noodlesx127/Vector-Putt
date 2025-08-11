@@ -34,3 +34,6 @@ All notable changes to this project will be documented in this file.
    - Removed duplicate damping; fairway base friction lowered; sand multiplier now 4.2x.
  - Decorations:
    - Added non-colliding flower border decorations; enabled on Level 1.
+  - Level fixes:
+    - Level 1: Flower borders repositioned to table area (outside playfield).
+    - Level 2: Added doorway into inner box and moved cup inside; sand now reachable.

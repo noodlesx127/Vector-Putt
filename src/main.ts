@@ -161,17 +161,20 @@ function getChangelogContentRect() {
 
 async function ensureChangelogLoaded(): Promise<void> {
   if (changelogText !== null) return;
-  try {
-    const res = await fetch('/CHANGELOG.md');
-    if (res.ok) {
-      changelogText = await res.text();
-    } else {
-      changelogText = 'Failed to load CHANGELOG.md';
-    }
-  } catch (err) {
-    console.error('Failed to load changelog', err);
-    changelogText = 'Failed to load CHANGELOG.md';
+  const candidates = ['CHANGELOG.md', '/CHANGELOG.md'];
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) continue;
+      const txt = await res.text();
+      if (txt && txt.trim().length > 0) {
+        changelogText = txt;
+        return;
+      }
+    } catch {}
   }
+  console.error('Failed to load changelog from', candidates);
+  changelogText = 'Failed to load CHANGELOG.md';
 }
 
 function wrapChangelog(context: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
@@ -313,7 +316,15 @@ canvas.addEventListener('mousedown', (e) => {
     const cg = getMainChangelogRect();
     if (p.x >= cg.x && p.x <= cg.x + cg.w && p.y >= cg.y && p.y <= cg.y + cg.h) {
       gameState = 'changelog';
-      ensureChangelogLoaded().then(() => { changelogLines = []; changelogScrollY = 0; }).catch(() => {});
+      ensureChangelogLoaded().then(() => {
+        // Build wrapped lines once content is loaded
+        const cr = getChangelogContentRect();
+        ctx.save();
+        ctx.font = '14px system-ui, sans-serif';
+        changelogLines = wrapChangelog(ctx, (changelogText ?? '').toString(), cr.w);
+        ctx.restore();
+        changelogScrollY = 0;
+      }).catch(() => {});
       return;
     }
   }

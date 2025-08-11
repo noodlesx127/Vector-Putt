@@ -33,7 +33,7 @@ Notes:
 - [ ] Define build targets (desktop/web/mobile) and packaging
 
 ## Core Gameplay Loop
-- [ ] Implement game states: Main Menu → Gameplay → Post-Hole → Course Summary
+- [x] Implement game states: Main Menu → Gameplay → Post-Hole → Course Summary
 - [x] Implement one-button shot mechanic
   - [x] Click-and-hold on ball to aim
   - [x] Draw aiming arrow (direction + power via length/color)
@@ -89,15 +89,18 @@ Notes:
   - [x] Align HUD across the very top (left/center/right)
   - [x] Show Birdie helper (strokes remaining for birdie)
 - [x] Aiming arrow visual design (power feedback via length/color)
- - [x] Post-Hole scorecard screen with performance label
- - [ ] Main Menu (Start Game, Select Course, Options)
+  - [x] Post-Hole scorecard screen with performance label
+  - [x] Main Menu (Start, Options placeholder) → Course Select (Dev Levels)
 - [ ] Options: audio volumes (SFX/Music), accessibility toggles
 - [x] Pause menu overlay with info/shortcuts/version (P/Escape)
+  - [x] Buttons: Replay, Close, Back to Main Menu
 - [x] Restart hole (R) and Next level (N)
   - [x] Robust transitions (no double-advance); cached/preloaded next level for snappier switches
- - [ ] Responsive layout for target platforms
+  - [x] Loading state before first play; prefetch first two levels
+  - [ ] Responsive layout for target platforms
 - [x] HUD: optional hole title display (per-level `course.title`)
-- [x] HUD: simple Replay button on top strip (hover + click to restart)
+- [x] HUD: Menu button toggles Pause (replaces HUD Replay)
+- [x] Main Menu: simple vector graphic (flag, hole, ball, putter)
 
 ## Audio
 - [ ] SFX list and placeholders

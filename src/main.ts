@@ -97,6 +97,23 @@ function getReplayRect() {
 }
 let hoverReplay = false;
 
+function advanceAfterSunk() {
+  // Continue to next step depending on whether this is the last hole
+  if (!holeRecorded) {
+    courseScores[currentLevelIndex] = strokes;
+    holeRecorded = true;
+  }
+  const isLastHole = courseInfo.index >= courseInfo.total;
+  if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
+  if (isLastHole) {
+    gameState = 'summary';
+  } else {
+    currentLevelIndex += 1;
+    holeRecorded = false;
+    loadLevelByIndex(currentLevelIndex).catch(console.error);
+  }
+}
+
 function worldFromEvent(e: MouseEvent) {
   const rect = canvas.getBoundingClientRect();
   // Use rect size to derive scale; robust to any CSS transform/zoom
@@ -117,22 +134,8 @@ canvas.addEventListener('mousedown', (e) => {
       return;
     }
   }
-  // Click-to-continue behaviors while sunk banner is showing
-  if (!paused && gameState === 'sunk') {
-    const isLastHole = courseInfo.index >= courseInfo.total;
-    if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
-    // Record strokes once
-    if (!holeRecorded) { courseScores[currentLevelIndex] = strokes; holeRecorded = true; }
-    if (isLastHole) {
-      gameState = 'summary';
-    } else {
-      // advance to next hole
-      currentLevelIndex += 1;
-      holeRecorded = false;
-      loadLevelByIndex(currentLevelIndex).catch(console.error);
-    }
-    return;
-  }
+  // Click-to-continue via mousedown for immediate feedback
+  if (!paused && gameState === 'sunk') { advanceAfterSunk(); return; }
   // If on summary screen, clicking restarts the course
   if (!paused && gameState === 'summary') {
     courseScores = [];
@@ -187,6 +190,22 @@ canvas.addEventListener('mouseup', (e) => {
   preShot = { x: aimStart.x, y: aimStart.y };
   ball.moving = true;
   strokes += 1;
+});
+
+// Click handler to be extra robust for continue actions on banners
+canvas.addEventListener('click', () => {
+  if (paused) return;
+  if (gameState === 'sunk') {
+    // Clear any pending summary timer and advance immediately
+    if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
+    advanceAfterSunk();
+  } else if (gameState === 'summary') {
+    // Restart course
+    courseScores = [];
+    currentLevelIndex = 0;
+    gameState = 'play';
+    loadLevelByIndex(currentLevelIndex).catch(console.error);
+  }
 });
 
 function circleRectResolve(bx: number, by: number, br: number, rect: Wall) {

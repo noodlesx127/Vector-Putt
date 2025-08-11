@@ -117,17 +117,19 @@ canvas.addEventListener('mousedown', (e) => {
       return;
     }
   }
-  // Click-to-continue behaviors
-  // If last hole is sunk, clicking anywhere proceeds to summary
+  // Click-to-continue behaviors while sunk banner is showing
   if (!paused && gameState === 'sunk') {
     const isLastHole = currentLevelIndex >= levelPaths.length - 1;
+    if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
+    // Record strokes once
+    if (!holeRecorded) { courseScores[currentLevelIndex] = strokes; holeRecorded = true; }
     if (isLastHole) {
-      if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
-      // Ensure last hole strokes are recorded
-      if (!holeRecorded) { courseScores[currentLevelIndex] = strokes; holeRecorded = true; }
       gameState = 'summary';
-      return;
+    } else {
+      currentLevelIndex += 1;
+      loadLevelByIndex(currentLevelIndex).catch(console.error);
     }
+    return;
   }
   // If on summary screen, clicking restarts the course
   if (!paused && gameState === 'summary') {
@@ -503,7 +505,9 @@ function draw() {
     ctx.fillStyle = '#ffffff';
     ctx.fillText(text, WIDTH/2, HEIGHT/2);
     ctx.font = '14px system-ui, sans-serif';
-    ctx.fillText('N: Next   Space: Replay', WIDTH/2, HEIGHT/2 + 24);
+    const isLastHole = currentLevelIndex >= levelPaths.length - 1;
+    const hint = isLastHole ? 'Click or N: Summary   Space: Replay' : 'Click or N: Next   Space: Replay';
+    ctx.fillText(hint, WIDTH/2, HEIGHT/2 + 24);
     ctx.textAlign = 'start';
     ctx.textBaseline = 'top';
   }
@@ -629,14 +633,17 @@ window.addEventListener('keydown', (e) => {
   } else if (e.code === 'KeyR') {
     loadLevelByIndex(currentLevelIndex).catch(console.error);
   } else if (e.code === 'KeyN') {
-    // If current hole is sunk and not yet recorded, record strokes
-    if (gameState === 'sunk' && !holeRecorded) {
-      courseScores[currentLevelIndex] = strokes;
-      holeRecorded = true;
-    }
-    if (currentLevelIndex >= levelPaths.length - 1) {
-      gameState = 'summary';
-    } else {
+    // Continue from sunk banner or during play
+    if (gameState === 'sunk') {
+      if (!holeRecorded) { courseScores[currentLevelIndex] = strokes; holeRecorded = true; }
+      if (currentLevelIndex >= levelPaths.length - 1) {
+        if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
+        gameState = 'summary';
+      } else {
+        currentLevelIndex += 1;
+        loadLevelByIndex(currentLevelIndex).catch(console.error);
+      }
+    } else if (gameState === 'play') {
       currentLevelIndex += 1;
       loadLevelByIndex(currentLevelIndex).catch(console.error);
     }

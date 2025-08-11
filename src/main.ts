@@ -548,6 +548,74 @@ function draw() {
     ctx.textBaseline = 'top';
     ctx.font = '32px system-ui, sans-serif';
     ctx.fillText('Vector Putt', WIDTH/2, 52);
+    // Simple vector mini-golf illustration
+    (function drawMainMenuGraphic() {
+      const artWidth = Math.min(420, WIDTH - 120);
+      const artHeight = 140;
+      const artX = WIDTH / 2 - artWidth / 2;
+      const artY = 110;
+      // Fairway panel
+      ctx.fillStyle = COLORS.fairway;
+      ctx.fillRect(artX, artY, artWidth, artHeight);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = COLORS.fairwayLine;
+      ctx.strokeRect(artX + 1, artY + 1, artWidth - 2, artHeight - 2);
+      // Hole cup (right side)
+      const cupX = artX + artWidth * 0.75;
+      const cupY = artY + artHeight * 0.55;
+      const cupR = 10;
+      ctx.fillStyle = COLORS.holeFill;
+      ctx.beginPath();
+      ctx.arc(cupX, cupY, cupR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = COLORS.holeRim;
+      ctx.stroke();
+      // Flagstick
+      ctx.fillStyle = COLORS.wallFill;
+      const stickW = 3, stickH = 36;
+      ctx.fillRect(cupX - stickW / 2, cupY - stickH - cupR, stickW, stickH);
+      // Flag (triangle)
+      ctx.fillStyle = '#d11e2a';
+      ctx.beginPath();
+      ctx.moveTo(cupX + 2, cupY - stickH - cupR + 2);
+      ctx.lineTo(cupX + 46, cupY - stickH - cupR + 12);
+      ctx.lineTo(cupX + 2, cupY - stickH - cupR + 22);
+      ctx.closePath();
+      ctx.fill();
+      // Ball (left)
+      const ballX = artX + artWidth * 0.25;
+      const ballY = artY + artHeight * 0.6;
+      const ballR = 7;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(ballX, ballY, ballR, 0, Math.PI * 2);
+      ctx.fill();
+      // Ball shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.beginPath();
+      ctx.ellipse(ballX + 2, ballY + 3, ballR * 0.9, ballR * 0.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Putter (simple shaft + head)
+      const shaftX0 = ballX - 34;
+      const shaftY0 = ballY - 28;
+      const shaftX1 = ballX - 8;
+      const shaftY1 = ballY - 6;
+      ctx.strokeStyle = '#cfd2cf';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(shaftX0, shaftY0);
+      ctx.lineTo(shaftX1, shaftY1);
+      ctx.stroke();
+      // Head (small rectangle near ball)
+      ctx.fillStyle = '#e2e2e2';
+      const headW = 16, headH = 6;
+      ctx.save();
+      ctx.translate(ballX - 16, ballY - 4);
+      ctx.rotate(-0.2);
+      ctx.fillRect(-headW / 2, -headH / 2, headW, headH);
+      ctx.restore();
+    })();
     // Buttons
     const s = getMainStartRect();
     ctx.lineWidth = 1.5;

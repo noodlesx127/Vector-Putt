@@ -18,7 +18,7 @@ resize();
 
 // Game state
 let lastTime = performance.now();
-let gameState: 'menu' | 'course' | 'options' | 'play' | 'sunk' | 'summary' = 'menu';
+let gameState: 'menu' | 'course' | 'options' | 'loading' | 'play' | 'sunk' | 'summary' = 'menu';
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
@@ -167,9 +167,14 @@ async function startCourseFromFile(courseJsonPath: string): Promise<void> {
       levelPaths = data.levels;
       courseScores = [];
       currentLevelIndex = 0;
-      await loadLevelByIndex(0);
-      // Preload next for snappy transition
-      preloadLevelByIndex(1);
+      gameState = 'loading';
+      // Ensure first two levels are loaded before switching to play
+      await Promise.all([
+        loadLevel(levelPaths[0]),
+        (levelPaths[1] ? fetch(levelPaths[1]).then((r) => r.json()).then((lvl: Level) => { levelCache.set(levelPaths[1], lvl); }).catch(() => {}) : Promise.resolve())
+      ]);
+      // Set state to play after content is ready
+      gameState = 'play';
     }
   } catch (err) {
     console.error('Failed to load course', err);
@@ -675,6 +680,16 @@ function draw() {
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.font = '12px system-ui, sans-serif';
     ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
+    return;
+  }
+  // Loading overlay (coarse)
+  if (gameState === 'loading') {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '20px system-ui, sans-serif';
+    ctx.fillText('Loading…', WIDTH/2, HEIGHT/2);
     return;
   }
   // Options placeholder screen

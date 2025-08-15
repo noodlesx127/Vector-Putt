@@ -77,7 +77,7 @@ Notes:
   - [x] Terrain tiles (fairway, sand, water)
   - [ ] Optional: slopes, moving blocks, boosters, tunnels
  - [ ] Course definition (ordered list of holes + par values)
- - [ ] Author 3–5 MVP holes to validate mechanics
+ - [x] Author 3–5 MVP holes to validate mechanics (added level4, level5)
 - [x] Adjust L1 decorations to sit outside playfield
 - [x] L2: add doorway into box and place cup inside; reachable sand
 

@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 - Visuals: beveled wall rendering (shadow + face + highlight) for closer retro look.
 - Visuals: fairway rendering refined with multiple horizontal bands.
 - Version bumped in-game to match.
+- Content: added two prototype holes (`levels/level4.json`, `levels/level5.json`) and updated course order.
 
 ## v0.3.2 — 2025-08-11
 

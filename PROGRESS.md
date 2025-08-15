@@ -4,7 +4,7 @@
 
 # Project Progress — Vector Putt
 
-Updated: 2025-08-11 01:25 (local)
+Updated: 2025-08-11 02:05 (local)
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 
@@ -55,7 +55,7 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [x] Consolidate video findings into a single section
 - [x] Record stack recommendation matching early-2000s simplicity
 - [x] Scaffold project (TS + Vite + Canvas)
-- [x] Fixed canvas 800×600 + letterbox
+- [x] Fixed canvas 960×600 + letterbox (visual proportions closer to reference)
 - [x] Aim–drag–release loop; friction; input lock while moving
 
 ## Risks / Mitigations

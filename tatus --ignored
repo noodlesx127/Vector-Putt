@@ -1,0 +1,5 @@
+[33m6f8d6ff[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mfeat/hud-replay[m[33m, [m[1;31morigin/feat/hud-replay[m[33m)[m fix(summary): ignore mousedown in summary to avoid double-trigger; click uses correct event; changelog note
+[33m6abec5c[m fix(summary): use actual mousedown event position for Main Menu button hit test
+[33m25009a6[m docs(changelog): reorder to reverse-chronological and note summary Main Menu fix
+[33m96d67ec[m fix(summary): correct Main Menu button click handling to use event position and prevent unintended restart
+[33m258bfb4[m feat(summary): add Main Menu button on course summary + hover/click and Esc/M shortcut; bump APP_VERSION to 0.3.1 and update changelog

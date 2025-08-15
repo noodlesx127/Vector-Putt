@@ -24,7 +24,7 @@ let gameState: 'menu' | 'course' | 'options' | 'changelog' | 'loading' | 'play' 
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
-const APP_VERSION = '0.3.1';
+const APP_VERSION = '0.3.2';
 const restitution = 0.9; // wall bounce energy retention
 const frictionK = 1.2; // base exponential damping (reduced for less "sticky" green)
 const stopSpeed = 5; // px/s threshold to consider stopped (tunable)
@@ -39,8 +39,8 @@ const COLORS = {
   wallStroke: '#bdbdbd', // wall outline
   holeFill: '#0a1a0b',   // cup interior
   holeRim:  '#0f3f19',   // cup rim color
-  hudText: '#ffffff',
-  hudBg: '#0d1f10'       // solid dark strip for HUD
+  hudText: '#111111',    // dark text on mustard background (matches screenshots)
+  hudBg: '#0d1f10'
 } as const;
 const COURSE_MARGIN = 40; // inset for fairway rect
 const HUD_HEIGHT = 32;
@@ -79,6 +79,19 @@ let sands: Rect[] = [];
 let waters: Rect[] = [];
 let decorations: Decoration[] = [];
 let hills: Slope[] = [];
+// Logical level canvas size from level JSON; defaults to actual canvas size
+let levelCanvas = { width: WIDTH, height: HEIGHT };
+
+function getViewOffsetX(): number {
+  const extra = WIDTH - levelCanvas.width;
+  return extra > 0 ? Math.floor(extra / 2) : 0;
+}
+
+function canvasToPlayCoords(p: { x: number; y: number }): { x: number; y: number } {
+  // Convert canvas coordinates to level/playfield coordinates, accounting for horizontal centering
+  const offsetX = getViewOffsetX();
+  return { x: p.x - offsetX, y: p.y };
+}
 let courseInfo: { index: number; total: number; par: number; title?: string } = { index: 1, total: 1, par: 3 };
 let strokes = 0;
 let preShot = { x: 0, y: 0 }; // position before current shot, for water reset
@@ -314,7 +327,8 @@ function worldFromEvent(e: MouseEvent) {
   const scaleY = rect.height / HEIGHT;
   const x = (e.clientX - rect.left) / scaleX;
   const y = (e.clientY - rect.top) / scaleY;
-  return { x, y };
+  // Map to playfield coordinates so input matches translated draw space
+  return canvasToPlayCoords({ x, y });
 }
 
 canvas.addEventListener('mousedown', (e) => {
@@ -705,6 +719,12 @@ function draw() {
   // background table felt
   ctx.fillStyle = COLORS.table;
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  // compute fairway rect from level canvas dimensions
+  const offsetX = getViewOffsetX();
+  const fairX = COURSE_MARGIN;
+  const fairY = COURSE_MARGIN;
+  const fairW = Math.max(0, Math.min(levelCanvas.width, WIDTH) - COURSE_MARGIN * 2);
+  const fairH = Math.max(0, Math.min(levelCanvas.height, HEIGHT) - COURSE_MARGIN * 2);
   // Main Menu screen
   if (gameState === 'menu') {
     // Title top center
@@ -946,16 +966,19 @@ function draw() {
     ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
     return;
   }
+  // translate to center the whole level content horizontally
+  ctx.save();
+  ctx.translate(offsetX, 0);
   // fairway area
   ctx.fillStyle = COLORS.fairway;
-  ctx.fillRect(COURSE_MARGIN, COURSE_MARGIN, WIDTH - COURSE_MARGIN * 2, HEIGHT - COURSE_MARGIN * 2);
+  ctx.fillRect(fairX, fairY, fairW, fairH);
   // subtle horizontal shading band
   ctx.fillStyle = COLORS.fairwayBand;
-  const bandH = Math.floor((HEIGHT - COURSE_MARGIN * 2) * 0.22);
-  ctx.fillRect(COURSE_MARGIN, COURSE_MARGIN + bandH, WIDTH - COURSE_MARGIN * 2, bandH);
+  const bandH = Math.floor(fairH * 0.22);
+  ctx.fillRect(fairX, fairY + bandH, fairW, bandH);
   ctx.lineWidth = 2;
   ctx.strokeStyle = COLORS.fairwayLine;
-  ctx.strokeRect(COURSE_MARGIN + 1, COURSE_MARGIN + 1, WIDTH - COURSE_MARGIN * 2 - 2, HEIGHT - COURSE_MARGIN * 2 - 2);
+  ctx.strokeRect(fairX + 1, fairY + 1, fairW - 2, fairH - 2);
 
   // terrain zones (draw before walls)
   for (const r of waters) {
@@ -987,10 +1010,10 @@ function draw() {
     ctx.fillRect(h.x, h.y, h.w, h.h);
   }
 
-  // decorations (non-colliding visuals) — clip to avoid drawing under HUD bar
+  // decorations (non-colliding visuals) — clip to fairway so they don't draw on mustard HUD/table
   ctx.save();
   ctx.beginPath();
-  ctx.rect(0, HUD_HEIGHT, WIDTH, HEIGHT - HUD_HEIGHT);
+  ctx.rect(fairX, fairY, fairW, fairH);
   ctx.clip();
   for (const d of decorations) {
     if (d.kind === 'flowers') {
@@ -1048,11 +1071,10 @@ function draw() {
   ctx.fill();
 
   if (isAiming) drawAim();
+  // end translation for level content; HUD is drawn in canvas coords
+  ctx.restore();
 
-  // HUD (single row across the top)
-  // background strip to avoid visual clutter from decorations
-  ctx.fillStyle = COLORS.hudBg;
-  ctx.fillRect(0, 0, WIDTH, HUD_HEIGHT);
+  // HUD (single row across the top on mustard background)
   ctx.fillStyle = COLORS.hudText;
   ctx.font = '16px system-ui, sans-serif';
   ctx.textBaseline = 'top';
@@ -1240,11 +1262,12 @@ async function loadLevel(path: string) {
   if (levelCache.has(path)) {
     lvl = levelCache.get(path)!;
   } else {
-    const res = await fetch(path);
+  const res = await fetch(path);
     lvl = (await res.json()) as Level;
     levelCache.set(path, lvl);
   }
   courseInfo = { index: lvl.course.index, total: lvl.course.total, par: lvl.par, title: lvl.course.title };
+  levelCanvas = { width: (lvl.canvas?.width ?? WIDTH), height: (lvl.canvas?.height ?? HEIGHT) };
   walls = lvl.walls ?? [];
   sands = lvl.sand ?? [];
   waters = lvl.water ?? [];
@@ -1388,7 +1411,7 @@ window.addEventListener('keydown', (e) => {
     }
   } else if (e.code === 'KeyP' || e.code === 'Escape') {
     if (gameState === 'play' || gameState === 'sunk') {
-      paused = !paused;
+    paused = !paused;
     } else if (gameState === 'options') {
       gameState = 'menu';
     }

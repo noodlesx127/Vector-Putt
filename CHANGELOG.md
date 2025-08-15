@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.3.2 — 2025-08-11
+
+- Visuals/layout tuned closer to reference screenshots:
+  - Canvas logical size set to 960x600; letterboxed scaling preserved.
+  - HUD text is now rendered directly on the mustard table background; removed dark HUD strip.
+  - HUD text color adjusted to dark for contrast on mustard.
+  - Cleaned canvas CSS outline so outer mustard frame reads correctly.
+  - Centered legacy 800×600 levels within the 960×600 canvas while keeping HUD anchored.
+  - Respected per-level `canvas` size for fairway/band/outline and decoration clipping to remove unintended extra area.
+- Bugfixes:
+  - Mapped input coordinates to the centered playfield so aiming and shots work correctly after centering (strength arrow visible again).
+- Docs: version bump synced in-game and here.
+
 ## v0.3.1 — 2025-08-11
 
 - Changelog screen: added scrollable viewer (wheel, drag, keyboard) with clipping and scrollbar. Bundles `CHANGELOG.md` via raw import fallback.

@@ -97,7 +97,7 @@ Notes:
 - [x] Restart hole (R) and Next level (N)
   - [x] Robust transitions (no double-advance); cached/preloaded next level for snappier switches
   - [x] Loading state before first play; prefetch first two levels
-  - [ ] Responsive layout for target platforms
+  - [x] Fixed-canvas layout tuned to 960×600 with letterbox scaling
 - [x] HUD: optional hole title display (per-level `course.title`)
 - [x] HUD: Menu button toggles Pause (replaces HUD Replay)
 - [x] Main Menu: simple vector graphic (flag, hole, ball, putter)

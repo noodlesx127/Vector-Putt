@@ -936,7 +936,7 @@ function draw() {
     const back = getCourseBackRect();
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = hoverOptionsBack ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = hoverOptionsBack ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillStyle = hoverOptionsBack ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.10)';
     ctx.fillRect(back.x, back.y, back.w, back.h);
     ctx.strokeRect(back.x, back.y, back.w, back.h);
     ctx.fillStyle = '#ffffff';

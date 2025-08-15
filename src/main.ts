@@ -148,6 +148,7 @@ let hoverCourseDev = false;
 let hoverCourseBack = false;
 let hoverChangelogBack = false;
 let hoverSummaryBack = false;
+let hoverOptionsBack = false;
 let transitioning = false; // prevent double-advance while changing holes
 let lastAdvanceFromSunkMs = 0; // used to swallow trailing click after mousedown
 const CLICK_SWALLOW_MS = 180; // shorten delay for snappier feel

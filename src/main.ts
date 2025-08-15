@@ -24,7 +24,7 @@ let gameState: 'menu' | 'course' | 'options' | 'changelog' | 'loading' | 'play' 
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
-const APP_VERSION = '0.3.2';
+const APP_VERSION = '0.3.3';
 const restitution = 0.9; // wall bounce energy retention
 const frictionK = 1.2; // base exponential damping (reduced for less "sticky" green)
 const stopSpeed = 5; // px/s threshold to consider stopped (tunable)
@@ -1060,12 +1060,26 @@ function draw() {
   // Remove clip so subsequent layers (walls, HUD) are not clipped out
   ctx.restore();
 
-  // walls
-  ctx.fillStyle = COLORS.wallFill;
-  ctx.strokeStyle = COLORS.wallStroke;
+  // walls (beveled look: shadow + face + highlight)
   for (const w of walls) {
+    // drop shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(w.x + 2, w.y + 2, w.w, w.h);
+    // face
+    ctx.fillStyle = COLORS.wallFill;
     ctx.fillRect(w.x, w.y, w.w, w.h);
-    ctx.strokeRect(w.x, w.y, w.w, w.h);
+    // inner stroke
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = COLORS.wallStroke;
+    ctx.strokeRect(w.x + 1, w.y + 1, w.w - 2, w.h - 2);
+    // top/left highlight
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.beginPath();
+    ctx.moveTo(w.x + 1, w.y + 1);
+    ctx.lineTo(w.x + w.w - 1, w.y + 1);
+    ctx.moveTo(w.x + 1, w.y + 1);
+    ctx.lineTo(w.x + 1, w.y + w.h - 1);
+    ctx.stroke();
   }
 
   // hole cup (draw after walls so it is visible)

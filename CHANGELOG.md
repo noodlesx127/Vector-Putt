@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.3.3 — 2025-08-11
+
+- Visuals: beveled wall rendering (shadow + face + highlight) for closer retro look.
+- Visuals: fairway rendering refined with multiple horizontal bands.
+- Version bumped in-game to match.
+
 ## v0.3.2 — 2025-08-11
 
 - Visuals/layout tuned closer to reference screenshots:

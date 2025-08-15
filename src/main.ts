@@ -509,10 +509,21 @@ canvas.addEventListener('click', (e) => {
     const back = getCourseBackRect();
     // If clicking the Main Menu button, go to menu instead of restart
     if (p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h) {
+      // Reset summary-specific state and return to main menu cleanly
+      paused = false;
+      isAiming = false;
+      ball.vx = 0; ball.vy = 0; ball.moving = false;
+      summaryTimer = null;
+      transitioning = false;
+      holeRecorded = true;
       gameState = 'menu';
       return;
     }
     // Otherwise restart course
+    paused = false;
+    isAiming = false;
+    summaryTimer = null;
+    transitioning = false;
     courseScores = [];
     currentLevelIndex = 0;
     gameState = 'play';
@@ -656,14 +667,16 @@ function update(dt: number) {
     }
   }
 
-  // Water OOB: if ball center is inside any water rect, apply penalty and reset
-  for (const w of waters) {
-    if (pointInRect(ball.x, ball.y, w)) {
-      // penalty is +1 stroke; reset to pre-shot position
-      strokes += 1;
-      ball.x = preShot.x; ball.y = preShot.y;
-      ball.vx = 0; ball.vy = 0; ball.moving = false;
-      break;
+  // Water OOB: only while playing
+  if (gameState === 'play') {
+    for (const w of waters) {
+      if (pointInRect(ball.x, ball.y, w)) {
+        // penalty is +1 stroke; reset to pre-shot position
+        strokes += 1;
+        ball.x = preShot.x; ball.y = preShot.y;
+        ball.vx = 0; ball.vy = 0; ball.moving = false;
+        break;
+      }
     }
   }
 
@@ -672,7 +685,7 @@ function update(dt: number) {
   const dy = ball.y - hole.y;
   const dist = Math.hypot(dx, dy);
   const capture = hole.r - ball.r * 0.25; // small suction
-  if (!paused && dist < capture) {
+  if (!paused && gameState === 'play' && dist < capture) {
     // snap into cup
     ball.x = hole.x;
     ball.y = hole.y;

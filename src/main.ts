@@ -669,13 +669,13 @@ function update(dt: number) {
 
   // Water OOB: only while playing
   if (gameState === 'play') {
-    for (const w of waters) {
-      if (pointInRect(ball.x, ball.y, w)) {
-        // penalty is +1 stroke; reset to pre-shot position
-        strokes += 1;
-        ball.x = preShot.x; ball.y = preShot.y;
-        ball.vx = 0; ball.vy = 0; ball.moving = false;
-        break;
+  for (const w of waters) {
+    if (pointInRect(ball.x, ball.y, w)) {
+      // penalty is +1 stroke; reset to pre-shot position
+      strokes += 1;
+      ball.x = preShot.x; ball.y = preShot.y;
+      ball.vx = 0; ball.vy = 0; ball.moving = false;
+      break;
       }
     }
   }
@@ -754,7 +754,7 @@ function draw() {
       const artX = WIDTH / 2 - artWidth / 2;
       const artY = 110;
       // Fairway panel
-      ctx.fillStyle = COLORS.fairway;
+  ctx.fillStyle = COLORS.fairway;
       ctx.fillRect(artX, artY, artWidth, artHeight);
       ctx.lineWidth = 2;
       ctx.strokeStyle = COLORS.fairwayLine;
@@ -983,13 +983,17 @@ function draw() {
   // translate to center the whole level content horizontally
   ctx.save();
   ctx.translate(offsetX, 0);
-  // fairway area
+  // fairway area with multiple horizontal bands (retro look)
   ctx.fillStyle = COLORS.fairway;
   ctx.fillRect(fairX, fairY, fairW, fairH);
-  // subtle horizontal shading band
   ctx.fillStyle = COLORS.fairwayBand;
-  const bandH = Math.floor(fairH * 0.22);
-  ctx.fillRect(fairX, fairY + bandH, fairW, bandH);
+  const bands = 4;
+  const stepH = Math.floor(fairH / (bands * 2));
+  for (let i = 0; i < bands; i++) {
+    const y = fairY + stepH * (2 * i + 1);
+    const h = stepH;
+    if (y + h <= fairY + fairH) ctx.fillRect(fairX, y, fairW, h);
+  }
   ctx.lineWidth = 2;
   ctx.strokeStyle = COLORS.fairwayLine;
   ctx.strokeRect(fairX + 1, fairY + 1, fairW - 2, fairH - 2);

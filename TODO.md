@@ -101,13 +101,14 @@ Notes:
 - [ ] Triangle/wedge deflectors
   - [ ] Implement as polygon walls; verify bounce angles feel correct
   - [ ] Visuals: light-gray face with subtle edge highlight
-- [ ] Flower fence borders
-  - [ ] Confirm: are flower borders purely decorative or collidable like walls? (Needs user answer)
-  - [ ] If collidable: implement `flowerWalls` with same collision as walls and flower tiling visuals
-- [ ] Bridge/slope band over water
-  - [ ] Use `hills` as directional bands; tune strength for smooth carry across water
-  - [ ] Visually match wide gradient band shown in refs
-- [ ] Sand wedge/trapezoid pits
+- [ ] Flower fence borders (decoration-only)
+  - [ ] Keep as non-colliding visuals; ball can pass through into underlying terrain (e.g., water)
+  - [ ] Allow placement overlapping fairway/water edges; draw above water; no collision mask
+- [ ] Land bridge over water (static, no slope)
+  - [ ] Support narrow fairway rectangles spanning water with correct priority (fairway collision only on bridge)
+  - [ ] Ensure off-bridge positions fall into water penalty
+  - [ ] Visual polish: optional subtle edge highlight to read as a thin bridge
+- [ ] Sand wedge/trapezoid pits (yellow trapezoids in refs)
   - [ ] Support triangular/trapezoid sand shapes (via polygons or typed shapes)
   - [ ] Tune friction and visuals for these shapes
 - [ ] Wall thickness and outline tuning

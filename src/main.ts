@@ -327,12 +327,12 @@ function worldFromEvent(e: MouseEvent) {
   const scaleY = rect.height / HEIGHT;
   const x = (e.clientX - rect.left) / scaleX;
   const y = (e.clientY - rect.top) / scaleY;
-  // Map to playfield coordinates so input matches translated draw space
-  return canvasToPlayCoords({ x, y });
+  // Return canvas coordinates; convert to play coords where needed
+  return { x, y };
 }
 
 canvas.addEventListener('mousedown', (e) => {
-  const p = worldFromEvent(e);
+  const p = worldFromEvent(e); // canvas coords
   // Handle Main Menu buttons
   if (gameState === 'menu') {
     const s = getMainStartRect();
@@ -404,18 +404,19 @@ canvas.addEventListener('mousedown', (e) => {
   if (!paused && gameState === 'summary') { return; }
   if (paused || gameState !== 'play') return; // disable while paused or not in play state
   if (ball.moving) return;
-  const dx = p.x - ball.x;
-  const dy = p.y - ball.y;
+  const pp = canvasToPlayCoords(p);
+  const dx = pp.x - ball.x;
+  const dy = pp.y - ball.y;
   const dist2 = dx * dx + dy * dy;
   if (dist2 <= (ball.r + 4) * (ball.r + 4)) {
     isAiming = true;
     aimStart = { x: ball.x, y: ball.y };
-    aimCurrent = p;
+    aimCurrent = pp;
   }
 });
 
 canvas.addEventListener('mousemove', (e) => {
-  const p = worldFromEvent(e);
+  const p = worldFromEvent(e); // canvas coords
   // Hover for menus
   if (gameState === 'menu') {
     const s = getMainStartRect();
@@ -462,7 +463,7 @@ canvas.addEventListener('mousemove', (e) => {
     canvas.style.cursor = 'default';
   }
   if (!isAiming) return;
-  aimCurrent = p;
+  aimCurrent = canvasToPlayCoords(p);
 });
 
 canvas.addEventListener('mouseup', (e) => {
@@ -470,7 +471,7 @@ canvas.addEventListener('mouseup', (e) => {
     isChangelogDragging = false;
   }
   if (!isAiming || paused || gameState !== 'play') return;
-  const p = worldFromEvent(e);
+  const p = canvasToPlayCoords(worldFromEvent(e));
   const dx = p.x - aimStart.x;
   const dy = p.y - aimStart.y;
   const drag = Math.hypot(dx, dy);
@@ -504,7 +505,7 @@ canvas.addEventListener('click', (e) => {
     if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
     advanceAfterSunk();
   } else if (gameState === 'summary') {
-    const p = worldFromEvent(e);
+    const p = worldFromEvent(e); // canvas coords
     const back = getCourseBackRect();
     // If clicking the Main Menu button, go to menu instead of restart
     if (p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h) {

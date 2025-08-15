@@ -89,6 +89,36 @@ Notes:
   - [ ] Level browser: scan `levels/` and list levels; searchable and filterable
   - [ ] Preview thumbnails and quick-play from the browser
 
+## Obstacles & Geometry from Reference Screens (new work)
+- [ ] Diagonal walls and polygon bumpers
+  - [ ] Add polygonal wall support (triangles, chamfers) with correct reflections
+  - [ ] Update level schema (e.g., `wallsPoly: [{ points: [x,y,...] }]`)
+  - [ ] Editor support (drag vertices, snap, rotate)
+- [ ] Round posts/pillars (circular colliders)
+  - [ ] Add circular obstacle type (e.g., `posts: [{ x, y, r }]`)
+  - [ ] Collision: circle–circle with ball; wall restitution respected
+  - [ ] Optional decorative caps (non-colliding)
+- [ ] Triangle/wedge deflectors
+  - [ ] Implement as polygon walls; verify bounce angles feel correct
+  - [ ] Visuals: light-gray face with subtle edge highlight
+- [ ] Flower fence borders
+  - [ ] Confirm: are flower borders purely decorative or collidable like walls? (Needs user answer)
+  - [ ] If collidable: implement `flowerWalls` with same collision as walls and flower tiling visuals
+- [ ] Bridge/slope band over water
+  - [ ] Use `hills` as directional bands; tune strength for smooth carry across water
+  - [ ] Visually match wide gradient band shown in refs
+- [ ] Sand wedge/trapezoid pits
+  - [ ] Support triangular/trapezoid sand shapes (via polygons or typed shapes)
+  - [ ] Tune friction and visuals for these shapes
+- [ ] Wall thickness and outline tuning
+  - [ ] Match reference thickness for main border and inner lanes
+  - [ ] Ensure collision shapes match visuals (no visual/physics mismatch)
+
+### Clarifications needed (please confirm):
+- [ ] Do flower borders act as solid walls, or are they decoration on top of a solid wall, or decoration only?
+- [ ] The yellow trapezoid “bowls” in the third screenshot — should these be sand (high friction) or bumpers/ramps?
+- [ ] The green rectangular band bridging water — confirm this is a slope/accelerator (not a moving platform).
+
 ## UI/UX
 - [x] Minimalist HUD (top of screen)
   - [x] Hole: current index and total (e.g., 3/9)

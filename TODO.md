@@ -81,6 +81,14 @@ Notes:
 - [x] Adjust L1 decorations to sit outside playfield
 - [x] L2: add doorway into box and place cup inside; reachable sand
 
+- [ ] Level Editor & Browser (authoring and discovery)
+  - [ ] In-app (or web) level editor to place walls/terrain/hills/decorations
+  - [ ] Grid snapping, keyboard nudges, and alignment helpers
+  - [ ] Load/Save `levels/*.json` with schema-aware validation
+  - [ ] Course builder to add/remove/reorder holes, set titles and par
+  - [ ] Level browser: scan `levels/` and list levels; searchable and filterable
+  - [ ] Preview thumbnails and quick-play from the browser
+
 ## UI/UX
 - [x] Minimalist HUD (top of screen)
   - [x] Hole: current index and total (e.g., 3/9)

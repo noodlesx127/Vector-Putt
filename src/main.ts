@@ -375,6 +375,14 @@ canvas.addEventListener('mousedown', (e) => {
       return;
     }
   }
+  // Handle Options Back button
+  if (gameState === 'options') {
+    const back = getCourseBackRect();
+    if (p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h) {
+      gameState = 'menu';
+      return;
+    }
+  }
   // Handle HUD Menu button first (toggles pause)
   if (!paused) {
     const r = getMenuRect();
@@ -451,6 +459,12 @@ canvas.addEventListener('mousemove', (e) => {
     const back = getCourseBackRect();
     hoverSummaryBack = p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h;
     canvas.style.cursor = hoverSummaryBack ? 'pointer' : 'default';
+    return;
+  }
+  if (gameState === 'options') {
+    const back = getCourseBackRect();
+    hoverOptionsBack = p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h;
+    canvas.style.cursor = hoverOptionsBack ? 'pointer' : 'default';
     return;
   }
   // Hover state for Menu button
@@ -897,17 +911,39 @@ function draw() {
     ctx.fillText('Loading…', WIDTH/2, HEIGHT/2);
     return;
   }
-  // Options placeholder screen
+  // Options screen: show controls and Back button
   if (gameState === 'options') {
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     ctx.font = '28px system-ui, sans-serif';
     ctx.fillText('Options', WIDTH/2, 60);
-    ctx.font = '16px system-ui, sans-serif';
-    ctx.fillText('Coming Soon', WIDTH/2, 110);
-    // Back hint
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.font = '18px system-ui, sans-serif';
+    ctx.fillText('Controls', WIDTH/2 - 180, 110);
     ctx.font = '14px system-ui, sans-serif';
-    ctx.fillText('Press Esc to go back', WIDTH/2, HEIGHT - 90);
+    const lines = [
+      'Mouse: Click-drag from ball to aim; release to shoot',
+      'N: Next from Hole Sunk banner',
+      'Space: Replay current hole (from banner)',
+      'R: Restart current hole',
+      'P / Esc: Pause / Resume',
+      'Enter: Restart course from Summary',
+      'Esc: Back to Main Menu'
+    ];
+    let oy = 140;
+    for (const line of lines) { ctx.fillText('• ' + line, WIDTH/2 - 180, oy); oy += 22; }
+    // Back button
+    const back = getCourseBackRect();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = hoverOptionsBack ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverOptionsBack ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillRect(back.x, back.y, back.w, back.h);
+    ctx.strokeRect(back.x, back.y, back.w, back.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Back', back.x + back.w/2, back.y + back.h/2 + 0.5);
+    // Version
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.font = '12px system-ui, sans-serif';
     ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);

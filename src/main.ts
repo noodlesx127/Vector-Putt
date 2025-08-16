@@ -24,7 +24,7 @@ let gameState: 'menu' | 'course' | 'options' | 'changelog' | 'loading' | 'play' 
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
-const APP_VERSION = '0.3.13';
+const APP_VERSION = '0.3.14';
 const restitution = 0.9; // wall bounce energy retention
 const frictionK = 1.2; // base exponential damping (reduced for less "sticky" green)
 const stopSpeed = 5; // px/s threshold to consider stopped (tunable)
@@ -1622,7 +1622,10 @@ function draw() {
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     ctx.fillRect(0, HEIGHT/2 - 40, WIDTH, 80);
-    ctx.fillStyle = '#ffffff';
+    // color-coded label: better score = green, worse = red, even = white
+    const diff = strokes - courseInfo.par;
+    const labelColor = diff < 0 ? '#6eff6e' : (diff > 0 ? '#ff6e6e' : '#ffffff');
+    ctx.fillStyle = labelColor;
     ctx.fillText(text, WIDTH/2, HEIGHT/2);
     ctx.font = '14px system-ui, sans-serif';
     const isLastHole = courseInfo.index >= courseInfo.total;
@@ -1651,13 +1654,19 @@ function draw() {
       const d = s - p;
       const deltaText = d === 0 ? 'E' : (d > 0 ? `+${d}` : `${d}`);
       const line = `Hole ${i+1}: ${s} (Par ${p}, ${deltaText})`;
+      const color = d === 0 ? '#ffffff' : (d > 0 ? '#ff9a9a' : '#9aff9a');
+      ctx.fillStyle = color;
       ctx.fillText(line, WIDTH/2, y);
+      ctx.fillStyle = '#ffffff';
       y += 22;
     }
     y += 10;
     ctx.font = '18px system-ui, sans-serif';
     const totalDeltaText = totalDelta === 0 ? 'E' : (totalDelta > 0 ? `+${totalDelta}` : `${totalDelta}`);
+    const totalColor = totalDelta === 0 ? '#ffffff' : (totalDelta > 0 ? '#ff9a9a' : '#9aff9a');
+    ctx.fillStyle = totalColor;
     ctx.fillText(`Total: ${total} (Par ${parTotal}, ${totalDeltaText})`, WIDTH/2, y);
+    ctx.fillStyle = '#ffffff';
     y += 28;
     ctx.font = '14px system-ui, sans-serif';
     ctx.fillText('Click or Press Enter to Restart Game', WIDTH/2, y);

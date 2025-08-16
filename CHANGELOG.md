@@ -35,6 +35,11 @@ All notable changes to this project will be documented in this file.
 - Water splash visual: ripple effect drawn on water where the ball lands before reset.
 - Version: in-game version updated to `0.3.10`.
 
+## v0.3.14 — 2025-08-16
+
+- UI polish: color-coded score text (sunk banner and course summary) — green for under par, red for over.
+- Version: in-game version updated to `0.3.14`.
+
 ## v0.3.13 — 2025-08-16
 
 - Water splash visual refined: multiple staggered ripple rings for a clearer retro splash.

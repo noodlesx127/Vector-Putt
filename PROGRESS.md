@@ -34,11 +34,15 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
  - [x] Pause menu improvements: Replay, Close, Back to Main Menu; version bottom-left
   - [x] Loading state on first launch into Dev Levels; prefetch level 2
   - [x] Changelog screen (scrollable) and Main Menu Changelog button
+  - [x] Options in Pause menu; in-game volume controls with -/+/Mute and slider
+  - [x] Water splash: multi-ring ripple visual
+  - [x] Score visuals: color-coded sunk banner and summary deltas
 
 ## Soon (After MVP Slice Works)
 - [ ] Water tiles: splash SFX → +1 stroke → reset to pre-shot location
   - [x] Visual ripple and SFX on water contact
 - [ ] Post-Hole banner with classic golf terms
+  - [x] Basic label (Eagle/Birdie/Par/Bogey/Over) with color tint
 - [ ] Bank-shot dev harness (dev-only path preview)
 - [ ] Palette extraction to `docs/PALETTE.md`; apply flat colors + outlines
  - [x] Options: basic SFX volume and mute controls

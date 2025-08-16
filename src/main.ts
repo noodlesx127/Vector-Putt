@@ -420,19 +420,19 @@ function getCourseBackRect() {
 function getOptionsVolMinusRect() {
   const w = 36, h = 28;
   const x = WIDTH / 2 - 180;
-  const y = 230;
+  const y = 360;
   return { x, y, w, h };
 }
 function getOptionsVolPlusRect() {
   const w = 36, h = 28;
   const x = WIDTH / 2 - 180 + 44;
-  const y = 230;
+  const y = 360;
   return { x, y, w, h };
 }
 function getOptionsMuteRect() {
   const w = 90, h = 28;
   const x = WIDTH / 2 - 180 + 100;
-  const y = 230;
+  const y = 360;
   return { x, y, w, h };
 }
 
@@ -1193,6 +1193,7 @@ function draw() {
     ctx.font = '14px system-ui, sans-serif';
     const volPct = Math.round(AudioSfx.volume * 100);
     ctx.fillText(`SFX Volume: ${AudioSfx.muted ? 'Muted' : volPct + '%'}`, WIDTH/2 - 180, oy);
+    oy += 100; // create clear space before buttons
     // Buttons
     const vm = getOptionsVolMinusRect();
     const vp = getOptionsVolPlusRect();

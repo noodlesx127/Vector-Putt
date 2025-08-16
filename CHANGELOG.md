@@ -39,6 +39,7 @@ All notable changes to this project will be documented in this file.
 
 - Water splash visual refined: multiple staggered ripple rings for a clearer retro splash.
 - Version: in-game version updated to `0.3.13`.
+ - Options: added in-menu volume slider control (drag to set volume) alongside -/+/Mute.
 
 ## v0.3.12 — 2025-08-16
 

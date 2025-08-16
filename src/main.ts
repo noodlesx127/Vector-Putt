@@ -114,6 +114,7 @@ let courseScores: number[] = []; // strokes per completed hole
 let coursePars: number[] = []; // par per hole
 let holeRecorded = false; // guard to prevent double-recording
 let summaryTimer: number | null = null; // timer to auto-open summary after last-hole banner
+let isOptionsVolumeDragging = false;
 
 // Audio (basic SFX via Web Audio API)
 const AudioSfx = {
@@ -241,6 +242,7 @@ let hoverOptionsVolMinus = false;
 let hoverOptionsVolPlus = false;
 let hoverOptionsMute = false;
 let hoverPauseOptions = false;
+let hoverOptionsVolSlider = false;
 let transitioning = false; // prevent double-advance while changing holes
 let lastAdvanceFromSunkMs = 0; // used to swallow trailing click after mousedown
 const CLICK_SWALLOW_MS = 180; // shorten delay for snappier feel
@@ -435,6 +437,12 @@ function getOptionsMuteRect() {
   const y = 360;
   return { x, y, w, h };
 }
+function getOptionsVolSliderRect() {
+  const w = 180, h = 8;
+  const x = WIDTH / 2 - 180 + 200;
+  const y = 344;
+  return { x, y, w, h };
+}
 
 function worldFromEvent(e: MouseEvent) {
   const rect = canvas.getBoundingClientRect();
@@ -504,6 +512,14 @@ canvas.addEventListener('mousedown', (e) => {
     if (p.x >= vp.x && p.x <= vp.x + vp.w && p.y >= vp.y && p.y <= vp.y + vp.h) { AudioSfx.setVolume(AudioSfx.volume + 0.1); return; }
     const mu = getOptionsMuteRect();
     if (p.x >= mu.x && p.x <= mu.x + mu.w && p.y >= mu.y && p.y <= mu.y + mu.h) { AudioSfx.toggleMute(); return; }
+    const vs = getOptionsVolSliderRect();
+    if (p.x >= vs.x && p.x <= vs.x + vs.w && p.y >= vs.y - 6 && p.y <= vs.y + vs.h + 6) {
+      // begin slider drag
+      isOptionsVolumeDragging = true;
+      const t = Math.max(0, Math.min(1, (p.x - vs.x) / vs.w));
+      AudioSfx.setVolume(t);
+      return;
+    }
   }
   // Handle HUD Menu button first (toggles pause)
   if (!paused) {
@@ -589,10 +605,16 @@ canvas.addEventListener('mousemove', (e) => {
     const vm = getOptionsVolMinusRect();
     const vp = getOptionsVolPlusRect();
     const mu = getOptionsMuteRect();
+    const vs = getOptionsVolSliderRect();
     hoverOptionsVolMinus = p.x >= vm.x && p.x <= vm.x + vm.w && p.y >= vm.y && p.y <= vm.y + vm.h;
     hoverOptionsVolPlus = p.x >= vp.x && p.x <= vp.x + vp.w && p.y >= vp.y && p.y <= vp.y + vp.h;
     hoverOptionsMute = p.x >= mu.x && p.x <= mu.x + mu.w && p.y >= mu.y && p.y <= mu.y + mu.h;
-    canvas.style.cursor = (hoverOptionsBack || hoverOptionsVolMinus || hoverOptionsVolPlus || hoverOptionsMute) ? 'pointer' : 'default';
+    hoverOptionsVolSlider = p.x >= vs.x && p.x <= vs.x + vs.w && p.y >= vs.y - 6 && p.y <= vs.y + vs.h + 6;
+    if (isOptionsVolumeDragging) {
+      const t = Math.max(0, Math.min(1, (p.x - vs.x) / vs.w));
+      AudioSfx.setVolume(t);
+    }
+    canvas.style.cursor = (hoverOptionsBack || hoverOptionsVolMinus || hoverOptionsVolPlus || hoverOptionsMute || hoverOptionsVolSlider) ? 'pointer' : 'default';
     return;
   }
   // Hover state for Menu button
@@ -611,6 +633,9 @@ canvas.addEventListener('mousemove', (e) => {
 canvas.addEventListener('mouseup', (e) => {
   if (gameState === 'changelog') {
     isChangelogDragging = false;
+  }
+  if (gameState === 'options') {
+    isOptionsVolumeDragging = false;
   }
   if (!isAiming || paused || gameState !== 'play') return;
   const p = canvasToPlayCoords(worldFromEvent(e));
@@ -1198,6 +1223,7 @@ function draw() {
     const vm = getOptionsVolMinusRect();
     const vp = getOptionsVolPlusRect();
     const mu = getOptionsMuteRect();
+    const vs = getOptionsVolSliderRect();
     ctx.lineWidth = 1.5;
     // - button
     ctx.strokeStyle = hoverOptionsVolMinus ? '#ffffff' : '#cfd2cf';
@@ -1209,6 +1235,20 @@ function draw() {
     ctx.fillStyle = hoverOptionsVolPlus ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.10)';
     ctx.fillRect(vp.x, vp.y, vp.w, vp.h); ctx.strokeRect(vp.x, vp.y, vp.w, vp.h);
     ctx.fillStyle = '#ffffff'; ctx.fillText('+', vp.x + vp.w/2, vp.y + vp.h/2 + 0.5);
+    // slider
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(vs.x, vs.y + vs.h/2);
+    ctx.lineTo(vs.x + vs.w, vs.y + vs.h/2);
+    ctx.stroke();
+    // knob
+    const knobT = AudioSfx.volume;
+    const knobX = vs.x + knobT * vs.w;
+    ctx.fillStyle = hoverOptionsVolSlider ? '#ffffff' : '#cfd2cf';
+    ctx.beginPath();
+    ctx.arc(knobX, vs.y + vs.h/2, 6, 0, Math.PI * 2);
+    ctx.fill();
     // mute toggle
     ctx.strokeStyle = hoverOptionsMute ? '#ffffff' : '#cfd2cf';
     ctx.fillStyle = hoverOptionsMute ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.10)';

@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.3.4 — 2025-08-11
+
+- New obstacles (prototype):
+  - Round posts (circular colliders) with beveled render and physics.
+  - Bridges: fairway rectangles that span water and override the water penalty.
+- Level: added sample posts and a narrow bridge to `levels/level4.json`.
+- Docs: updated TODO with clarified obstacle behaviors from references.
+
 ## v0.3.3 — 2025-08-11
 
 - Visuals: beveled wall rendering (shadow + face + highlight) for closer retro look.

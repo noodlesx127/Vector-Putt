@@ -24,7 +24,7 @@ let gameState: 'menu' | 'course' | 'options' | 'changelog' | 'loading' | 'play' 
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
-const APP_VERSION = '0.3.3';
+const APP_VERSION = '0.3.4';
 const restitution = 0.9; // wall bounce energy retention
 const frictionK = 1.2; // base exponential damping (reduced for less "sticky" green)
 const stopSpeed = 5; // px/s threshold to consider stopped (tunable)
@@ -49,6 +49,7 @@ const levelCache = new Map<string, Level>();
 
 type Wall = { x: number; y: number; w: number; h: number };
 type Rect = { x: number; y: number; w: number; h: number };
+type Circle = { x: number; y: number; r: number };
 type Decoration = { x: number; y: number; w: number; h: number; kind: 'flowers' };
 type Slope = { x: number; y: number; w: number; h: number; dir: 'N'|'S'|'E'|'W'|'NE'|'NW'|'SE'|'SW'; strength?: number };
 type Level = {
@@ -60,6 +61,8 @@ type Level = {
   walls: Wall[];
   sand?: Rect[];
   water?: Rect[];
+  bridges?: Rect[];
+  posts?: Circle[];
   decorations?: Decoration[];
   hills?: Slope[];
 };
@@ -77,6 +80,8 @@ const hole = { x: WIDTH * 0.75, y: HEIGHT * 0.4, r: 12 };
 let walls: Wall[] = [];
 let sands: Rect[] = [];
 let waters: Rect[] = [];
+let bridges: Rect[] = [];
+let posts: Circle[] = [];
 let decorations: Decoration[] = [];
 let hills: Slope[] = [];
 // Logical level canvas size from level JSON; defaults to actual canvas size
@@ -621,6 +626,19 @@ function pointInRect(px: number, py: number, r: Rect): boolean {
   return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
 }
 
+function circleCircleResolve(bx: number, by: number, br: number, cx: number, cy: number, cr: number) {
+  const dx = bx - cx;
+  const dy = by - cy;
+  const dist2 = dx * dx + dy * dy;
+  const rsum = br + cr;
+  if (dist2 >= rsum * rsum) return null;
+  const dist = Math.max(0.0001, Math.sqrt(dist2));
+  const nx = dx / dist;
+  const ny = dy / dist;
+  const depth = rsum - dist;
+  return { nx, ny, depth };
+}
+
 function update(dt: number) {
   if (paused) return; // freeze simulation
   if (ball.moving && gameState === 'play') {
@@ -667,6 +685,18 @@ function update(dt: number) {
       }
     }
 
+    // Collide with round posts
+    for (const p of posts) {
+      const hit = circleCircleResolve(ball.x, ball.y, ball.r, p.x, p.y, p.r);
+      if (hit) {
+        ball.x += hit.nx * hit.depth;
+        ball.y += hit.ny * hit.depth;
+        const vn = ball.vx * hit.nx + ball.vy * hit.ny;
+        ball.vx -= (1 + restitution) * vn * hit.nx;
+        ball.vy -= (1 + restitution) * vn * hit.ny;
+      }
+    }
+
     // Fallback canvas bounds (if no outer walls present)
     if (ball.x - ball.r < 0) { ball.x = ball.r; ball.vx *= -restitution; }
     if (ball.x + ball.r > WIDTH) { ball.x = WIDTH - ball.r; ball.vx *= -restitution; }
@@ -682,16 +712,18 @@ function update(dt: number) {
     }
   }
 
-  // Water OOB: only while playing
+  // Water OOB: only while playing; bridges override water
   if (gameState === 'play') {
   for (const w of waters) {
-    if (pointInRect(ball.x, ball.y, w)) {
+      if (!pointInRect(ball.x, ball.y, w)) continue;
+      let onBridge = false;
+      for (const b of bridges) { if (pointInRect(ball.x, ball.y, b)) { onBridge = true; break; } }
+      if (onBridge) continue;
       // penalty is +1 stroke; reset to pre-shot position
       strokes += 1;
       ball.x = preShot.x; ball.y = preShot.y;
       ball.vx = 0; ball.vy = 0; ball.moving = false;
       break;
-      }
     }
   }
 
@@ -1044,6 +1076,14 @@ function draw() {
     ctx.fillStyle = '#d4b36a';
     ctx.fillRect(r.x, r.y, r.w, r.h);
   }
+  // bridges (fairway rectangles spanning water)
+  for (const r of bridges) {
+    ctx.fillStyle = COLORS.fairway;
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = COLORS.fairwayLine;
+    ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+  }
   // hills (visualize with directional gradient overlay)
   for (const h of hills) {
     const grad = (() => {
@@ -1117,6 +1157,19 @@ function draw() {
     ctx.moveTo(w.x + 1, w.y + 1);
     ctx.lineTo(w.x + 1, w.y + w.h - 1);
     ctx.stroke();
+  }
+
+  // round posts (pillars)
+  for (const p of posts) {
+    // shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath(); ctx.arc(p.x + 2, p.y + 2, p.r, 0, Math.PI * 2); ctx.fill();
+    // face
+    ctx.fillStyle = COLORS.wallFill;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+    // rim
+    ctx.strokeStyle = COLORS.wallStroke; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r - 1, 0, Math.PI * 2); ctx.stroke();
   }
 
   // hole cup (draw after walls so it is visible)
@@ -1344,6 +1397,8 @@ async function loadLevel(path: string) {
   // Ensure decorations sit on the table outside the fairway if placed near edges
   snapDecorationsToTable();
   hills = lvl.hills ?? [];
+  bridges = lvl.bridges ?? [];
+  posts = lvl.posts ?? [];
   ball.x = lvl.tee.x; ball.y = lvl.tee.y; ball.vx = 0; ball.vy = 0; ball.moving = false;
   hole.x = lvl.cup.x; hole.y = lvl.cup.y; (hole as any).r = lvl.cup.r;
   strokes = 0;

@@ -1148,6 +1148,19 @@ function draw() {
     ctx.fillStyle = '#d4b36a';
     ctx.fillRect(r.x, r.y, r.w, r.h);
   }
+  // polygon sand
+  if (sandsPoly.length > 0) {
+    ctx.fillStyle = '#d4b36a';
+    for (const sp of sandsPoly) {
+      const pts = sp.points;
+      if (!pts || pts.length < 6) continue;
+      ctx.beginPath();
+      ctx.moveTo(pts[0], pts[1]);
+      for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
   // bridges (fairway rectangles spanning water)
   for (const r of bridges) {
     ctx.fillStyle = COLORS.fairway;

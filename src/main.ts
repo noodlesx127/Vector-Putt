@@ -729,6 +729,27 @@ function update(dt: number) {
       }
     }
 
+    // Collide with polygon walls (treat each edge as a segment)
+    for (const poly of polyWalls) {
+      const pts = poly.points;
+      if (!pts || pts.length < 4) continue;
+      for (let i = 0; i < pts.length; i += 2) {
+        const j = (i + 2) % pts.length;
+        const x1 = pts[i];
+        const y1 = pts[i + 1];
+        const x2 = pts[j];
+        const y2 = pts[j + 1];
+        const hit = circleSegmentResolve(ball.x, ball.y, ball.r, x1, y1, x2, y2);
+        if (hit) {
+          ball.x += hit.nx * hit.depth;
+          ball.y += hit.ny * hit.depth;
+          const vn = ball.vx * hit.nx + ball.vy * hit.ny;
+          ball.vx -= (1 + restitution) * vn * hit.nx;
+          ball.vy -= (1 + restitution) * vn * hit.ny;
+        }
+      }
+    }
+
     // Fallback canvas bounds (if no outer walls present)
     if (ball.x - ball.r < 0) { ball.x = ball.r; ball.vx *= -restitution; }
     if (ball.x + ball.r > WIDTH) { ball.x = WIDTH - ball.r; ball.vx *= -restitution; }

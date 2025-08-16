@@ -4,7 +4,7 @@
 
 # Project Progress — Vector Putt
 
-Updated: 2025-08-11 02:25 (local)
+Updated: 2025-08-16 (local)
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 
@@ -23,7 +23,6 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 ## Next Up (Short Horizon)
 - [x] HUD: optional hole title and Replay button
 - [x] Auto-snap decorations to table when near outer walls
-- [ ] Diagonal/chamfered wall support (schema + collision)
 - [x] Prepare 1–2 additional prototype holes using the same JSON schema
 - [ ] Tune hill strength and boundaries to match reference feel
 - [x] Course definition file and running total across course
@@ -57,6 +56,7 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [x] Scaffold project (TS + Vite + Canvas)
 - [x] Fixed canvas 960×600 + letterbox (visual proportions closer to reference)
 - [x] Aim–drag–release loop; friction; input lock while moving
+ - [x] Polygon walls: rendering + collision via segment edges (diagonals/triangles)
 
 ## Risks / Mitigations
 - **Physics feel mismatch** → Add tunable config (friction, restitution, stop-epsilon, power curve)

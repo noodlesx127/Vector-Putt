@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.3.5 — 2025-08-16
+
+- Polygon walls: added render and segment-based collision (diagonals/chamfers/triangles).
+- Schema: new `wallsPoly: [{ points: [x,y,...] }]` supported in level JSON.
+- Content: added a small triangular wedge example to `levels/level5.json`.
+- Version: in-game version set to `0.3.5`.
+
 ## v0.3.4 — 2025-08-11
 
 - New obstacles (prototype):

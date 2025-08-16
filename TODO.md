@@ -76,7 +76,7 @@ Notes:
   - [x] Walls/boundaries
   - [x] Terrain tiles (fairway, sand, water)
   - [ ] Optional: slopes, moving blocks, boosters, tunnels
- - [ ] Course definition (ordered list of holes + par values)
+ - [x] Course definition (ordered list of holes + par values)
  - [x] Author 3–5 MVP holes to validate mechanics (added level4, level5)
 - [x] Adjust L1 decorations to sit outside playfield
 - [x] L2: add doorway into box and place cup inside; reachable sand
@@ -90,13 +90,13 @@ Notes:
   - [ ] Preview thumbnails and quick-play from the browser
 
 ## Obstacles & Geometry from Reference Screens (new work)
-- [ ] Diagonal walls and polygon bumpers
-  - [ ] Add polygonal wall support (triangles, chamfers) with correct reflections
-  - [ ] Update level schema (e.g., `wallsPoly: [{ points: [x,y,...] }]`)
+- [x] Diagonal walls and polygon bumpers
+  - [x] Add polygonal wall support (triangles, chamfers) with correct reflections
+  - [x] Update level schema (e.g., `wallsPoly: [{ points: [x,y,...] }]`)
   - [ ] Editor support (drag vertices, snap, rotate)
-- [ ] Round posts/pillars (circular colliders)
-  - [ ] Add circular obstacle type (e.g., `posts: [{ x, y, r }]`)
-  - [ ] Collision: circle–circle with ball; wall restitution respected
+- [x] Round posts/pillars (circular colliders)
+  - [x] Add circular obstacle type (e.g., `posts: [{ x, y, r }]`)
+  - [x] Collision: circle–circle with ball; wall restitution respected
   - [ ] Optional decorative caps (non-colliding)
 - [ ] Triangle/wedge deflectors
   - [ ] Implement as polygon walls; verify bounce angles feel correct
@@ -104,10 +104,10 @@ Notes:
 - [ ] Flower fence borders (decoration-only)
   - [ ] Keep as non-colliding visuals; ball can pass through into underlying terrain (e.g., water)
   - [ ] Allow placement overlapping fairway/water edges; draw above water; no collision mask
-- [ ] Land bridge over water (static, no slope)
-  - [ ] Support narrow fairway rectangles spanning water with correct priority (fairway collision only on bridge)
-  - [ ] Ensure off-bridge positions fall into water penalty
-  - [ ] Visual polish: optional subtle edge highlight to read as a thin bridge
+- [x] Land bridge over water (static, no slope)
+  - [x] Support narrow fairway rectangles spanning water with correct priority (fairway collision only on bridge)
+  - [x] Ensure off-bridge positions fall into water penalty
+  - [x] Visual polish: optional subtle edge highlight to read as a thin bridge
 - [ ] Sand wedge/trapezoid pits (yellow trapezoids in refs)
   - [ ] Support triangular/trapezoid sand shapes (via polygons or typed shapes)
   - [ ] Tune friction and visuals for these shapes
@@ -159,7 +159,7 @@ Notes:
 - [x] Flower decorations pass (non-colliding), positioned outside playfield
 - [x] Auto-snap decorations near outer walls to table area (avoid playfield overlap)
 - [ ] Per-level palette overrides (wall/fairway/decor variations)
-- [ ] Diagonal/chamfered walls support in schema + rendering
+- [x] Diagonal/chamfered walls support in schema + rendering
 
 ## Reference Videos — Consolidated Findings
 Sources:

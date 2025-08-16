@@ -24,6 +24,7 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [x] HUD: optional hole title and Replay button
 - [x] Auto-snap decorations to table when near outer walls
 - [x] Prepare 1–2 additional prototype holes using the same JSON schema
+  - [x] Level 6: diagonal-wall showcase using `wallsPoly` (crossed banks + wedge)
 - [x] Tune hill strength and boundaries to match reference feel (added falloff; updated Level 3)
 - [x] Course definition file and running total across course
  - [x] Course Summary overlay with per-hole list and total

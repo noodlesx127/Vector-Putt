@@ -35,6 +35,12 @@ All notable changes to this project will be documented in this file.
 - Water splash visual: ripple effect drawn on water where the ball lands before reset.
 - Version: in-game version updated to `0.3.10`.
 
+## v0.3.12 — 2025-08-16
+
+- Content: added `levels/level6.json` — a diagonal-wall showcase hole using `wallsPoly` (crossed 45° banks and wedge near cup).
+- Course: updated `levels/course.json` to include level 6; set `course.total` to 6 across levels 1–5.
+- Version: in-game and package version updated to `0.3.12`.
+
 ## v0.3.11 — 2025-08-16
 
 - Impact feedback: brief bounce flash drawn along the collision normal; tied to bounce intensity.

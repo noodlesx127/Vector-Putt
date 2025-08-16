@@ -40,6 +40,10 @@ All notable changes to this project will be documented in this file.
 - UI polish: color-coded score text (sunk banner and course summary) — green for under par, red for over.
 - Version: in-game version updated to `0.3.14`.
 
+### Content
+- Added `levels/level7.json` (Triangle Alley): multiple wedge deflectors using `wallsPoly`.
+- Updated `levels/course.json` and `course.total` across levels to 7.
+
 ## v0.3.13 — 2025-08-16
 
 - Water splash visual refined: multiple staggered ripple rings for a clearer retro splash.

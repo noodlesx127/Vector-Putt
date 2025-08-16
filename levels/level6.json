@@ -1,6 +1,6 @@
 {
   "canvas": { "width": 800, "height": 600 },
-  "course": { "index": 6, "total": 6, "title": "Cross Banks" },
+  "course": { "index": 6, "total": 7, "title": "Cross Banks" },
   "par": 3,
   "tee": { "x": 120, "y": 460 },
   "cup": { "x": 660, "y": 160, "r": 12 },

@@ -24,7 +24,7 @@ let gameState: 'menu' | 'course' | 'options' | 'changelog' | 'loading' | 'play' 
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
-const APP_VERSION = '0.3.10';
+const APP_VERSION = '0.3.11';
 const restitution = 0.9; // wall bounce energy retention
 const frictionK = 1.2; // base exponential damping (reduced for less "sticky" green)
 const stopSpeed = 5; // px/s threshold to consider stopped (tunable)
@@ -94,6 +94,8 @@ let levelCanvas = { width: WIDTH, height: HEIGHT };
 // Transient visuals
 type SplashFx = { x: number; y: number; age: number };
 let splashes: SplashFx[] = [];
+type BounceFx = { x: number; y: number; nx: number; ny: number; age: number };
+let bounces: BounceFx[] = [];
 
 function getViewOffsetX(): number {
   const extra = WIDTH - levelCanvas.width;
@@ -1452,6 +1454,25 @@ function draw() {
     // rim
     ctx.strokeStyle = COLORS.wallStroke; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(p.x, p.y, p.r - 1, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  // impact flashes (bounces)
+  if (bounces.length > 0) {
+    const next: BounceFx[] = [];
+    for (const fx of bounces) {
+      fx.age += 1 / 60;
+      const t = Math.min(1, fx.age / 0.25);
+      const alpha = 1 - t;
+      const len = 18 + 10 * (1 - t);
+      ctx.strokeStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
+      ctx.lineWidth = 2 * (1 - t);
+      ctx.beginPath();
+      ctx.moveTo(fx.x, fx.y);
+      ctx.lineTo(fx.x + fx.nx * len, fx.y + fx.ny * len);
+      ctx.stroke();
+      if (t < 1) next.push(fx);
+    }
+    bounces = next;
   }
 
   // hole cup (draw after walls so it is visible)

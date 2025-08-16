@@ -24,7 +24,7 @@ let gameState: 'menu' | 'course' | 'options' | 'changelog' | 'loading' | 'play' 
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
-const APP_VERSION = '0.3.4';
+const APP_VERSION = '0.3.5';
 const restitution = 0.9; // wall bounce energy retention
 const frictionK = 1.2; // base exponential damping (reduced for less "sticky" green)
 const stopSpeed = 5; // px/s threshold to consider stopped (tunable)
@@ -50,6 +50,7 @@ const levelCache = new Map<string, Level>();
 type Wall = { x: number; y: number; w: number; h: number };
 type Rect = { x: number; y: number; w: number; h: number };
 type Circle = { x: number; y: number; r: number };
+type Poly = { points: number[] };
 type Decoration = { x: number; y: number; w: number; h: number; kind: 'flowers' };
 type Slope = { x: number; y: number; w: number; h: number; dir: 'N'|'S'|'E'|'W'|'NE'|'NW'|'SE'|'SW'; strength?: number };
 type Level = {
@@ -63,6 +64,7 @@ type Level = {
   water?: Rect[];
   bridges?: Rect[];
   posts?: Circle[];
+  wallsPoly?: Poly[];
   decorations?: Decoration[];
   hills?: Slope[];
 };
@@ -82,6 +84,7 @@ let sands: Rect[] = [];
 let waters: Rect[] = [];
 let bridges: Rect[] = [];
 let posts: Circle[] = [];
+let polyWalls: Poly[] = [];
 let decorations: Decoration[] = [];
 let hills: Slope[] = [];
 // Logical level canvas size from level JSON; defaults to actual canvas size
@@ -639,6 +642,35 @@ function circleCircleResolve(bx: number, by: number, br: number, cx: number, cy:
   return { nx, ny, depth };
 }
 
+function circleSegmentResolve(
+  bx: number,
+  by: number,
+  br: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number
+) {
+  const vx = x2 - x1;
+  const vy = y2 - y1;
+  const wx = bx - x1;
+  const wy = by - y1;
+  const len2 = vx * vx + vy * vy || 0.0001;
+  let t = (wx * vx + wy * vy) / len2;
+  if (t < 0) t = 0; else if (t > 1) t = 1;
+  const cx = x1 + t * vx;
+  const cy = y1 + t * vy;
+  const dx = bx - cx;
+  const dy = by - cy;
+  const dist2 = dx * dx + dy * dy;
+  if (dist2 >= br * br) return null;
+  const dist = Math.max(0.0001, Math.sqrt(dist2));
+  const nx = dx / dist;
+  const ny = dy / dist;
+  const depth = br - dist;
+  return { nx, ny, depth };
+}
+
 function update(dt: number) {
   if (paused) return; // freeze simulation
   if (ball.moving && gameState === 'play') {
@@ -1159,6 +1191,30 @@ function draw() {
     ctx.stroke();
   }
 
+  // polygon walls (render simple beveled stroke)
+  ctx.lineWidth = 2;
+  for (const poly of polyWalls) {
+    const pts = poly.points;
+    if (!pts || pts.length < 6) continue;
+    // shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.moveTo(pts[0] + 2, pts[1] + 2);
+    for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i] + 2, pts[i + 1] + 2);
+    ctx.closePath();
+    ctx.fill();
+    // face
+    ctx.fillStyle = COLORS.wallFill;
+    ctx.beginPath();
+    ctx.moveTo(pts[0], pts[1]);
+    for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+    ctx.closePath();
+    ctx.fill();
+    // rim
+    ctx.strokeStyle = COLORS.wallStroke;
+    ctx.stroke();
+  }
+
   // round posts (pillars)
   for (const p of posts) {
     // shadow
@@ -1399,6 +1455,7 @@ async function loadLevel(path: string) {
   hills = lvl.hills ?? [];
   bridges = lvl.bridges ?? [];
   posts = lvl.posts ?? [];
+  polyWalls = lvl.wallsPoly ?? [];
   ball.x = lvl.tee.x; ball.y = lvl.tee.y; ball.vx = 0; ball.vy = 0; ball.moving = false;
   hole.x = lvl.cup.x; hole.y = lvl.cup.y; (hole as any).r = lvl.cup.r;
   strokes = 0;

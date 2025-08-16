@@ -94,6 +94,8 @@ Notes:
   - [ ] Level browser: scan `levels/` and list levels; searchable and filterable
   - [ ] Preview thumbnails and quick-play from the browser
   - [ ] Logical cup placement tools: toggle line-of-sight from tee, show path-length heatmap, validate “must pass gates/banks” rules
+  - [ ] Shape stamps/presets: chevrons, diamonds, octagons, sawtooth edges, post grids
+  - [ ] Min-corridor-width and wall-thickness helpers to preserve 1-ball lanes
 
 ## Obstacles & Geometry from Reference Screens (new work)
 - [x] Diagonal walls and polygon bumpers
@@ -120,6 +122,23 @@ Notes:
 - [ ] Wall thickness and outline tuning
   - [ ] Match reference thickness for main border and inner lanes
   - [ ] Ensure collision shapes match visuals (no visual/physics mismatch)
+
+### New obstacles/features inferred from screenshots
+- [ ] Polygon water (`waterPoly`): support non-rectangular water shapes (octagons, rivers, bays)
+  - [ ] Rendering and OOB detection via `pointInPolygon`
+  - [ ] Bridges spanning polygon water (priority draw and collision override)
+- [ ] Hills as polygons (`hillsPoly`): slope zones that are triangular/chevron/irregular, not only rectangles
+  - [ ] Visual gradient with directional arrows style to match references
+  - [ ] Tune strength per zone for arrow-lane “fast” and “slow” strips
+- [ ] Chevron/arrow bumpers: concave/convex wedge pairs used as deflectors near cups and corridors (polygon wall presets)
+- [ ] Sawtooth edges: repeated small triangles forming a toothed boundary (wall generator/preset)
+- [ ] Octagonal islands and rings: inner courtyards around the cup, thin ring walkways (polygon wall presets)
+- [ ] Post arrays: dense fields of round posts (billiards board); editor stamp to place grids/rows; optional decorative caps
+- [ ] Multi-lane corridors with gates: narrow 1-ball lanes separated by thin walls; ensure min corridor width setting
+- [ ] Water canals/rivers cutting diagonally through the course (polygon water + bridges/landings)
+- [ ] Funnel entries and notches: 45° wedge funnels into passages (preset shapes)
+- [ ] Optional “rough” terrain (medium-high friction distinct from sand) for variety lanes; visuals as darker strip
+- [ ] Multiple cups per level (optional variant seen in references); record best capture path
 
 ### Clarifications needed (please confirm):
 - [ ] Do flower borders act as solid walls, or are they decoration on top of a solid wall, or decoration only?

@@ -1,6 +1,6 @@
 {
   "canvas": { "width": 800, "height": 600 },
-  "course": { "index": 4, "total": 7, "title": "Straightaway" },
+  "course": { "index": 4, "total": 8, "title": "Straightaway" },
   "par": 2,
   "tee": { "x": 120, "y": 300 },
   "cup": { "x": 680, "y": 300, "r": 12 },

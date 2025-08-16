@@ -1,6 +1,6 @@
 {
   "canvas": { "width": 800, "height": 600 },
-  "course": { "index": 7, "total": 7, "title": "Triangle Alley" },
+  "course": { "index": 7, "total": 8, "title": "Triangle Alley" },
   "par": 3,
   "tee": { "x": 120, "y": 460 },
   "cup": { "x": 680, "y": 180, "r": 12 },

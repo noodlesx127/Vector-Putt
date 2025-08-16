@@ -24,7 +24,7 @@ let gameState: 'menu' | 'course' | 'options' | 'changelog' | 'loading' | 'play' 
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
-const APP_VERSION = '0.3.14';
+const APP_VERSION = '0.3.15';
 const restitution = 0.9; // wall bounce energy retention
 const frictionK = 1.2; // base exponential damping (reduced for less "sticky" green)
 const stopSpeed = 5; // px/s threshold to consider stopped (tunable)
@@ -63,6 +63,7 @@ type Level = {
   sand?: Rect[];
   sandPoly?: Poly[];
   water?: Rect[];
+  waterPoly?: Poly[];
   bridges?: Rect[];
   posts?: Circle[];
   wallsPoly?: Poly[];
@@ -84,6 +85,7 @@ let walls: Wall[] = [];
 let sands: Rect[] = [];
 let sandsPoly: Poly[] = [];
 let waters: Rect[] = [];
+let watersPoly: Poly[] = [];
 let bridges: Rect[] = [];
 let posts: Circle[] = [];
 let polyWalls: Poly[] = [];
@@ -956,19 +958,35 @@ function update(dt: number) {
 
   // Water OOB: only while playing; bridges override water
   if (gameState === 'play') {
-  for (const w of waters) {
+    // Rect water check
+    for (const w of waters) {
       if (!pointInRect(ball.x, ball.y, w)) continue;
       let onBridge = false;
       for (const b of bridges) { if (pointInRect(ball.x, ball.y, b)) { onBridge = true; break; } }
       if (onBridge) continue;
-      // penalty is +1 stroke; reset to pre-shot position
       strokes += 1;
-      // capture splash at impact location before resetting
       splashes.push({ x: ball.x, y: ball.y, age: 0 });
-      ball.x = preShot.x; ball.y = preShot.y;
-      ball.vx = 0; ball.vy = 0; ball.moving = false;
+      ball.x = preShot.x; ball.y = preShot.y; ball.vx = 0; ball.vy = 0; ball.moving = false;
       AudioSfx.playSplash();
       break;
+    }
+    // Polygon water check
+    if (watersPoly.length > 0) {
+      let inPolyWater = false;
+      for (const wp of watersPoly) {
+        if (!wp.points || wp.points.length < 6) continue;
+        if (pointInPolygon(ball.x, ball.y, wp.points)) { inPolyWater = true; break; }
+      }
+      if (inPolyWater) {
+        let onBridge = false;
+        for (const b of bridges) { if (pointInRect(ball.x, ball.y, b)) { onBridge = true; break; } }
+        if (!onBridge) {
+          strokes += 1;
+          splashes.push({ x: ball.x, y: ball.y, age: 0 });
+          ball.x = preShot.x; ball.y = preShot.y; ball.vx = 0; ball.vy = 0; ball.moving = false;
+          AudioSfx.playSplash();
+        }
+      }
     }
   }
 
@@ -1790,6 +1808,7 @@ async function loadLevel(path: string) {
   sands = lvl.sand ?? [];
   sandsPoly = lvl.sandPoly ?? [];
   waters = lvl.water ?? [];
+  watersPoly = lvl.waterPoly ?? [];
   decorations = lvl.decorations ?? [];
   // Ensure decorations sit on the table outside the fairway if placed near edges
   snapDecorationsToTable();

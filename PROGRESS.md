@@ -76,3 +76,4 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
   - Layout & Graphics: https://www.youtube.com/watch?v=Lp4iL9WKpV4
   - Hole-in-One Compilation: https://www.youtube.com/watch?v=4_I6pN-SNiQ
   - Full Playthrough: https://www.youtube.com/watch?v=kMB2YdKYy7c
+ - Reference screenshots directory: `level_screenshots/` (captures from original game; use for ideas, layouts, and obstacle styles)

@@ -176,6 +176,9 @@ Sources:
 
 Important: These three videos are canonical reference points. Use them extensively to guide decisions across Gameplay, Level Design & Environment, Look & Feel, UI/UX, and Physics & Interactions. Prefer matching the observed behavior/visuals unless there is a deliberate, documented reason to deviate.
 
+Additional assets:
+- Reference screenshots folder: `level_screenshots/` — curated captures of original-game levels. Use these for new level ideas, obstacle shapes, chamfers, bridges, posts, and overall layout patterns.
+
 Observation tasks (verify and document in `docs/VIDEO_NOTES.md`):
 - [ ] Camera/layout: top-down orthographic; bordered fairways; sharp-corner walls
 - [ ] Visual style: flat solid colors; strong outlines; minimal effects

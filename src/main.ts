@@ -24,7 +24,7 @@ let gameState: 'menu' | 'course' | 'options' | 'changelog' | 'loading' | 'play' 
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
-const APP_VERSION = '0.3.7';
+const APP_VERSION = '0.3.9';
 const restitution = 0.9; // wall bounce energy retention
 const frictionK = 1.2; // base exponential damping (reduced for less "sticky" green)
 const stopSpeed = 5; // px/s threshold to consider stopped (tunable)
@@ -109,6 +109,71 @@ let courseScores: number[] = []; // strokes per completed hole
 let coursePars: number[] = []; // par per hole
 let holeRecorded = false; // guard to prevent double-recording
 let summaryTimer: number | null = null; // timer to auto-open summary after last-hole banner
+
+// Audio (basic SFX via Web Audio API)
+const AudioSfx = {
+  ctx: null as (AudioContext | null),
+  volume: 0.6,
+  muted: false,
+  ensure(): void {
+    if (this.ctx) return;
+    try { this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)(); } catch {}
+  },
+  setVolume(v: number) { this.volume = Math.max(0, Math.min(1, v)); },
+  toggleMute() { this.muted = !this.muted; },
+  playPutt(): void {
+    if (!this.ctx || this.muted || this.volume <= 0) return;
+    const o = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    o.type = 'square';
+    o.frequency.value = 280;
+    g.gain.value = 0.001;
+    g.gain.linearRampToValueAtTime(0.12 * this.volume, this.ctx.currentTime + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + 0.08);
+    o.connect(g).connect(this.ctx.destination);
+    o.start(); o.stop(this.ctx.currentTime + 0.09);
+  },
+  playBounce(intensity: number): void {
+    if (!this.ctx || this.muted || this.volume <= 0) return;
+    const o = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    o.type = 'triangle';
+    o.frequency.value = 500 + 800 * Math.max(0, Math.min(1, intensity));
+    g.gain.value = 0.001;
+    g.gain.linearRampToValueAtTime(0.08 * this.volume, this.ctx.currentTime + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + 0.06);
+    o.connect(g).connect(this.ctx.destination);
+    o.start(); o.stop(this.ctx.currentTime + 0.07);
+  },
+  playSplash(): void {
+    if (!this.ctx || this.muted || this.volume <= 0) return;
+    const len = 0.25;
+    const buffer = this.ctx.createBuffer(1, this.ctx.sampleRate * len, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-6 * (i / data.length));
+    }
+    const src = this.ctx.createBufferSource();
+    const g = this.ctx.createGain();
+    src.buffer = buffer;
+    g.gain.value = 0.12 * this.volume;
+    src.connect(g).connect(this.ctx.destination);
+    src.start();
+  },
+  playSink(): void {
+    if (!this.ctx || this.muted || this.volume <= 0) return;
+    const o = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(520, this.ctx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(720, this.ctx.currentTime + 0.12);
+    g.gain.value = 0.001;
+    g.gain.linearRampToValueAtTime(0.1 * this.volume, this.ctx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + 0.18);
+    o.connect(g).connect(this.ctx.destination);
+    o.start(); o.stop(this.ctx.currentTime + 0.2);
+  }
+};
 
 // Aim state
 let isAiming = false;
@@ -333,6 +398,26 @@ function getCourseBackRect() {
   return { x, y, w, h };
 }
 
+// Options: simple audio control button rects
+function getOptionsVolMinusRect() {
+  const w = 36, h = 28;
+  const x = WIDTH / 2 - 180;
+  const y = 230;
+  return { x, y, w, h };
+}
+function getOptionsVolPlusRect() {
+  const w = 36, h = 28;
+  const x = WIDTH / 2 - 180 + 44;
+  const y = 230;
+  return { x, y, w, h };
+}
+function getOptionsMuteRect() {
+  const w = 90, h = 28;
+  const x = WIDTH / 2 - 180 + 100;
+  const y = 230;
+  return { x, y, w, h };
+}
+
 function worldFromEvent(e: MouseEvent) {
   const rect = canvas.getBoundingClientRect();
   // Use rect size to derive scale; robust to any CSS transform/zoom
@@ -345,6 +430,7 @@ function worldFromEvent(e: MouseEvent) {
 }
 
 canvas.addEventListener('mousedown', (e) => {
+  AudioSfx.ensure();
   const p = worldFromEvent(e); // canvas coords
   // Handle Main Menu buttons
   if (gameState === 'menu') {
@@ -395,6 +481,13 @@ canvas.addEventListener('mousedown', (e) => {
       gameState = 'menu';
       return;
     }
+    // Volume controls
+    const vm = getOptionsVolMinusRect();
+    if (p.x >= vm.x && p.x <= vm.x + vm.w && p.y >= vm.y && p.y <= vm.y + vm.h) { AudioSfx.setVolume(AudioSfx.volume - 0.1); return; }
+    const vp = getOptionsVolPlusRect();
+    if (p.x >= vp.x && p.x <= vp.x + vp.w && p.y >= vp.y && p.y <= vp.y + vp.h) { AudioSfx.setVolume(AudioSfx.volume + 0.1); return; }
+    const mu = getOptionsMuteRect();
+    if (p.x >= mu.x && p.x <= mu.x + mu.w && p.y >= mu.y && p.y <= mu.y + mu.h) { AudioSfx.toggleMute(); return; }
   }
   // Handle HUD Menu button first (toggles pause)
   if (!paused) {
@@ -477,7 +570,13 @@ canvas.addEventListener('mousemove', (e) => {
   if (gameState === 'options') {
     const back = getCourseBackRect();
     hoverOptionsBack = p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h;
-    canvas.style.cursor = hoverOptionsBack ? 'pointer' : 'default';
+    const vm = getOptionsVolMinusRect();
+    const vp = getOptionsVolPlusRect();
+    const mu = getOptionsMuteRect();
+    hoverOptionsVolMinus = p.x >= vm.x && p.x <= vm.x + vm.w && p.y >= vm.y && p.y <= vm.y + vm.h;
+    hoverOptionsVolPlus = p.x >= vp.x && p.x <= vp.x + vp.w && p.y >= vp.y && p.y <= vp.y + vp.h;
+    hoverOptionsMute = p.x >= mu.x && p.x <= mu.x + mu.w && p.y >= mu.y && p.y <= mu.y + mu.h;
+    canvas.style.cursor = (hoverOptionsBack || hoverOptionsVolMinus || hoverOptionsVolPlus || hoverOptionsMute) ? 'pointer' : 'default';
     return;
   }
   // Hover state for Menu button
@@ -516,6 +615,7 @@ canvas.addEventListener('mouseup', (e) => {
   preShot = { x: aimStart.x, y: aimStart.y };
   ball.moving = true;
   strokes += 1;
+  AudioSfx.playPutt();
 });
 
 // Click handler to be extra robust for continue actions on banners
@@ -689,6 +789,8 @@ function circleSegmentResolve(
   return { nx, ny, depth };
 }
 
+let lastBounceSfxMs = 0;
+
 function update(dt: number) {
   if (paused) return; // freeze simulation
   if (ball.moving && gameState === 'play') {
@@ -741,6 +843,11 @@ function update(dt: number) {
         const vn = ball.vx * hit.nx + ball.vy * hit.ny; // component along normal
         ball.vx -= (1 + restitution) * vn * hit.nx;
         ball.vy -= (1 + restitution) * vn * hit.ny;
+        const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        if (now - lastBounceSfxMs > 80 && Math.abs(vn) > 50) {
+          lastBounceSfxMs = now;
+          AudioSfx.playBounce(Math.min(1, Math.abs(vn) / 400));
+        }
       }
     }
 
@@ -773,6 +880,11 @@ function update(dt: number) {
           const vn = ball.vx * hit.nx + ball.vy * hit.ny;
           ball.vx -= (1 + restitution) * vn * hit.nx;
           ball.vy -= (1 + restitution) * vn * hit.ny;
+          const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+          if (now - lastBounceSfxMs > 80 && Math.abs(vn) > 50) {
+            lastBounceSfxMs = now;
+            AudioSfx.playBounce(Math.min(1, Math.abs(vn) / 400));
+          }
         }
       }
     }
@@ -803,6 +915,7 @@ function update(dt: number) {
       strokes += 1;
       ball.x = preShot.x; ball.y = preShot.y;
       ball.vx = 0; ball.vy = 0; ball.moving = false;
+      AudioSfx.playSplash();
       break;
     }
   }
@@ -829,6 +942,7 @@ function update(dt: number) {
         holeRecorded = true;
         if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
       }
+      AudioSfx.playSink();
     }
   }
 }
@@ -1045,6 +1159,35 @@ function draw() {
     ];
     let oy = 140;
     for (const line of lines) { ctx.fillText('• ' + line, WIDTH/2 - 180, oy); oy += 22; }
+    // Back button
+    // Audio section
+    oy += 8;
+    ctx.font = '18px system-ui, sans-serif';
+    ctx.fillText('Audio', WIDTH/2 - 180, oy); oy += 24;
+    ctx.font = '14px system-ui, sans-serif';
+    const volPct = Math.round(AudioSfx.volume * 100);
+    ctx.fillText(`SFX Volume: ${AudioSfx.muted ? 'Muted' : volPct + '%'}`, WIDTH/2 - 180, oy);
+    // Buttons
+    const vm = getOptionsVolMinusRect();
+    const vp = getOptionsVolPlusRect();
+    const mu = getOptionsMuteRect();
+    ctx.lineWidth = 1.5;
+    // - button
+    ctx.strokeStyle = hoverOptionsVolMinus ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverOptionsVolMinus ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.10)';
+    ctx.fillRect(vm.x, vm.y, vm.w, vm.h); ctx.strokeRect(vm.x, vm.y, vm.w, vm.h);
+    ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('-', vm.x + vm.w/2, vm.y + vm.h/2 + 0.5);
+    // + button
+    ctx.strokeStyle = hoverOptionsVolPlus ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverOptionsVolPlus ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.10)';
+    ctx.fillRect(vp.x, vp.y, vp.w, vp.h); ctx.strokeRect(vp.x, vp.y, vp.w, vp.h);
+    ctx.fillStyle = '#ffffff'; ctx.fillText('+', vp.x + vp.w/2, vp.y + vp.h/2 + 0.5);
+    // mute toggle
+    ctx.strokeStyle = hoverOptionsMute ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverOptionsMute ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.10)';
+    ctx.fillRect(mu.x, mu.y, mu.w, mu.h); ctx.strokeRect(mu.x, mu.y, mu.w, mu.h);
+    ctx.fillStyle = '#ffffff'; ctx.fillText(AudioSfx.muted ? 'Unmute' : 'Mute', mu.x + mu.w/2, mu.y + mu.h/2 + 0.5);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     // Back button
     const back = getCourseBackRect();
     ctx.lineWidth = 1.5;

@@ -39,6 +39,7 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [ ] Post-Hole banner with classic golf terms
 - [ ] Bank-shot dev harness (dev-only path preview)
 - [ ] Palette extraction to `docs/PALETTE.md`; apply flat colors + outlines
+ - [x] Options: basic SFX volume and mute controls
 
 ## Blockers / Open Questions
 - [ ] Finalize exact canvas resolution (800×600 vs. 1024×768) based on references

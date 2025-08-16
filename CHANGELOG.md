@@ -25,6 +25,11 @@ All notable changes to this project will be documented in this file.
 - Hills: tuned base acceleration and added optional `falloff` parameter for edge-weighted push.
 - Level 3: updated hill to use tuned values (`strength: 0.65`, `falloff: 1.2`).
 
+## v0.3.9 — 2025-08-16
+
+- Options screen: added basic SFX controls (volume +/-, mute). Simple Web Audio SFX for putt, bounce, splash, sink.
+- Version: in-game version updated to `0.3.9`.
+
 ## v0.3.4 — 2025-08-11
 
 - New obstacles (prototype):

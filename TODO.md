@@ -133,6 +133,7 @@ Notes:
 - [ ] Options: audio volumes (SFX/Music), accessibility toggles
 - [x] Pause menu overlay with info/shortcuts/version (P/Escape)
   - [x] Buttons: Replay, Close, Back to Main Menu
+  - [ ] Add Options to Pause menu (open in-game Options; Back/Esc returns to Pause/Game)
 - [x] Restart hole (R) and Next level (N)
   - [x] Robust transitions (no double-advance); cached/preloaded next level for snappier switches
   - [x] Loading state before first play; prefetch first two levels

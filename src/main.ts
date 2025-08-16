@@ -218,6 +218,13 @@ function getPauseBackRect() {
   const y = HEIGHT - 130;
   return { x, y, w, h };
 }
+// UI: Options button on Pause overlay (above bottom row)
+function getPauseOptionsRect() {
+  const w = 140, h = 28;
+  const x = WIDTH / 2 - w / 2;
+  const y = HEIGHT - 160;
+  return { x, y, w, h };
+}
 let hoverMenu = false;
 let hoverPauseReplay = false;
 let hoverPauseClose = false;
@@ -230,9 +237,15 @@ let hoverCourseBack = false;
 let hoverChangelogBack = false;
 let hoverSummaryBack = false;
 let hoverOptionsBack = false;
+let hoverOptionsVolMinus = false;
+let hoverOptionsVolPlus = false;
+let hoverOptionsMute = false;
+let hoverPauseOptions = false;
 let transitioning = false; // prevent double-advance while changing holes
 let lastAdvanceFromSunkMs = 0; // used to swallow trailing click after mousedown
 const CLICK_SWALLOW_MS = 180; // shorten delay for snappier feel
+
+let previousGameState: 'menu' | 'course' | 'options' | 'changelog' | 'loading' | 'play' | 'sunk' | 'summary' = 'menu';
 
 // (duplicate block removed)
 
@@ -447,6 +460,7 @@ canvas.addEventListener('mousedown', (e) => {
     }
     const o = getMainOptionsRect();
     if (p.x >= o.x && p.x <= o.x + o.w && p.y >= o.y && p.y <= o.y + o.h) {
+      previousGameState = 'menu';
       gameState = 'options';
       return;
     }
@@ -482,10 +496,7 @@ canvas.addEventListener('mousedown', (e) => {
   // Handle Options Back button
   if (gameState === 'options') {
     const back = getCourseBackRect();
-    if (p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h) {
-      gameState = 'menu';
-      return;
-    }
+    if (p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h) { gameState = previousGameState; return; }
     // Volume controls
     const vm = getOptionsVolMinusRect();
     if (p.x >= vm.x && p.x <= vm.x + vm.w && p.y >= vm.y && p.y <= vm.y + vm.h) { AudioSfx.setVolume(AudioSfx.volume - 0.1); return; }
@@ -683,10 +694,13 @@ canvas.addEventListener('mousemove', (e) => {
   const overClose = p.x >= pc.x && p.x <= pc.x + pc.w && p.y >= pc.y && p.y <= pc.y + pc.h;
   const pb = getPauseBackRect();
   const overBack = p.x >= pb.x && p.x <= pb.x + pb.w && p.y >= pb.y && p.y <= pb.y + pb.h;
+  const po = getPauseOptionsRect();
+  const overOptions = p.x >= po.x && p.x <= po.x + po.w && p.y >= po.y && p.y <= po.y + po.h;
   hoverPauseReplay = overReplay;
   hoverPauseClose = overClose;
   hoverPauseBack = overBack;
-  canvas.style.cursor = (overReplay || overClose || overBack) ? 'pointer' : 'default';
+  hoverPauseOptions = overOptions;
+  canvas.style.cursor = (overReplay || overClose || overBack || overOptions) ? 'pointer' : 'default';
 });
 
 canvas.addEventListener('mousedown', (e) => {
@@ -710,6 +724,12 @@ canvas.addEventListener('mousedown', (e) => {
     gameState = 'menu';
     isAiming = false;
     ball.vx = 0; ball.vy = 0; ball.moving = false;
+  }
+  const po = getPauseOptionsRect();
+  if (p.x >= po.x && p.x <= po.x + po.w && p.y >= po.y && p.y <= po.y + po.h) {
+    // Open Options while paused
+    previousGameState = 'play';
+    gameState = 'options';
   }
 });
 
@@ -1166,7 +1186,6 @@ function draw() {
     ];
     let oy = 140;
     for (const line of lines) { ctx.fillText('• ' + line, WIDTH/2 - 180, oy); oy += 22; }
-    // Back button
     // Audio section
     oy += 8;
     ctx.font = '18px system-ui, sans-serif';
@@ -1205,7 +1224,7 @@ function draw() {
     ctx.fillStyle = '#ffffff';
     ctx.font = '16px system-ui, sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('Back', back.x + back.w/2, back.y + back.h/2 + 0.5);
+    ctx.fillText(previousGameState === 'play' || paused ? 'Back to Game' : 'Back', back.x + back.w/2, back.y + back.h/2 + 0.5);
     // Version
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.font = '12px system-ui, sans-serif';
@@ -1632,6 +1651,17 @@ function draw() {
     ];
     let y = 110;
     for (const line of lines) { ctx.fillText(line, WIDTH/2, y); y += 22; }
+    // Pause overlay Options button (above bottom row)
+    const po = getPauseOptionsRect();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = hoverPauseOptions ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverPauseOptions ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillRect(po.x, po.y, po.w, po.h);
+    ctx.strokeRect(po.x, po.y, po.w, po.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Options', po.x + po.w/2, po.y + po.h/2 + 0.5);
     // Pause overlay Replay button
     const pr = getPauseReplayRect();
     ctx.lineWidth = 1.5;
@@ -1850,7 +1880,12 @@ window.addEventListener('keydown', (e) => {
     if (gameState === 'play' || gameState === 'sunk') {
     paused = !paused;
     } else if (gameState === 'options') {
-      gameState = 'menu';
+      // Return to previous state (pause or menu) from Options
+      if (paused && (previousGameState === 'play' || previousGameState === 'sunk')) {
+        gameState = previousGameState;
+      } else {
+        gameState = 'menu';
+      }
     }
   } else if ((e.code === 'Enter' || e.code === 'NumpadEnter') && gameState === 'summary') {
     // restart course (keyboard)

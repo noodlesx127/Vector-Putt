@@ -24,7 +24,7 @@ let gameState: 'menu' | 'course' | 'options' | 'changelog' | 'loading' | 'play' 
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
-const APP_VERSION = '0.3.5';
+const APP_VERSION = '0.3.6';
 const restitution = 0.9; // wall bounce energy retention
 const frictionK = 1.2; // base exponential damping (reduced for less "sticky" green)
 const stopSpeed = 5; // px/s threshold to consider stopped (tunable)
@@ -61,6 +61,7 @@ type Level = {
   cup: { x: number; y: number; r: number };
   walls: Wall[];
   sand?: Rect[];
+  sandPoly?: Poly[];
   water?: Rect[];
   bridges?: Rect[];
   posts?: Circle[];
@@ -81,6 +82,7 @@ const ball = {
 const hole = { x: WIDTH * 0.75, y: HEIGHT * 0.4, r: 12 };
 let walls: Wall[] = [];
 let sands: Rect[] = [];
+let sandsPoly: Poly[] = [];
 let waters: Rect[] = [];
 let bridges: Rect[] = [];
 let posts: Circle[] = [];
@@ -629,6 +631,20 @@ function pointInRect(px: number, py: number, r: Rect): boolean {
   return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
 }
 
+function pointInPolygon(px: number, py: number, pts: number[]): boolean {
+  // Ray-casting algorithm
+  let inside = false;
+  for (let i = 0, j = pts.length - 2; i < pts.length; i += 2) {
+    const xi = pts[i], yi = pts[i + 1];
+    const xj = pts[j], yj = pts[j + 1];
+    const intersect = ((yi > py) !== (yj > py)) &&
+      (px < ((xj - xi) * (py - yi)) / ((yj - yi) || 1e-12) + xi);
+    if (intersect) inside = !inside;
+    j = i;
+  }
+  return inside;
+}
+
 function circleCircleResolve(bx: number, by: number, br: number, cx: number, cy: number, cr: number) {
   const dx = bx - cx;
   const dy = by - cy;
@@ -680,6 +696,9 @@ function update(dt: number) {
     // friction (boosted in sand)
     let inSand = false;
     for (const s of sands) { if (pointInRect(ball.x, ball.y, s)) { inSand = true; break; } }
+    if (!inSand && sandsPoly.length > 0) {
+      for (const sp of sandsPoly) { if (pointInPolygon(ball.x, ball.y, sp.points)) { inSand = true; break; } }
+    }
     const k = frictionK * (inSand ? 4.2 : 1.0);
     const friction = Math.exp(-k * dt);
     ball.vx *= friction;
@@ -1469,6 +1488,7 @@ async function loadLevel(path: string) {
   levelCanvas = { width: (lvl.canvas?.width ?? WIDTH), height: (lvl.canvas?.height ?? HEIGHT) };
   walls = lvl.walls ?? [];
   sands = lvl.sand ?? [];
+  sandsPoly = lvl.sandPoly ?? [];
   waters = lvl.water ?? [];
   decorations = lvl.decorations ?? [];
   // Ensure decorations sit on the table outside the fairway if placed near edges

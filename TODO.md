@@ -109,7 +109,7 @@ Notes:
   - [x] Ensure off-bridge positions fall into water penalty
   - [x] Visual polish: optional subtle edge highlight to read as a thin bridge
 - [ ] Sand wedge/trapezoid pits (yellow trapezoids in refs)
-  - [ ] Support triangular/trapezoid sand shapes (via polygons or typed shapes)
+  - [x] Support triangular/trapezoid sand shapes (via polygons or typed shapes)
   - [ ] Tune friction and visuals for these shapes
 - [ ] Wall thickness and outline tuning
   - [ ] Match reference thickness for main border and inner lanes

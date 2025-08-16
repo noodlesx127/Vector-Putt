@@ -9,6 +9,12 @@ All notable changes to this project will be documented in this file.
 - Content: added a small triangular wedge example to `levels/level5.json`.
 - Version: in-game version set to `0.3.5`.
 
+## v0.3.6 — 2025-08-16
+
+- Polygon sand: added `sandPoly` support with rendering via existing sand style and friction detection.
+- Level 5: replaced rectangular sand with a trapezoid pit using `sandPoly`; tweaked layout for logical play.
+- Version: in-game version updated to `0.3.6`.
+
 ## v0.3.4 — 2025-08-11
 
 - New obstacles (prototype):

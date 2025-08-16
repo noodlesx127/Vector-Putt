@@ -24,7 +24,7 @@ let gameState: 'menu' | 'course' | 'options' | 'changelog' | 'loading' | 'play' 
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
-const APP_VERSION = '0.3.12';
+const APP_VERSION = '0.3.13';
 const restitution = 0.9; // wall bounce energy retention
 const frictionK = 1.2; // base exponential damping (reduced for less "sticky" green)
 const stopSpeed = 5; // px/s threshold to consider stopped (tunable)
@@ -1327,14 +1327,21 @@ function draw() {
     const newFx: SplashFx[] = [];
     for (const fx of splashes) {
       fx.age += 1 / 60; // approx frame-based age; stable enough
-      const t = Math.min(1, fx.age / 0.6);
-      const alpha = 1 - t;
-      const radius = 10 + 40 * t;
-      ctx.strokeStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
-      ctx.lineWidth = 2 * (1 - t);
-      ctx.beginPath();
-      ctx.arc(fx.x, fx.y, radius, 0, Math.PI * 2);
-      ctx.stroke();
+      const t = Math.min(1, fx.age / 0.7);
+      // draw 3 rings with staggered start and different widths
+      const ringCount = 3;
+      for (let i = 0; i < ringCount; i++) {
+        const offset = i * 0.12; // stagger each ring a bit
+        const tt = Math.min(1, Math.max(0, (fx.age - offset) / 0.6));
+        if (tt <= 0) continue;
+        const alpha = (1 - tt) * 0.9 * (1 - i * 0.12);
+        const radius = 8 + (36 + i * 16) * tt;
+        ctx.strokeStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
+        ctx.lineWidth = Math.max(0.8, 2.2 * (1 - tt));
+        ctx.beginPath();
+        ctx.arc(fx.x, fx.y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       if (t < 1) newFx.push(fx);
     }
     splashes = newFx;

@@ -36,6 +36,7 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 
 ## Soon (After MVP Slice Works)
 - [ ] Water tiles: splash SFX → +1 stroke → reset to pre-shot location
+  - [x] Visual ripple and SFX on water contact
 - [ ] Post-Hole banner with classic golf terms
 - [ ] Bank-shot dev harness (dev-only path preview)
 - [ ] Palette extraction to `docs/PALETTE.md`; apply flat colors + outlines

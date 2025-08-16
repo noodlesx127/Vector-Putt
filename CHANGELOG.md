@@ -30,6 +30,11 @@ All notable changes to this project will be documented in this file.
 - Options screen: added basic SFX controls (volume +/-, mute). Simple Web Audio SFX for putt, bounce, splash, sink.
 - Version: in-game version updated to `0.3.9`.
 
+## v0.3.10 — 2025-08-16
+
+- Water splash visual: ripple effect drawn on water where the ball lands before reset.
+- Version: in-game version updated to `0.3.10`.
+
 ## v0.3.4 — 2025-08-11
 
 - New obstacles (prototype):

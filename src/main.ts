@@ -24,7 +24,7 @@ let gameState: 'menu' | 'course' | 'options' | 'changelog' | 'loading' | 'play' 
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
-const APP_VERSION = '0.3.9';
+const APP_VERSION = '0.3.10';
 const restitution = 0.9; // wall bounce energy retention
 const frictionK = 1.2; // base exponential damping (reduced for less "sticky" green)
 const stopSpeed = 5; // px/s threshold to consider stopped (tunable)
@@ -91,6 +91,9 @@ let decorations: Decoration[] = [];
 let hills: Slope[] = [];
 // Logical level canvas size from level JSON; defaults to actual canvas size
 let levelCanvas = { width: WIDTH, height: HEIGHT };
+// Transient visuals
+type SplashFx = { x: number; y: number; age: number };
+let splashes: SplashFx[] = [];
 
 function getViewOffsetX(): number {
   const extra = WIDTH - levelCanvas.width;
@@ -913,6 +916,8 @@ function update(dt: number) {
       if (onBridge) continue;
       // penalty is +1 stroke; reset to pre-shot position
       strokes += 1;
+      // capture splash at impact location before resetting
+      splashes.push({ x: ball.x, y: ball.y, age: 0 });
       ball.x = preShot.x; ball.y = preShot.y;
       ball.vx = 0; ball.vy = 0; ball.moving = false;
       AudioSfx.playSplash();
@@ -1294,6 +1299,23 @@ function draw() {
   for (const r of waters) {
     ctx.fillStyle = '#1f6dff';
     ctx.fillRect(r.x, r.y, r.w, r.h);
+  }
+  // splash ripples on water
+  if (splashes.length > 0) {
+    const newFx: SplashFx[] = [];
+    for (const fx of splashes) {
+      fx.age += 1 / 60; // approx frame-based age; stable enough
+      const t = Math.min(1, fx.age / 0.6);
+      const alpha = 1 - t;
+      const radius = 10 + 40 * t;
+      ctx.strokeStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
+      ctx.lineWidth = 2 * (1 - t);
+      ctx.beginPath();
+      ctx.arc(fx.x, fx.y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      if (t < 1) newFx.push(fx);
+    }
+    splashes = newFx;
   }
   for (const r of sands) {
     ctx.fillStyle = '#d4b36a';

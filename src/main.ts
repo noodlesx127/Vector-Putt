@@ -24,7 +24,7 @@ let gameState: 'menu' | 'course' | 'options' | 'changelog' | 'loading' | 'play' 
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
-const APP_VERSION = '0.3.6';
+const APP_VERSION = '0.3.7';
 const restitution = 0.9; // wall bounce energy retention
 const frictionK = 1.2; // base exponential damping (reduced for less "sticky" green)
 const stopSpeed = 5; // px/s threshold to consider stopped (tunable)
@@ -106,6 +106,7 @@ let courseInfo: { index: number; total: number; par: number; title?: string } = 
 let strokes = 0;
 let preShot = { x: 0, y: 0 }; // position before current shot, for water reset
 let courseScores: number[] = []; // strokes per completed hole
+let coursePars: number[] = []; // par per hole
 let holeRecorded = false; // guard to prevent double-recording
 let summaryTimer: number | null = null; // timer to auto-open summary after last-hole banner
 
@@ -280,6 +281,7 @@ async function startCourseFromFile(courseJsonPath: string): Promise<void> {
     if (Array.isArray(data.levels) && data.levels.length > 0) {
       levelPaths = data.levels;
       courseScores = [];
+      coursePars = [];
       currentLevelIndex = 0;
       gameState = 'loading';
       // Ensure first two levels are loaded before switching to play
@@ -1380,17 +1382,23 @@ function draw() {
     ctx.font = '26px system-ui, sans-serif';
     ctx.fillText('Course Summary', WIDTH/2, 40);
     const total = courseScores.reduce((a, b) => a + (b ?? 0), 0);
+    const parTotal = coursePars.reduce((a, b) => a + (b ?? 0), 0);
+    const totalDelta = total - parTotal;
     ctx.font = '16px system-ui, sans-serif';
     let y = 80;
     for (let i = 0; i < levelPaths.length; i++) {
       const s = courseScores[i] ?? 0;
-      const line = `Hole ${i+1}: ${s} strokes`;
+      const p = coursePars[i] ?? 0;
+      const d = s - p;
+      const deltaText = d === 0 ? 'E' : (d > 0 ? `+${d}` : `${d}`);
+      const line = `Hole ${i+1}: ${s} (Par ${p}, ${deltaText})`;
       ctx.fillText(line, WIDTH/2, y);
       y += 22;
     }
     y += 10;
     ctx.font = '18px system-ui, sans-serif';
-    ctx.fillText(`Total: ${total}`, WIDTH/2, y);
+    const totalDeltaText = totalDelta === 0 ? 'E' : (totalDelta > 0 ? `+${totalDelta}` : `${totalDelta}`);
+    ctx.fillText(`Total: ${total} (Par ${parTotal}, ${totalDeltaText})`, WIDTH/2, y);
     y += 28;
     ctx.font = '14px system-ui, sans-serif';
     ctx.fillText('Click or Press Enter to Restart Game', WIDTH/2, y);
@@ -1515,6 +1523,8 @@ async function loadLevel(path: string) {
   strokes = 0;
   gameState = 'play';
   currentLevelIndex = Math.max(0, levelPaths.indexOf(path));
+  // record par for this hole so summary can show deltas
+  coursePars[currentLevelIndex] = lvl.par;
   preShot = { x: ball.x, y: ball.y };
   if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
   // Preload the subsequent level to avoid first-transition delay

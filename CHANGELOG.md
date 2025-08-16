@@ -15,6 +15,11 @@ All notable changes to this project will be documented in this file.
 - Level 5: replaced rectangular sand with a trapezoid pit using `sandPoly`; tweaked layout for logical play.
 - Version: in-game version updated to `0.3.6`.
 
+## v0.3.7 — 2025-08-16
+
+- Course Summary: shows per-hole par and delta (E/+/-) and course totals with delta vs par.
+- Version: in-game version updated to `0.3.7`.
+
 ## v0.3.4 — 2025-08-11
 
 - New obstacles (prototype):

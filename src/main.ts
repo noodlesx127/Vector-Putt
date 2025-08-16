@@ -44,7 +44,7 @@ const COLORS = {
 } as const;
 const COURSE_MARGIN = 40; // inset for fairway rect
 const HUD_HEIGHT = 32;
-const SLOPE_ACCEL = 600; // base acceleration applied by hills (px/s^2)
+const SLOPE_ACCEL = 520; // tuned base acceleration applied by hills (px/s^2)
 const levelCache = new Map<string, Level>();
 
 type Wall = { x: number; y: number; w: number; h: number };
@@ -52,7 +52,7 @@ type Rect = { x: number; y: number; w: number; h: number };
 type Circle = { x: number; y: number; r: number };
 type Poly = { points: number[] };
 type Decoration = { x: number; y: number; w: number; h: number; kind: 'flowers' };
-type Slope = { x: number; y: number; w: number; h: number; dir: 'N'|'S'|'E'|'W'|'NE'|'NW'|'SE'|'SW'; strength?: number };
+type Slope = { x: number; y: number; w: number; h: number; dir: 'N'|'S'|'E'|'W'|'NE'|'NW'|'SE'|'SW'; strength?: number; falloff?: number };
 type Level = {
   canvas: { width: number; height: number };
   course: { index: number; total: number; title?: string };
@@ -713,12 +713,18 @@ function update(dt: number) {
         if (!pointInRect(ball.x, ball.y, h)) continue;
         const s = (h.strength ?? 1) * SLOPE_ACCEL;
         const d = h.dir;
-        const dx = (d.includes('E') ? 1 : 0) + (d.includes('W') ? -1 : 0);
-        const dy = (d.includes('S') ? 1 : 0) + (d.includes('N') ? -1 : 0);
+        const dirX = (d.includes('E') ? 1 : 0) + (d.includes('W') ? -1 : 0);
+        const dirY = (d.includes('S') ? 1 : 0) + (d.includes('N') ? -1 : 0);
         // normalize diagonal so total accel magnitude stays consistent
-        const inv = (dx !== 0 && dy !== 0) ? Math.SQRT1_2 : 1;
-        ax += dx * s * inv;
-        ay += dy * s * inv;
+        const inv = (dirX !== 0 && dirY !== 0) ? Math.SQRT1_2 : 1;
+        // Edge-weighted falloff: stronger near exit edge, lighter near entrance
+        const ex = dirX === 0 ? 1 : (dirX > 0 ? (ball.x - h.x) / h.w : (h.x + h.w - ball.x) / h.w);
+        const ey = dirY === 0 ? 1 : (dirY > 0 ? (ball.y - h.y) / h.h : (h.y + h.h - ball.y) / h.h);
+        const baseFall = Math.max(0, Math.min(1, (dirX !== 0 && dirY !== 0) ? Math.min(ex, ey) : (dirX !== 0 ? ex : ey)));
+        const expo = h.falloff ?? 1.2;
+        const fall = Math.pow(baseFall, expo);
+        ax += dirX * s * inv * fall;
+        ay += dirY * s * inv * fall;
       }
       ball.vx += ax * dt;
       ball.vy += ay * dt;

@@ -20,6 +20,11 @@ All notable changes to this project will be documented in this file.
 - Course Summary: shows per-hole par and delta (E/+/-) and course totals with delta vs par.
 - Version: in-game version updated to `0.3.7`.
 
+## v0.3.8 — 2025-08-16
+
+- Hills: tuned base acceleration and added optional `falloff` parameter for edge-weighted push.
+- Level 3: updated hill to use tuned values (`strength: 0.65`, `falloff: 1.2`).
+
 ## v0.3.4 — 2025-08-11
 
 - New obstacles (prototype):

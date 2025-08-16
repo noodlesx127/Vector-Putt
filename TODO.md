@@ -76,6 +76,11 @@ Notes:
   - [x] Walls/boundaries
   - [x] Terrain tiles (fairway, sand, water)
   - [ ] Optional: slopes, moving blocks, boosters, tunnels
+  - [ ] Cup placement heuristics (avoid trivial layouts)
+    - [ ] Define constraints for logical cup placement: minimum distance from tee; not directly visible by straight shot when obstacles intend a path; not hugging walls/edges; inside intended gated region
+    - [ ] Path validation: grid/navmesh A* over fairway (excluding walls/water) to ensure a non-trivial route length and at least one corridor/bank interaction
+    - [ ] Editor assist: auto-suggest 3–5 candidate cup positions ranked by difficulty; highlight invalid/too-easy placements
+    - [ ] Add lint rule in level validator to flag cups that can be bypassed around obstacles
  - [x] Course definition (ordered list of holes + par values)
  - [x] Author 3–5 MVP holes to validate mechanics (added level4, level5)
 - [x] Adjust L1 decorations to sit outside playfield
@@ -88,6 +93,7 @@ Notes:
   - [ ] Course builder to add/remove/reorder holes, set titles and par
   - [ ] Level browser: scan `levels/` and list levels; searchable and filterable
   - [ ] Preview thumbnails and quick-play from the browser
+  - [ ] Logical cup placement tools: toggle line-of-sight from tee, show path-length heatmap, validate “must pass gates/banks” rules
 
 ## Obstacles & Geometry from Reference Screens (new work)
 - [x] Diagonal walls and polygon bumpers

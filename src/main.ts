@@ -92,9 +92,30 @@ const levelCache = new Map<string, Level>();
 
 // User profile (minimal local profile)
 type UserRole = 'admin' | 'user';
-type UserProfile = { name: string; role: UserRole };
+type UserProfile = { name: string; role: UserRole; id?: string };
 let userProfile: UserProfile = { name: '', role: 'user' };
 let isEditingUserName = false;
+
+// Per-user score tracking
+type UserScores = {
+  [userId: string]: {
+    [levelPath: string]: {
+      bestScore: number;
+      attempts: number;
+      lastPlayed: string;
+    };
+  };
+};
+let userScores: UserScores = {};
+
+function getUserId(): string {
+  if (!userProfile.id) {
+    userProfile.id = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    saveUserProfile();
+  }
+  return userProfile.id;
+}
+
 function loadUserProfile(): void {
   try {
     const s = localStorage.getItem('vp.user');
@@ -102,12 +123,47 @@ function loadUserProfile(): void {
     const o = JSON.parse(s);
     if (o && typeof o.name === 'string') userProfile.name = o.name;
     if (o && (o.role === 'admin' || o.role === 'user')) userProfile.role = o.role;
+    if (o && typeof o.id === 'string') userProfile.id = o.id;
   } catch {}
 }
+
 function saveUserProfile(): void {
   try { localStorage.setItem('vp.user', JSON.stringify(userProfile)); } catch {}
 }
-try { loadUserProfile(); } catch {}
+
+function loadUserScores(): void {
+  try {
+    const s = localStorage.getItem('vp.scores');
+    if (s) userScores = JSON.parse(s);
+  } catch {}
+}
+
+function saveUserScores(): void {
+  try { localStorage.setItem('vp.scores', JSON.stringify(userScores)); } catch {}
+}
+
+function recordScore(levelPath: string, score: number): void {
+  const userId = getUserId();
+  if (!userScores[userId]) userScores[userId] = {};
+  if (!userScores[userId][levelPath]) {
+    userScores[userId][levelPath] = { bestScore: score, attempts: 1, lastPlayed: new Date().toISOString() };
+  } else {
+    const existing = userScores[userId][levelPath];
+    existing.attempts++;
+    existing.lastPlayed = new Date().toISOString();
+    if (score < existing.bestScore) {
+      existing.bestScore = score;
+    }
+  }
+  saveUserScores();
+}
+
+function getBestScore(levelPath: string): number | null {
+  const userId = getUserId();
+  return userScores[userId]?.[levelPath]?.bestScore ?? null;
+}
+
+try { loadUserProfile(); loadUserScores(); } catch {}
 
 type Wall = { x: number; y: number; w: number; h: number };
 type Rect = { x: number; y: number; w: number; h: number };
@@ -131,6 +187,12 @@ type Level = {
   wallsPoly?: Poly[];
   decorations?: Decoration[];
   hills?: Slope[];
+  meta?: {
+    authorId?: string;
+    authorName?: string;
+    created?: string;
+    modified?: string;
+  };
 };
 
 const ball = {
@@ -300,6 +362,7 @@ let hoverMainStart = false;
 let hoverMainOptions = false;
 let hoverMainChangelog = false;
 let hoverMainName = false;
+let hoverMainRole = false;
 let hoverCourseDev = false;
 let hoverCourseBack = false;
 let hoverChangelogBack = false;
@@ -409,6 +472,10 @@ function advanceAfterSunk() {
   if (!holeRecorded) {
     courseScores[currentLevelIndex] = strokes;
     holeRecorded = true;
+    // Record score for current user
+    if (currentLevelIndex < levelPaths.length) {
+      recordScore(levelPaths[currentLevelIndex], strokes);
+    }
   }
   const isLastHole = courseInfo.index >= courseInfo.total;
   if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
@@ -469,6 +536,15 @@ function getMainNameRect() {
   const s = getMainStartRect();
   const x = WIDTH / 2 - w / 2;
   const y = s.y - 34; // moved down to avoid clipping into the main graphic
+  return { x, y, w, h };
+}
+
+// Main Menu: Role toggle (below username input)
+function getMainRoleRect() {
+  const w = 120, h = 24;
+  const nr = getMainNameRect();
+  const x = WIDTH / 2 - w / 2;
+  const y = nr.y + nr.h + 8;
   return { x, y, w, h };
 }
 
@@ -544,6 +620,13 @@ canvas.addEventListener('mousedown', (e) => {
       return;
     } else {
       isEditingUserName = false;
+    }
+    // Role toggle button
+    const rr = getMainRoleRect();
+    if (p.x >= rr.x && p.x <= rr.x + rr.w && p.y >= rr.y && p.y <= rr.y + rr.h) {
+      userProfile.role = userProfile.role === 'admin' ? 'user' : 'admin';
+      saveUserProfile();
+      return;
     }
     // Start button (disabled unless username non-empty)
     const s = getMainStartRect();
@@ -655,16 +738,18 @@ canvas.addEventListener('mousemove', (e) => {
     const s = getMainStartRect();
     const o = getMainOptionsRect();
     const nr = getMainNameRect();
+    const rr = getMainRoleRect();
     hoverMainStart = p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h;
     hoverMainOptions = p.x >= o.x && p.x <= o.x + o.w && p.y >= o.y && p.y <= o.y + o.h;
     hoverMainName = p.x >= nr.x && p.x <= nr.x + nr.w && p.y >= nr.y && p.y <= nr.y + nr.h;
+    hoverMainRole = p.x >= rr.x && p.x <= rr.x + rr.w && p.y >= rr.y && p.y <= rr.y + rr.h;
     const cg = getMainChangelogRect();
     hoverMainChangelog = p.x >= cg.x && p.x <= cg.x + cg.w && p.y >= cg.y && p.y <= cg.y + cg.h;
     if (hoverMainName || isEditingUserName) {
       canvas.style.cursor = 'text';
     } else {
       const canStart = ((userProfile.name || '').trim().length > 0);
-      const showPointer = (hoverMainOptions || hoverMainChangelog || (hoverMainStart && canStart));
+      const showPointer = (hoverMainOptions || hoverMainChangelog || hoverMainRole || (hoverMainStart && canStart));
       canvas.style.cursor = showPointer ? 'pointer' : 'default';
     }
     return;
@@ -1163,6 +1248,10 @@ function update(dt: number) {
       // record now; stay on sunk banner until user clicks or presses N
       courseScores[currentLevelIndex] = strokes;
       holeRecorded = true;
+      // Record score for current user
+      if (currentLevelIndex < levelPaths.length) {
+        recordScore(levelPaths[currentLevelIndex], strokes);
+      }
       if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
     }
     AudioSfx.playSink();
@@ -1462,6 +1551,18 @@ function draw() {
     ctx.globalAlpha = canStart ? 1 : 0.5;
     ctx.fillText('Start', s.x + s.w/2, s.y + s.h/2 + 0.5);
     ctx.globalAlpha = 1;
+    // Role toggle button (below username input)
+    const rr = getMainRoleRect();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = hoverMainRole ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverMainRole ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillRect(rr.x, rr.y, rr.w, rr.h);
+    ctx.strokeRect(rr.x, rr.y, rr.w, rr.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const roleLabel = userProfile.role === 'admin' ? 'Admin' : 'User';
+    ctx.fillText(roleLabel, rr.x + rr.w/2, rr.y + rr.h/2 + 0.5);
     const o = getMainOptionsRect();
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = hoverMainOptions ? '#ffffff' : '#cfd2cf';
@@ -1948,7 +2049,9 @@ function draw() {
   const leftTextBase = `Hole ${courseInfo.index}/${courseInfo.total}`;
   const leftText = courseInfo.title ? `${leftTextBase} — ${courseInfo.title}` : leftTextBase;
   const totalSoFar = courseScores.reduce((a, b) => a + b, 0) + (gameState === 'sunk' ? 0 : 0);
-  const centerText = `Par ${courseInfo.par}   Strokes ${strokes}   Total ${totalSoFar}`;
+  const bestScore = currentLevelIndex < levelPaths.length ? getBestScore(levelPaths[currentLevelIndex]) : null;
+  const bestText = bestScore !== null ? `   Best: ${bestScore}` : '';
+  const centerText = `Par ${courseInfo.par}   Strokes ${strokes}   Total ${totalSoFar}${bestText}`;
   const rightText = `To Birdie: ${toBirdie === null ? '—' : toBirdie}   Speed ${speed}`;
   // left: show username, then Hole label shifted to the right
   ctx.textAlign = 'left';

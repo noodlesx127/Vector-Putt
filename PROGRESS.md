@@ -47,10 +47,10 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
   - [ ] Par/Birdie suggestion engine based on path analysis and bank heuristics
 
 - [ ] User System
-  - [ ] Local profiles: create/select active user; persist name and role (admin/user)
+  - [x] Local profiles: create/select active user; persist name and role (admin/user)
   - [ ] Roles & permissions: Admin can edit/delete any level; Normal users can edit/delete their own and duplicate others
-  - [ ] Level ownership: store `meta.authorId`/`meta.authorName` in level JSON; enforce Save/Delete permissions; enable Save a Copy for non-owners
-  - [ ] Scores by user: record per-level and per-course scores keyed by active user; show best for current user (optional all-users view)
+  - [x] Level ownership: store `meta.authorId`/`meta.authorName` in level JSON; enforce Save/Delete permissions; enable Save a Copy for non-owners
+  - [x] Scores by user: record per-level and per-course scores keyed by active user; show best for current user (optional all-users view)
   - [x] Main Menu: username input field placed above Start and below the graphic; Start disabled until a non-empty username is entered; persist/prefill last user
 
 ## Soon (After MVP Slice Works)
@@ -86,6 +86,10 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [x] Main Menu: username input focus UX — blinking caret, placeholder hides during edit, I-beam cursor while editing; thicker focus border; input nudged down to avoid clipping.
 
 - [x] HUD: show active user's name on the top-left; push `Hole x/y` label right to make room.
+
+- [x] User System: role toggle button on Main Menu (below username input); persists admin/user role to localStorage.
+
+- [x] User System: level ownership metadata (authorId/authorName) added to Level schema; per-user score tracking with best scores shown in HUD.
 
 ## Risks / Mitigations
 - **Physics feel mismatch** → Add tunable config (friction, restitution, stop-epsilon, power curve)

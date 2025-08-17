@@ -135,7 +135,7 @@ Notes:
   - [ ] Track per-level and per-course scores keyed by user
   - [ ] Course summary: show best scores for the active user; optional all-users leaderboard
 - [ ] UI integration
-  - [ ] Main Menu: username input field between the graphic and the Start button; Start disabled until a non-empty username is entered; persist and prefill last user
+  - [x] Main Menu: username input field between the graphic and the Start button; Start disabled until a non-empty username is entered; persist and prefill last user
   - [ ] Course Select: optional filter/sort by author; include "User Made Levels" category
 
   - [ ] Allow placement overlapping fairway/water edges; draw above water; no collision mask

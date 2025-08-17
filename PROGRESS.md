@@ -4,7 +4,7 @@
 
 # Project Progress — Vector Putt
 
-Updated: 2025-08-16 (local)
+Updated: 2025-08-17 (local)
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 
@@ -38,13 +38,29 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
   - [x] Water splash: multi-ring ripple visual
   - [x] Score visuals: color-coded sunk banner and summary deltas
 
+- [ ] Level Editor & Browser
+  - [ ] Editor selectable from Main Menu (launch editor mode)
+  - [ ] Course Select: add "User Made Levels" category; list entries as Title — Author; load/play
+  - [ ] Open/edit existing `levels/*.json` and create new levels (with schema validation)
+  - [ ] Tool palette: Tee, Cup, Walls/WallsPoly, Posts, Bridges, Water/WaterPoly, Sand/SandPoly, Hills, decorations
+  - [ ] Metadata editor: Level title and Author (persist in JSON)
+  - [ ] Par/Birdie suggestion engine based on path analysis and bank heuristics
+
+- [ ] User System
+  - [ ] Local profiles: create/select active user; persist name and role (admin/user)
+  - [ ] Roles & permissions: Admin can edit/delete any level; Normal users can edit/delete their own and duplicate others
+  - [ ] Level ownership: store `meta.authorId`/`meta.authorName` in level JSON; enforce Save/Delete permissions; enable Save a Copy for non-owners
+  - [ ] Scores by user: record per-level and per-course scores keyed by active user; show best for current user (optional all-users view)
+  - [x] Main Menu: username input field placed above Start and below the graphic; Start disabled until a non-empty username is entered; persist/prefill last user
+
 ## Soon (After MVP Slice Works)
-- [ ] Water tiles: splash SFX → +1 stroke → reset to pre-shot location
+- [x] Water tiles: splash SFX → +1 stroke → reset to pre-shot location
   - [x] Visual ripple and SFX on water contact
-- [ ] Post-Hole banner with classic golf terms
+- [x] Post-Hole banner with classic golf terms
   - [x] Basic label (Eagle/Birdie/Par/Bogey/Over) with color tint
-- [ ] Bank-shot dev harness (dev-only path preview)
-- [ ] Palette extraction to `docs/PALETTE.md`; apply flat colors + outlines
+  - [x] Extended mapping: Condor (-4), Albatross (-3), Eagle (-2), Birdie (-1), Par (0), Bogey (+1), Double Bogey (+2), Triple Bogey (+3); 4+ over shows numeric "n Over"
+- [x] Bank-shot dev harness (dev-only path preview) — toggle with `B` (dev builds only)
+- [x] Palette extraction to `docs/PALETTE.md`; applied flat fills + clear outlines for water/sand (rects: 1.5px inset; polys: 2px stroke)
  - [x] Options: basic SFX volume and mute controls
 
 ## Blockers / Open Questions
@@ -53,7 +69,7 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [ ] Decide Tiled (TMX/JSON) vs. simple custom level JSON for MVP
 
 ## Decisions (Architecture / Approach)
-- Stack: TypeScript + HTML5 Canvas, Vite, Howler.js, Vitest (per `TODO.md`)
+- Stack: TypeScript + HTML5 Canvas, Vite, Web Audio API (custom), Vitest (per `TODO.md`)
 - References: Treat the three YouTube videos as canonical for gameplay, level design, look & feel, UI/UX, physics
 
 ## Done
@@ -64,6 +80,9 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [x] Fixed canvas 960×600 + letterbox (visual proportions closer to reference)
 - [x] Aim–drag–release loop; friction; input lock while moving
  - [x] Polygon walls: rendering + collision via segment edges (diagonals/triangles)
+- [x] Level design pass: adjusted `levels/level4.json`–`level6.json` for logical cup/obstacle placement; ensured `level8` polygon water renders visibly.
+
+- [x] Dev-only bank-shot preview toggle fixed: robust dev detection (`isDevBuild()`), canvas focus during drag, broader dev key listeners; DEV watermark/badge and diagnostics for verification.
 
 ## Risks / Mitigations
 - **Physics feel mismatch** → Add tunable config (friction, restitution, stop-epsilon, power curve)

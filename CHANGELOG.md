@@ -2,38 +2,45 @@
 
 All notable changes to this project will be documented in this file.
 
-## v0.3.5 — 2025-08-16
+## v0.3.20 — 2025-08-17
 
-- Polygon walls: added render and segment-based collision (diagonals/chamfers/triangles).
-- Schema: new `wallsPoly: [{ points: [x,y,...] }]` supported in level JSON.
-- Content: added a small triangular wedge example to `levels/level5.json`.
-- Version: in-game version set to `0.3.5`.
+- Palette: extracted canonical colors to `docs/PALETTE.md` and consolidated usage in code.
+- Rendering: applied consistent flat fills + outlines for terrain:
+  - Water and Sand now draw with palette fills and clear outlines (rects: 1.5px inset; polys: 2px path stroke).
+- Code: replaced hardcoded water/sand hexes with `COLORS.waterFill`, `COLORS.waterStroke`, `COLORS.sandFill`, `COLORS.sandStroke`.
+- Version: in-game and package version updated to `0.3.20`.
 
-## v0.3.6 — 2025-08-16
+## v0.3.19 — 2025-08-17
 
-- Polygon sand: added `sandPoly` support with rendering via existing sand style and friction detection.
-- Level 5: replaced rectangular sand with a trapezoid pit using `sandPoly`; tweaked layout for logical play.
-- Version: in-game version updated to `0.3.6`.
+- Post-hole banner: classic golf terms expanded beyond basics.
+  - Added Condor (-4), Albatross (-3), Eagle (-2), Birdie (-1), Par (0), Bogey (+1), Double Bogey (+2), Triple Bogey (+3); 4+ over shows numeric "n Over".
+- Version: in-game and package version updated to `0.3.19`.
 
-## v0.3.7 — 2025-08-16
+## v0.3.18 — 2025-08-17
 
-- Course Summary: shows per-hole par and delta (E/+/-) and course totals with delta vs par.
-- Version: in-game version updated to `0.3.7`.
+- Dev-only: bank-shot preview during aiming (toggle with `B`). Predicts reflective path across walls, posts, and polygon walls; ignores hills/sand/water for speed.
+- Build guard: now uses robust `isDevBuild()` helper. Prefers `import.meta.env.DEV` and falls back to localhost/5173 heuristic to ensure dev-only features work even if env flag is missing.
+- Input focus: canvas is focusable and auto-focused on mousedown so key events (e.g., `B`) work while dragging; added broader key listeners on window/document/canvas during dev for reliability.
+- Visual aids (dev-only): small "DEV" watermark; in-play "Preview ON (B)" badge when the path preview is active.
+- Diagnostics (dev-only): boot-time log of dev detection, key-event logs for toggle, and global error logging to console during development.
+- Tuning: lowered aiming drag threshold from 4px → 2px to make enabling preview while dragging easier during testing.
+- Version: in-game and package version updated to `0.3.18`.
 
-## v0.3.8 — 2025-08-16
+## v0.3.17 — 2025-08-17
 
-- Hills: tuned base acceleration and added optional `falloff` parameter for edge-weighted push.
-- Level 3: updated hill to use tuned values (`strength: 0.65`, `falloff: 1.2`).
+- Rendering: draw polygon water (`waterPoly`) in the main loop so non-rectangular water is visible (fixes Level 8 river not showing).
+- Level 4: aligned water band with the bridge across the central corridor; moved sand near the approach; adjusted posts to sit within the corridor.
+- Level 5: moved the cup inside the enclosed area for a sensible route.
+- Level 6: repositioned sand and water to support intended cross-bank paths without blocking the main diagonal.
+- Version: in-game and package version updated to `0.3.17`.
 
-## v0.3.9 — 2025-08-16
+## v0.3.16 — 2025-08-16
 
-- Options screen: added basic SFX controls (volume +/-, mute). Simple Web Audio SFX for putt, bounce, splash, sink.
-- Version: in-game version updated to `0.3.9`.
-
-## v0.3.10 — 2025-08-16
-
-- Water splash visual: ripple effect drawn on water where the ball lands before reset.
-- Version: in-game version updated to `0.3.10`.
+- HUD: restored a solid top bar and clipped decorations below the HUD strip to prevent overlap.
+- Bugfix: removed a stray `ctx.restore()` in mousedown handler that could hide the HUD; added missing `ctx.restore()` after decoration clipping.
+- Rendering: draw the hole after walls so it remains visible.
+- UI: adjusted Replay button size/placement within the HUD and refined HUD text alignment.
+- Version: in-game and package version updated to `0.3.16`.
 
 ## v0.3.15 — 2025-08-16
 
@@ -44,7 +51,7 @@ All notable changes to this project will be documented in this file.
 
 - UI polish: color-coded score text (sunk banner and course summary) — green for under par, red for over.
 - Version: in-game version updated to `0.3.14`.
-
+ 
 ### Content
 - Added `levels/level7.json` (Triangle Alley): multiple wedge deflectors using `wallsPoly`.
 - Updated `levels/course.json` and `course.total` across levels to 7.
@@ -65,6 +72,39 @@ All notable changes to this project will be documented in this file.
 
 - Impact feedback: brief bounce flash drawn along the collision normal; tied to bounce intensity.
 - Version: in-game version updated to `0.3.11`.
+
+## v0.3.10 — 2025-08-16
+
+- Water splash visual: ripple effect drawn on water where the ball lands before reset.
+- Version: in-game version updated to `0.3.10`.
+
+## v0.3.9 — 2025-08-16
+
+- Options screen: added basic SFX controls (volume +/-, mute). Simple Web Audio SFX for putt, bounce, splash, sink.
+- Version: in-game version updated to `0.3.9`.
+
+## v0.3.8 — 2025-08-16
+
+- Hills: tuned base acceleration and added optional `falloff` parameter for edge-weighted push.
+- Level 3: updated hill to use tuned values (`strength: 0.65`, `falloff: 1.2`).
+
+## v0.3.7 — 2025-08-16
+
+- Course Summary: shows per-hole par and delta (E/+/-) and course totals with delta vs par.
+- Version: in-game version updated to `0.3.7`.
+
+## v0.3.6 — 2025-08-16
+
+- Polygon sand: added `sandPoly` support with rendering via existing sand style and friction detection.
+- Level 5: replaced rectangular sand with a trapezoid pit using `sandPoly`; tweaked layout for logical play.
+- Version: in-game version updated to `0.3.6`.
+
+## v0.3.5 — 2025-08-16
+
+- Polygon walls: added render and segment-based collision (diagonals/chamfers/triangles).
+- Schema: new `wallsPoly: [{ points: [x,y,...] }]` supported in level JSON.
+- Content: added a small triangular wedge example to `levels/level5.json`.
+- Version: in-game version set to `0.3.5`.
 
 ## v0.3.4 — 2025-08-11
 

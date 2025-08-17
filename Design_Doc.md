@@ -111,6 +111,23 @@ The game uses a minimalist, 2D vector art style.
 
     Colors: A bright, high-contrast color palette is used. Each terrain type has a distinct, solid color, making the course instantly readable.
 
+    Palette (as implemented in `src/main.ts` `COLORS`):
+
+        Table (background): #7a7b1e
+        Fairway:           #126a23
+        Fairway band:      #115e20
+        Fairway outline:   #0b3b14
+        Wall fill:         #e2e2e2
+        Wall stroke:       #bdbdbd
+        Hole fill:         #0a1a0b
+        Hole rim:          #0f3f19
+        HUD text:          #111111
+        HUD bg (dark):     #0d1f10
+
+    Notes:
+    - The fairway area is inset within the table background to mirror the reference look.
+    - HUD text is rendered directly over the table background in dark text for contrast.
+
     UI: The user interface elements are clean, with legible fonts and simple icons. There is no visual clutter.
 
 4.2 Sound Design

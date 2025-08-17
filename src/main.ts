@@ -3,9 +3,39 @@ import CHANGELOG_RAW from '../CHANGELOG.md?raw';
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
 
+// Dev detection helper (Vite env first, then localhost heuristics)
+function isDevBuild(): boolean {
+  const envDev = (import.meta as any)?.env?.DEV;
+  if (typeof envDev === 'boolean') return envDev;
+  if (typeof envDev === 'string') return envDev === 'true';
+  try {
+    const h = window.location.hostname;
+    const p = window.location.port;
+    return h === 'localhost' || h === '127.0.0.1' || p === '5173';
+  } catch {
+    return false;
+  }
+}
+// Boot-time dev diagnostics
+try {
+  const rawEnv = (import.meta as any)?.env?.DEV;
+  console.log(`[DEV] App boot. import.meta.env.DEV(raw)=${rawEnv} | computedDev=${isDevBuild()}`);
+} catch {}
+
 // Fixed logical size
 const WIDTH = canvas.width;
 const HEIGHT = canvas.height;
+
+// Ensure canvas can receive focus to improve keyboard reliability during mouse drags
+try {
+  canvas.setAttribute('tabindex', '0');
+  (canvas as any).tabIndex = 0;
+} catch {}
+canvas.addEventListener('mousedown', () => {
+  try { (canvas as any).focus({ preventScroll: true }); } catch { try { (canvas as any).focus(); } catch {} }
+});
+// Disable default context menu to avoid interference
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 // Letterbox scaling to fit window while keeping aspect
 function resize() {
@@ -18,13 +48,21 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
+// Global error logging to help surface early failures
+window.addEventListener('error', (ev) => {
+  try { console.error('[DEV] Window error:', ev.message || ev); } catch {}
+});
+window.addEventListener('unhandledrejection', (ev) => {
+  try { console.error('[DEV] Unhandled rejection:', (ev as any).reason); } catch {}
+});
+
 // Game state
 let lastTime = performance.now();
 let gameState: 'menu' | 'course' | 'options' | 'changelog' | 'loading' | 'play' | 'sunk' | 'summary' = 'menu';
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
-const APP_VERSION = '0.3.15';
+const APP_VERSION = '0.3.20';
 const restitution = 0.9; // wall bounce energy retention
 const frictionK = 1.2; // base exponential damping (reduced for less "sticky" green)
 const stopSpeed = 5; // px/s threshold to consider stopped (tunable)
@@ -40,7 +78,12 @@ const COLORS = {
   holeFill: '#0a1a0b',   // cup interior
   holeRim:  '#0f3f19',   // cup rim color
   hudText: '#111111',    // dark text on mustard background (matches screenshots)
-  hudBg: '#0d1f10'
+  hudBg: '#0d1f10',
+  // Terrain colors
+  waterFill: '#1f6dff',
+  waterStroke: '#1348aa',
+  sandFill: '#d4b36a',
+  sandStroke: '#a98545'
 } as const;
 const COURSE_MARGIN = 40; // inset for fairway rect
 const HUD_HEIGHT = 32;
@@ -187,6 +230,8 @@ const AudioSfx = {
 let isAiming = false;
 let aimStart = { x: 0, y: 0 };
 let aimCurrent = { x: 0, y: 0 };
+// Dev-only: bank-shot path preview toggle
+let debugPathPreview = false;
 
 // UI: Menu button in HUD (toggles pause)
 function getMenuRect() {
@@ -711,6 +756,39 @@ canvas.addEventListener('wheel', (e) => {
   clampChangelogScroll();
 }, { passive: false });
 
+// Dev-only: toggle bank-shot preview (robust across targets with per-event guard)
+function handleDevPreviewToggle(e: KeyboardEvent) {
+  // Do not process same event twice if attached on multiple targets
+  if ((e as any).__devPreviewHandled) return;
+  (e as any).__devPreviewHandled = true;
+  if (!isDevBuild()) return;
+  const key = e.key;
+  if (key === 'b' || key === 'B') {
+    debugPathPreview = !debugPathPreview;
+    try { console.log(`[DEV] Bank-shot preview: ${debugPathPreview ? 'ON' : 'OFF'}`); } catch {}
+  }
+}
+window.addEventListener('keydown', handleDevPreviewToggle);
+document.addEventListener('keydown', handleDevPreviewToggle);
+// Also listen on canvas and for keyup/keypress variants to improve capture during drags
+canvas.addEventListener('keydown', handleDevPreviewToggle as any);
+window.addEventListener('keyup', (e) => handleDevPreviewToggle(e as any));
+document.addEventListener('keypress', (e) => handleDevPreviewToggle(e as any));
+canvas.addEventListener('keypress', (e) => handleDevPreviewToggle(e as any));
+
+// Lightweight diagnostic for any key B receipt (dev only)
+function devLogAnyB(e: KeyboardEvent) {
+  if (!isDevBuild()) return;
+  const k = (e.key || '').toLowerCase();
+  if (k === 'b') {
+    try { console.log('[DEV] key event for B received:', e.type); } catch {}
+  }
+}
+window.addEventListener('keydown', devLogAnyB);
+window.addEventListener('keyup', devLogAnyB);
+document.addEventListener('keydown', devLogAnyB);
+canvas.addEventListener('keydown', devLogAnyB);
+
 // Hover handling for Pause overlay buttons
 canvas.addEventListener('mousemove', (e) => {
   if (!paused) return;
@@ -959,7 +1037,7 @@ function update(dt: number) {
   // Water OOB: only while playing; bridges override water
   if (gameState === 'play') {
     // Rect water check
-    for (const w of waters) {
+  for (const w of waters) {
       if (!pointInRect(ball.x, ball.y, w)) continue;
       let onBridge = false;
       for (const b of bridges) { if (pointInRect(ball.x, ball.y, b)) { onBridge = true; break; } }
@@ -1001,19 +1079,18 @@ function update(dt: number) {
     ball.y = hole.y;
     ball.vx = 0; ball.vy = 0;
     ball.moving = false;
-    if (gameState !== 'sunk' && gameState !== 'summary') {
-      const isLastHole = courseInfo.index >= courseInfo.total;
-      // Always show sunk banner first
-      gameState = 'sunk';
-      holeRecorded = false;
-      if (isLastHole) {
-        // record now; stay on sunk banner until user clicks or presses N
-        courseScores[currentLevelIndex] = strokes;
-        holeRecorded = true;
-        if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
-      }
-      AudioSfx.playSink();
+    // transition to sunk (we are already in 'play')
+    const isLastHole = courseInfo.index >= courseInfo.total;
+    // Always show sunk banner first
+    gameState = 'sunk';
+    holeRecorded = false;
+    if (isLastHole) {
+      // record now; stay on sunk banner until user clicks or presses N
+      courseScores[currentLevelIndex] = strokes;
+      holeRecorded = true;
+      if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
     }
+    AudioSfx.playSink();
   }
 }
 
@@ -1037,6 +1114,132 @@ function drawAim() {
   ctx.moveTo(aimStart.x, aimStart.y);
   ctx.lineTo(endX, endY);
   ctx.stroke();
+}
+
+// Dev-only reflective path preview while aiming (no friction/hills/water)
+function drawDebugPreview() {
+  if (!isDevBuild() || !debugPathPreview) return;
+  if (paused || gameState !== 'play') return;
+  if (!isAiming || ball.moving) return;
+
+  // Initial velocity mirrors shot computation on mouseup
+  const dx = aimCurrent.x - aimStart.x;
+  const dy = aimCurrent.y - aimStart.y;
+  const drag = Math.hypot(dx, dy);
+  if (drag < 2) return;
+  const maxDrag = 120;
+  const clamped = Math.min(drag, maxDrag);
+  const angle = Math.atan2(dy, dx);
+  let vx = Math.cos(angle) * clamped * 4 * -1;
+  let vy = Math.sin(angle) * clamped * 4 * -1;
+
+  // Sim state
+  let px = aimStart.x;
+  let py = aimStart.y;
+  const r = ball.r;
+  const dt = 1 / 120;
+  const maxTime = 2.0; // seconds
+  const maxBounces = 12;
+  let t = 0;
+  let bouncesCount = 0;
+
+  // Collect polyline points (thinned)
+  const pts: number[] = [px, py];
+  let stepCounter = 0;
+
+  // Helper to resolve against geometry (mirrors update())
+  function resolveCollisions() {
+    let collided = false;
+    // AABB walls
+    for (const w of walls) {
+      const hit = circleRectResolve(px, py, r, w);
+      if (hit) {
+        px += hit.nx * hit.depth;
+        py += hit.ny * hit.depth;
+        const vn = vx * hit.nx + vy * hit.ny;
+        vx -= (1 + restitution) * vn * hit.nx;
+        vy -= (1 + restitution) * vn * hit.ny;
+        collided = true;
+      }
+    }
+    // Round posts
+    for (const p of posts) {
+      const hit = circleCircleResolve(px, py, r, p.x, p.y, p.r);
+      if (hit) {
+        px += hit.nx * hit.depth;
+        py += hit.ny * hit.depth;
+        const vn = vx * hit.nx + vy * hit.ny;
+        vx -= (1 + restitution) * vn * hit.nx;
+        vy -= (1 + restitution) * vn * hit.ny;
+        collided = true;
+      }
+    }
+    // Polygon walls (each edge as segment)
+    for (const poly of polyWalls) {
+      const pts = poly.points;
+      if (!pts || pts.length < 4) continue;
+      for (let i = 0; i < pts.length; i += 2) {
+        const j = (i + 2) % pts.length;
+        const x1 = pts[i];
+        const y1 = pts[i + 1];
+        const x2 = pts[j];
+        const y2 = pts[j + 1];
+        const hit = circleSegmentResolve(px, py, r, x1, y1, x2, y2);
+        if (hit) {
+          px += hit.nx * hit.depth;
+          py += hit.ny * hit.depth;
+          const vn = vx * hit.nx + vy * hit.ny;
+          vx -= (1 + restitution) * vn * hit.nx;
+          vy -= (1 + restitution) * vn * hit.ny;
+          collided = true;
+        }
+      }
+    }
+    // Canvas bounds fallback
+    if (px - r < 0) { px = r; vx *= -restitution; collided = true; }
+    if (px + r > WIDTH) { px = WIDTH - r; vx *= -restitution; collided = true; }
+    if (py - r < 0) { py = r; vy *= -restitution; collided = true; }
+    if (py + r > HEIGHT) { py = HEIGHT - r; vy *= -restitution; collided = true; }
+    return collided;
+  }
+
+  while (t < maxTime && bouncesCount <= maxBounces) {
+    px += vx * dt;
+    py += vy * dt;
+    const collided = resolveCollisions();
+    if (collided) {
+      bouncesCount++;
+      pts.push(px, py);
+    } else if ((stepCounter++ & 7) === 0) {
+      // thin sampling to keep path light
+      pts.push(px, py);
+    }
+    // Stop if we reach cup
+    const dxh = px - hole.x;
+    const dyh = py - hole.y;
+    const dist = Math.hypot(dxh, dyh);
+    if (dist < hole.r - r * 0.25) {
+      pts.push(hole.x, hole.y);
+      break;
+    }
+    t += dt;
+  }
+
+  // Render polyline
+  if (pts.length >= 4) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.moveTo(pts[0], pts[1]);
+    for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+    // dev aid: mark that we rendered this frame (console can be chatty; keep light)
+    try { if ((typeof performance !== 'undefined') && Math.floor(performance.now() / 500) % 2 === 0) console.debug('[DEV] Preview render tick'); } catch {}
+  }
 }
 
 function draw() {
@@ -1126,6 +1329,18 @@ function draw() {
       ctx.fillRect(-headW / 2, -headH / 2, headW, headH);
       ctx.restore();
     })();
+
+  // Dev-only: tiny watermark to confirm dev build is active
+  (function drawDevWatermark() {
+    if (!isDevBuild()) return;
+    ctx.save();
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillText('DEV', 6, 4);
+    ctx.restore();
+  })();
     // Buttons
     const s = getMainStartRect();
     ctx.lineWidth = 1.5;
@@ -1377,8 +1592,27 @@ function draw() {
 
   // terrain zones (draw before walls)
   for (const r of waters) {
-    ctx.fillStyle = '#1f6dff';
+    ctx.fillStyle = COLORS.waterFill;
     ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = COLORS.waterStroke;
+    ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+  }
+  // polygon water
+  if (watersPoly.length > 0) {
+    ctx.fillStyle = COLORS.waterFill;
+    for (const wp of watersPoly) {
+      const pts = wp.points;
+      if (!pts || pts.length < 6) continue;
+      ctx.beginPath();
+      ctx.moveTo(pts[0], pts[1]);
+      for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+      ctx.closePath();
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = COLORS.waterStroke;
+      ctx.stroke();
+    }
   }
   // splash ripples on water
   if (splashes.length > 0) {
@@ -1405,12 +1639,15 @@ function draw() {
     splashes = newFx;
   }
   for (const r of sands) {
-    ctx.fillStyle = '#d4b36a';
+    ctx.fillStyle = COLORS.sandFill;
     ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = COLORS.sandStroke;
+    ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
   }
   // polygon sand
   if (sandsPoly.length > 0) {
-    ctx.fillStyle = '#d4b36a';
+    ctx.fillStyle = COLORS.sandFill;
     for (const sp of sandsPoly) {
       const pts = sp.points;
       if (!pts || pts.length < 6) continue;
@@ -1419,6 +1656,9 @@ function draw() {
       for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
       ctx.closePath();
       ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = COLORS.sandStroke;
+      ctx.stroke();
     }
   }
   // bridges (fairway rectangles spanning water)
@@ -1580,7 +1820,10 @@ function draw() {
   ctx.ellipse(ball.x + 2, ball.y + 3, ball.r * 0.9, ball.r * 0.6, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  if (isAiming) drawAim();
+  if (isAiming) {
+    drawDebugPreview();
+    drawAim();
+  }
   // end translation for level content; HUD is drawn in canvas coords
   ctx.restore();
 
@@ -1624,14 +1867,39 @@ function draw() {
   ctx.textAlign = 'start';
   ctx.textBaseline = 'top';
 
+  // Dev-only: small badge to confirm preview toggle state (shows during play/HUD)
+  (function drawDevBadge() {
+    if (!isDevBuild() || !debugPathPreview) return;
+    ctx.save();
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    const label = 'Preview ON (B)';
+    const pad = 4;
+    const w = ctx.measureText(label).width + pad * 2;
+    const h = 18;
+    const x = 10;
+    const y = HEIGHT - 10;
+    ctx.fillRect(x, y - h, w, h);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(label, x + pad, y - 4);
+    ctx.restore();
+  })();
+
   // Post-hole banner
   if (gameState === 'sunk') {
     const label = (() => {
       const diff = strokes - courseInfo.par;
-      if (diff <= -2) return 'Eagle';
+      // Classic golf terms, extended beyond basics
+      if (diff <= -4) return 'Condor';
+      if (diff === -3) return 'Albatross';
+      if (diff === -2) return 'Eagle';
       if (diff === -1) return 'Birdie';
       if (diff === 0) return 'Par';
       if (diff === 1) return 'Bogey';
+      if (diff === 2) return 'Double Bogey';
+      if (diff === 3) return 'Triple Bogey';
       return `${diff} Over`;
     })();
     const text = `${label}!  Strokes ${strokes}  (Par ${courseInfo.par})`;

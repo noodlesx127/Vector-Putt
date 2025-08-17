@@ -7,7 +7,7 @@ A practical checklist to start and deliver the MVP based on `Design_Doc.md`.
 - HTML5 Canvas 2D + TypeScript (no heavy engine)
   - Rationale: closest to classic Java applets in simplicity; deterministic 2D; tiny runtime; easy web distribution.
 - Build tooling: Vite (fast dev server + bundling) with NPM scripts
-- Audio: Howler.js (lightweight, cross-browser)
+- Audio: Web Audio API (custom); Howler.js optional later
 - Testing: Vitest (unit), Playwright (optional smoke)
 - Level format: Tiled (TMX/JSON) or simple custom JSON for walls/terrains
 - Packaging: Static web build (GitHub Pages/Netlify); optional Electron wrapper later for desktop
@@ -93,6 +93,15 @@ Notes:
   - [ ] Course builder to add/remove/reorder holes, set titles and par
   - [ ] Level browser: scan `levels/` and list levels; searchable and filterable
   - [ ] Preview thumbnails and quick-play from the browser
+  - [ ] Open/edit existing `levels/*.json` (load, modify, validate) and Save/Save As
+  - [ ] Create new level workflow (canvas size, par, initial metadata)
+  - [ ] Metadata editor: Level title and author name (persisted in JSON)
+  - [ ] Tool palette: Tee, Cup, Walls, WallsPoly, Posts, Bridges, Water, WaterPoly, Sand, SandPoly, Hills, decorations
+  - [ ] Selection tools: select/move/duplicate/delete; vertex edit for polygons; rotate/scale where applicable
+  - [ ] Grid snapping and nudge controls (arrow keys); configurable grid size
+  - [ ] Main Menu: add "Level Editor" entry to launch editor mode
+  - [ ] Course Select: add "User Made Levels" category; list by Level Title — Author; load+play selected
+  - [ ] Par/Birdie suggestion engine: estimate recommended par and birdie strokes via fairway path analysis (A*/raycast over corridors, bank count heuristic)
   - [ ] Logical cup placement tools: toggle line-of-sight from tee, show path-length heatmap, validate “must pass gates/banks” rules
   - [ ] Shape stamps/presets: chevrons, diamonds, octagons, sawtooth edges, post grids
   - [ ] Min-corridor-width and wall-thickness helpers to preserve 1-ball lanes
@@ -111,6 +120,24 @@ Notes:
   - [ ] Visuals: light-gray face with subtle edge highlight
 - [ ] Flower fence borders (decoration-only)
   - [ ] Keep as non-colliding visuals; ball can pass through into underlying terrain (e.g., water)
+
+## User System & Profiles
+- [ ] User accounts (local profiles)
+  - [ ] Create/select active user; store display name and role (admin/user)
+  - [ ] Persist users to local storage or file (JSON); simple migration/versioning plan
+- [ ] Roles & permissions
+  - [ ] Admin (Super User): edit/delete any level; manage users
+  - [ ] Normal user: edit/delete own levels; duplicate existing levels to create user-owned copies
+- [ ] Level ownership
+  - [ ] Persist `meta.authorId` and `meta.authorName` in level JSON; show Title — Author in lists
+  - [ ] Editor: restrict Save/Delete to owner or admin; allow "Save a Copy" for non-owners
+- [ ] Scores per user
+  - [ ] Track per-level and per-course scores keyed by user
+  - [ ] Course summary: show best scores for the active user; optional all-users leaderboard
+- [ ] UI integration
+  - [ ] Main Menu: username input field between the graphic and the Start button; Start disabled until a non-empty username is entered; persist and prefill last user
+  - [ ] Course Select: optional filter/sort by author; include "User Made Levels" category
+
   - [ ] Allow placement overlapping fairway/water edges; draw above water; no collision mask
 - [x] Land bridge over water (static, no slope)
   - [x] Support narrow fairway rectangles spanning water with correct priority (fairway collision only on bridge)
@@ -124,9 +151,9 @@ Notes:
   - [ ] Ensure collision shapes match visuals (no visual/physics mismatch)
 
 ### New obstacles/features inferred from screenshots
-- [ ] Polygon water (`waterPoly`): support non-rectangular water shapes (octagons, rivers, bays)
-  - [ ] Rendering and OOB detection via `pointInPolygon`
-  - [ ] Bridges spanning polygon water (priority draw and collision override)
+- [x] Polygon water (`waterPoly`): support non-rectangular water shapes (octagons, rivers, bays)
+  - [x] Rendering and OOB detection via `pointInPolygon`
+  - [x] Bridges spanning polygon water (priority draw and collision override)
 - [ ] Hills as polygons (`hillsPoly`): slope zones that are triangular/chevron/irregular, not only rectangles
   - [ ] Visual gradient with directional arrows style to match references
   - [ ] Tune strength per zone for arrow-lane “fast” and “slow” strips
@@ -156,6 +183,7 @@ Notes:
   - [x] Post-Hole scorecard screen with performance label
   - [x] Main Menu (Start, Options placeholder) → Course Select (Dev Levels)
 - [ ] Options: audio volumes (SFX/Music), accessibility toggles
+  - [x] SFX volume and mute controls in Options/Pause
 - [x] Pause menu overlay with info/shortcuts/version (P/Escape)
   - [x] Buttons: Replay, Close, Back to Main Menu
   - [ ] Add Options to Pause menu (open in-game Options; Back/Esc returns to Pause/Game)
@@ -169,13 +197,13 @@ Notes:
 
 ## Audio
 - [ ] SFX list and placeholders
-  - [ ] Ball hit (putt)
-  - [ ] Wall bounce (knock)
-  - [ ] Water splash (plop)
+  - [x] Ball hit (putt)
+  - [x] Wall bounce (knock)
+  - [x] Water splash (plop)
   - [ ] Sand roll (grit)
-  - [ ] Hole sink + short jingle
+  - [x] Hole sink + short jingle
 - [ ] Background music (light, cheerful, loopable)
-- [ ] Audio mixer with volume controls
+- [x] Audio mixer with volume controls
 
 ## Visuals
 - [x] Minimalist vector style palette (retro pass applied)
@@ -220,7 +248,12 @@ Observation tasks (verify and document in `docs/VIDEO_NOTES.md`):
 
 Implementation follow-ups:
 - [ ] Create 5–10 prototype holes for observed archetypes in `levels/`
-- [ ] Bank-shot dev harness: visualize predicted reflection paths (dev-only)
+- [x] Bank-shot dev harness: visualize predicted reflection paths (dev-only) — toggle with `B` (dev builds only)
+- [ ] Dev cleanup: temporary diagnostics and input helpers
+  - [ ] Decide whether to keep/remove the small "DEV" watermark
+  - [ ] Decide whether to keep/remove verbose dev key-event logs
+  - [ ] Confirm aiming drag threshold (2px vs 4px)
+  - [ ] Reduce extra keyboard listeners now that canvas focus is reliable
 - [ ] Collision tuning: restitution/friction, and wall tolerance to avoid tunneling; deterministic reflections
 - [ ] Config surfaces: friction per terrain; restitution; stop-epsilon; suction radius
 - [ ] Aiming: clamp min/max drag, configurable power curve; arrow visuals per reference
@@ -261,6 +294,7 @@ Implementation follow-ups:
 - [ ] Update `docs/Design_Doc.md` with any scope changes
 - [ ] Add `docs/TECH_DESIGN.md` covering architecture and data formats
 - [ ] Add `docs/LEVEL_GUIDE.md` for creators
+- [x] Add `docs/PALETTE.md` and consolidate water/sand colors + outlines in `src/main.ts`
 
 ## Stretch (post-MVP)
 - [ ] Moving obstacles, boosters, teleporters

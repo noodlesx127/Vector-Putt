@@ -19,7 +19,7 @@ A classic mini golf recreation using TypeScript + Canvas with data‑driven leve
 
 - TypeScript, HTML5 Canvas 2D
 - Vite (dev/build)
-- Planned: Howler.js (audio), Vitest (tests)
+- Web Audio API (custom) for SFX; Howler.js optional later, Vitest (tests)
 
 ## Run locally
 
@@ -29,7 +29,7 @@ A classic mini golf recreation using TypeScript + Canvas with data‑driven leve
    - `npm run dev`
 3. Open the URL shown by Vite.
 
-See `TODO.md` for roadmap and `PROGRESS.md` for current focus.
+See `TODO.md` for roadmap, `PROGRESS.md` for current focus, and `docs/PALETTE.md` for the canonical color palette.
 
 ## Suggested GitHub Topics
 

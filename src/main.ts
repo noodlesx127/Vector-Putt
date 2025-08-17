@@ -90,6 +90,25 @@ const HUD_HEIGHT = 32;
 const SLOPE_ACCEL = 520; // tuned base acceleration applied by hills (px/s^2)
 const levelCache = new Map<string, Level>();
 
+// User profile (minimal local profile)
+type UserRole = 'admin' | 'user';
+type UserProfile = { name: string; role: UserRole };
+let userProfile: UserProfile = { name: '', role: 'user' };
+let isEditingUserName = false;
+function loadUserProfile(): void {
+  try {
+    const s = localStorage.getItem('vp.user');
+    if (!s) return;
+    const o = JSON.parse(s);
+    if (o && typeof o.name === 'string') userProfile.name = o.name;
+    if (o && (o.role === 'admin' || o.role === 'user')) userProfile.role = o.role;
+  } catch {}
+}
+function saveUserProfile(): void {
+  try { localStorage.setItem('vp.user', JSON.stringify(userProfile)); } catch {}
+}
+try { loadUserProfile(); } catch {}
+
 type Wall = { x: number; y: number; w: number; h: number };
 type Rect = { x: number; y: number; w: number; h: number };
 type Circle = { x: number; y: number; r: number };
@@ -280,6 +299,7 @@ let hoverPauseBack = false;
 let hoverMainStart = false;
 let hoverMainOptions = false;
 let hoverMainChangelog = false;
+let hoverMainName = false;
 let hoverCourseDev = false;
 let hoverCourseBack = false;
 let hoverChangelogBack = false;
@@ -443,6 +463,15 @@ function getMainOptionsRect() {
   return { x, y, w, h };
 }
 
+// Main Menu: Username input (above Start, below graphic)
+function getMainNameRect() {
+  const w = 260, h = 28;
+  const s = getMainStartRect();
+  const x = WIDTH / 2 - w / 2;
+  const y = s.y - 34; // moved down to avoid clipping into the main graphic
+  return { x, y, w, h };
+}
+
 // Main Menu: Changelog button (bottom-right)
 function getMainChangelogRect() {
   const w = 160, h = 36;
@@ -507,8 +536,19 @@ canvas.addEventListener('mousedown', (e) => {
   const p = worldFromEvent(e); // canvas coords
   // Handle Main Menu buttons
   if (gameState === 'menu') {
+    // Username input focus
+    const nr = getMainNameRect();
+    if (p.x >= nr.x && p.x <= nr.x + nr.w && p.y >= nr.y && p.y <= nr.y + nr.h) {
+      isEditingUserName = true;
+      try { (canvas as any).focus({ preventScroll: true }); } catch {}
+      return;
+    } else {
+      isEditingUserName = false;
+    }
+    // Start button (disabled unless username non-empty)
     const s = getMainStartRect();
-    if (p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h) {
+    const canStart = ((userProfile.name || '').trim().length > 0);
+    if (canStart && p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h) {
       // Go to Course Select
       gameState = 'course';
       return;
@@ -614,11 +654,19 @@ canvas.addEventListener('mousemove', (e) => {
   if (gameState === 'menu') {
     const s = getMainStartRect();
     const o = getMainOptionsRect();
+    const nr = getMainNameRect();
     hoverMainStart = p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h;
     hoverMainOptions = p.x >= o.x && p.x <= o.x + o.w && p.y >= o.y && p.y <= o.y + o.h;
+    hoverMainName = p.x >= nr.x && p.x <= nr.x + nr.w && p.y >= nr.y && p.y <= nr.y + nr.h;
     const cg = getMainChangelogRect();
     hoverMainChangelog = p.x >= cg.x && p.x <= cg.x + cg.w && p.y >= cg.y && p.y <= cg.y + cg.h;
-    canvas.style.cursor = (hoverMainStart || hoverMainOptions || hoverMainChangelog) ? 'pointer' : 'default';
+    if (hoverMainName || isEditingUserName) {
+      canvas.style.cursor = 'text';
+    } else {
+      const canStart = ((userProfile.name || '').trim().length > 0);
+      const showPointer = (hoverMainOptions || hoverMainChangelog || (hoverMainStart && canStart));
+      canvas.style.cursor = showPointer ? 'pointer' : 'default';
+    }
     return;
   }
   if (gameState === 'changelog') {
@@ -789,6 +837,32 @@ window.addEventListener('keyup', devLogAnyB);
 document.addEventListener('keydown', devLogAnyB);
 canvas.addEventListener('keydown', devLogAnyB);
 
+// Username input handling (menu only)
+function handleNameEditKey(e: KeyboardEvent) {
+  if (gameState !== 'menu' || !isEditingUserName) return;
+  const key = e.key;
+  if (key === 'Enter') { isEditingUserName = false; e.preventDefault(); return; }
+  if (key === 'Escape') { isEditingUserName = false; e.preventDefault(); return; }
+  if (key === 'Backspace') {
+    if (userProfile.name.length > 0) {
+      userProfile.name = userProfile.name.slice(0, -1);
+      saveUserProfile();
+    }
+    e.preventDefault();
+    return;
+  }
+  if (key.length === 1) {
+    // Accept a conservative set of characters
+    if (/^[A-Za-z0-9 _.'-]$/.test(key) && userProfile.name.length < 24) {
+      userProfile.name += key;
+      saveUserProfile();
+      e.preventDefault();
+    }
+    return;
+  }
+}
+window.addEventListener('keydown', handleNameEditKey);
+
 // Hover handling for Pause overlay buttons
 canvas.addEventListener('mousemove', (e) => {
   if (!paused) return;
@@ -837,6 +911,7 @@ canvas.addEventListener('mousedown', (e) => {
     gameState = 'options';
   }
 });
+
 
 function circleRectResolve(bx: number, by: number, br: number, rect: Wall) {
   // Closest point on rect to circle center
@@ -1330,28 +1405,63 @@ function draw() {
       ctx.restore();
     })();
 
-  // Dev-only: tiny watermark to confirm dev build is active
-  (function drawDevWatermark() {
-    if (!isDevBuild()) return;
-    ctx.save();
-    ctx.font = '10px system-ui, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.fillText('DEV', 6, 4);
-    ctx.restore();
-  })();
+    // Dev-only: tiny watermark to confirm dev build is active
+    (function drawDevWatermark() {
+      if (!isDevBuild()) return;
+      ctx.save();
+      ctx.font = '10px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillText('DEV', 6, 4);
+      ctx.restore();
+    })();
+    // Username input
+    const nr = getMainNameRect();
+    ctx.lineWidth = isEditingUserName ? 2 : 1.5;
+    ctx.strokeStyle = (hoverMainName || isEditingUserName) ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fillRect(nr.x, nr.y, nr.w, nr.h);
+    ctx.strokeRect(nr.x, nr.y, nr.w, nr.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    const nameText = (userProfile.name || '');
+    const placeholder = 'Enter name…';
+    const showingPlaceholder = !isEditingUserName && nameText.trim().length === 0;
+    ctx.globalAlpha = showingPlaceholder ? 0.6 : 1;
+    const displayText = showingPlaceholder ? placeholder : nameText;
+    ctx.fillText(displayText, nr.x + 8, nr.y + nr.h/2 + 0.5);
+    ctx.globalAlpha = 1;
+    // Blinking caret when editing (draw at end of current text)
+    if (isEditingUserName) {
+      const t = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      if (Math.floor(t / 500) % 2 === 0) {
+        const caretX = nr.x + 8 + ctx.measureText(nameText).width;
+        const cx = Math.min(nr.x + nr.w - 6, caretX);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(cx, nr.y + 5);
+        ctx.lineTo(cx, nr.y + nr.h - 5);
+        ctx.stroke();
+      }
+    }
+
     // Buttons
     const s = getMainStartRect();
+    const canStart = ((userProfile.name || '').trim().length > 0);
     ctx.lineWidth = 1.5;
-    ctx.strokeStyle = hoverMainStart ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = hoverMainStart ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.strokeStyle = canStart ? (hoverMainStart ? '#ffffff' : '#cfd2cf') : 'rgba(255,255,255,0.15)';
+    ctx.fillStyle = hoverMainStart && canStart ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
     ctx.fillRect(s.x, s.y, s.w, s.h);
     ctx.strokeRect(s.x, s.y, s.w, s.h);
     ctx.fillStyle = '#ffffff';
     ctx.font = '18px system-ui, sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.globalAlpha = canStart ? 1 : 0.5;
     ctx.fillText('Start', s.x + s.w/2, s.y + s.h/2 + 0.5);
+    ctx.globalAlpha = 1;
     const o = getMainOptionsRect();
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = hoverMainOptions ? '#ffffff' : '#cfd2cf';
@@ -1840,9 +1950,15 @@ function draw() {
   const totalSoFar = courseScores.reduce((a, b) => a + b, 0) + (gameState === 'sunk' ? 0 : 0);
   const centerText = `Par ${courseInfo.par}   Strokes ${strokes}   Total ${totalSoFar}`;
   const rightText = `To Birdie: ${toBirdie === null ? '—' : toBirdie}   Speed ${speed}`;
-  // left
+  // left: show username, then Hole label shifted to the right
   ctx.textAlign = 'left';
-  ctx.fillText(leftText, rrHUD.x + rrHUD.w + 12, 6);
+  const leftBaseX = rrHUD.x + rrHUD.w + 12;
+  let ulabel = (userProfile.name || '').trim();
+  if (!ulabel) ulabel = 'Player';
+  if (ulabel.length > 18) ulabel = ulabel.slice(0, 17) + '…';
+  ctx.fillText(ulabel, leftBaseX, 6);
+  const holeX = leftBaseX + ctx.measureText(ulabel).width + 16;
+  ctx.fillText(leftText, holeX, 6);
   // center
   ctx.textAlign = 'center';
   ctx.fillText(centerText, WIDTH / 2, 6);

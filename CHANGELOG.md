@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+- User System: Main Menu username input added above Start. Start is disabled until a non-empty name is entered. Username persists to `localStorage` and is prefilled on load. Cursor changes to text I-beam on hover, and placeholder shown when empty.
+- Fix: removed redundant Main Menu mouse handlers that could blur the username input on mouseup; consolidated focus handling so editing is stable.
+ - UX: username input now has a clear focus state — placeholder hides while editing, caret blinks at the end of text, and I-beam cursor remains during edit. Input field nudged down to avoid clipping into the main graphic.
+ - HUD: display active user's name on the top-left; `Hole x/y` pushed right to make room.
+
 ## v0.3.20 — 2025-08-17
 
 - Palette: extracted canonical colors to `docs/PALETTE.md` and consolidated usage in code.

@@ -64,7 +64,6 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
  - [x] Options: basic SFX volume and mute controls
 
 ## Blockers / Open Questions
-- [ ] Finalize exact canvas resolution (800×600 vs. 1024×768) based on references
 - [ ] Confirm hole capture radius vs. exact entry (measure from videos)
 - [ ] Decide Tiled (TMX/JSON) vs. simple custom level JSON for MVP
 
@@ -83,6 +82,10 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [x] Level design pass: adjusted `levels/level4.json`–`level6.json` for logical cup/obstacle placement; ensured `level8` polygon water renders visibly.
 
 - [x] Dev-only bank-shot preview toggle fixed: robust dev detection (`isDevBuild()`), canvas focus during drag, broader dev key listeners; DEV watermark/badge and diagnostics for verification.
+
+- [x] Main Menu: username input focus UX — blinking caret, placeholder hides during edit, I-beam cursor while editing; thicker focus border; input nudged down to avoid clipping.
+
+- [x] HUD: show active user's name on the top-left; push `Hole x/y` label right to make room.
 
 ## Risks / Mitigations
 - **Physics feel mismatch** → Add tunable config (friction, restitution, stop-epsilon, power curve)

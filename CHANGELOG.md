@@ -8,7 +8,7 @@ All notable changes to this project will be documented in this file.
 - Fix: removed redundant Main Menu mouse handlers that could blur the username input on mouseup; consolidated focus handling so editing is stable.
  - UX: username input now has a clear focus state — placeholder hides while editing, caret blinks at the end of text, and I-beam cursor remains during edit. Input field nudged down to avoid clipping into the main graphic.
  - HUD: display active user's name on the top-left; `Hole x/y` pushed right to make room.
- - User System: role toggle button on Main Menu (below username input); persists admin/user role to localStorage.
+ - Removed: Main Menu role toggle; roles will be managed via admin-only controls (upcoming). User role still persists to localStorage for permissions.
  - User System: level ownership metadata (authorId/authorName) added to Level schema; per-user score tracking with best scores shown in HUD.
 
 ## v0.3.20 — 2025-08-17

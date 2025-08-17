@@ -362,7 +362,6 @@ let hoverMainStart = false;
 let hoverMainOptions = false;
 let hoverMainChangelog = false;
 let hoverMainName = false;
-let hoverMainRole = false;
 let hoverCourseDev = false;
 let hoverCourseBack = false;
 let hoverChangelogBack = false;
@@ -539,15 +538,6 @@ function getMainNameRect() {
   return { x, y, w, h };
 }
 
-// Main Menu: Role toggle (below username input)
-function getMainRoleRect() {
-  const w = 120, h = 24;
-  const nr = getMainNameRect();
-  const x = WIDTH / 2 - w / 2;
-  const y = nr.y + nr.h + 8;
-  return { x, y, w, h };
-}
-
 // Main Menu: Changelog button (bottom-right)
 function getMainChangelogRect() {
   const w = 160, h = 36;
@@ -620,13 +610,6 @@ canvas.addEventListener('mousedown', (e) => {
       return;
     } else {
       isEditingUserName = false;
-    }
-    // Role toggle button
-    const rr = getMainRoleRect();
-    if (p.x >= rr.x && p.x <= rr.x + rr.w && p.y >= rr.y && p.y <= rr.y + rr.h) {
-      userProfile.role = userProfile.role === 'admin' ? 'user' : 'admin';
-      saveUserProfile();
-      return;
     }
     // Start button (disabled unless username non-empty)
     const s = getMainStartRect();
@@ -738,18 +721,16 @@ canvas.addEventListener('mousemove', (e) => {
     const s = getMainStartRect();
     const o = getMainOptionsRect();
     const nr = getMainNameRect();
-    const rr = getMainRoleRect();
     hoverMainStart = p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h;
     hoverMainOptions = p.x >= o.x && p.x <= o.x + o.w && p.y >= o.y && p.y <= o.y + o.h;
     hoverMainName = p.x >= nr.x && p.x <= nr.x + nr.w && p.y >= nr.y && p.y <= nr.y + nr.h;
-    hoverMainRole = p.x >= rr.x && p.x <= rr.x + rr.w && p.y >= rr.y && p.y <= rr.y + rr.h;
     const cg = getMainChangelogRect();
     hoverMainChangelog = p.x >= cg.x && p.x <= cg.x + cg.w && p.y >= cg.y && p.y <= cg.y + cg.h;
     if (hoverMainName || isEditingUserName) {
       canvas.style.cursor = 'text';
     } else {
       const canStart = ((userProfile.name || '').trim().length > 0);
-      const showPointer = (hoverMainOptions || hoverMainChangelog || hoverMainRole || (hoverMainStart && canStart));
+      const showPointer = (hoverMainOptions || hoverMainChangelog || (hoverMainStart && canStart));
       canvas.style.cursor = showPointer ? 'pointer' : 'default';
     }
     return;
@@ -1551,18 +1532,6 @@ function draw() {
     ctx.globalAlpha = canStart ? 1 : 0.5;
     ctx.fillText('Start', s.x + s.w/2, s.y + s.h/2 + 0.5);
     ctx.globalAlpha = 1;
-    // Role toggle button (below username input)
-    const rr = getMainRoleRect();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = hoverMainRole ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = hoverMainRole ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
-    ctx.fillRect(rr.x, rr.y, rr.w, rr.h);
-    ctx.strokeRect(rr.x, rr.y, rr.w, rr.h);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '14px system-ui, sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    const roleLabel = userProfile.role === 'admin' ? 'Admin' : 'User';
-    ctx.fillText(roleLabel, rr.x + rr.w/2, rr.y + rr.h/2 + 0.5);
     const o = getMainOptionsRect();
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = hoverMainOptions ? '#ffffff' : '#cfd2cf';

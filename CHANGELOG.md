@@ -10,6 +10,47 @@ All notable changes to this project will be documented in this file.
  - HUD: display active user's name on the top-left; `Hole x/y` pushed right to make room.
  - Removed: Main Menu role toggle; roles will be managed via admin-only controls (upcoming). User role still persists to localStorage for permissions.
  - User System: level ownership metadata (authorId/authorName) added to Level schema; per-user score tracking with best scores shown in HUD.
+ - Change: Admin Users UI access moved to Shift+F (admin-only) after clicking Start (from Select Course onward). Options "Users" button removed.
+ - Change: Start is now blocked if the entered username matches a disabled user in the UsersStore (or local storage fallback). Disabled users cannot proceed past the Main Menu until re-enabled by an admin.
+  - UX: When a disabled username is entered, a red hint appears under the input: "User is disabled. Ask an admin to re-enable or select a new name."
+ - UX: Increased vertical spacing under the username input and moved Start/Options down slightly to give the disabled-user hint more room.
+ - Testing: added Vitest and a UsersStore unit test suite covering add/remove, enable/disable, promote/demote safeguards (cannot remove/disable last admin; prevent self-demotion when last admin), import/export, and init() fallbacks.
+ - CI: updated GitHub Actions workflow to run tests before build.
+
+ - Main Menu: added "Level Editor" button between Start and Options. Enabled only when the username passes the same validation as Start (non-empty and not disabled). Hover/cursor states match other buttons.
+ - Game State: introduced `levelEditor` state with a placeholder screen and a Back button (reuses `getCourseBackRect()`) to return to Main Menu.
+ - Input: updated mousemove/mousedown handlers to manage hover and clicks for the Level Editor entry and the Level Editor Back button. Cursor shows pointer on hover when enabled.
+ - Layout: added `getMainLevelEditorRect()` and moved Options down via `getMainOptionsRect()` to accommodate the new entry.
+
+## v0.3.23 — 2025-08-18
+
+- Level Editor: initial Tool Palette UI
+  - Renders a vertical list of tool buttons: Select, Tee, Cup, Wall, WallsPoly, Post, Bridge, Water, WaterPoly, Sand, SandPoly, Hill.
+  - Selected tool is highlighted; palette rebuilt each frame into `editorUiHotspots` for interaction.
+- Input: extended `mousemove` and `mousedown` for `levelEditor`
+  - Hover sets pointer cursor over Back and tool buttons.
+  - Click on a tool selects it (`selectedEditorTool`).
+- Draw: renders tool buttons with consistent sizing/spacing; keeps existing Back button behavior.
+- Version: in-game and package version bumped to `0.3.23`.
+## v0.3.21 — 2025-08-17
+
+- Feature: Admin-only Users management UI
+  - Options screen shows a "Users" button only when `userProfile.role === 'admin'`.
+  - New `users` game state with an admin UI to manage users.
+  - Full CRUD and role management:
+    - Add User, Add Admin
+    - Promote/Demote (toggle role user ⇄ admin)
+    - Enable/Disable user
+    - Remove user (with confirmation)
+  - Import/Export JSON for user data (prompt-based copy/paste; avoids async clipboard in handlers).
+  - Safeguards enforced by `UsersStore`: cannot remove/disable the last enabled admin; prevent self-demotion if you are the last admin.
+- Implementation details:
+  - Added `getOptionsUsersRect()` and mousedown handling to enter `users` state from Options (admin-only).
+  - Rebuild `usersUiHotspots` each frame in Users UI; handle clicks in the main canvas mousedown handler.
+  - Fixed syntax error: closed `isDevBuild()` properly and removed a stray brace after `usersUiHotspots` declaration.
+  - Moved Users admin action handling into the `mousedown` handler (no invalid `await` in event path).
+  - Initialized `UsersStore` asynchronously at boot; gated UI actions on `usersStoreReady`.
+- Version: in-game and package version updated to `0.3.21`.
 
 ## v0.3.20 — 2025-08-17
 

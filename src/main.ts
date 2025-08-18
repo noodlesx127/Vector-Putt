@@ -1,4 +1,5 @@
 import CHANGELOG_RAW from '../CHANGELOG.md?raw';
+import usersStore from './UsersStore';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -16,6 +17,19 @@ function isDevBuild(): boolean {
     return false;
   }
 }
+
+// Users Admin UI hotspots (rebuilt every frame while in users screen)
+type UsersHotspot = { kind: 'back' | 'addUser' | 'addAdmin' | 'export' | 'import' | 'promote' | 'demote' | 'enable' | 'disable' | 'remove'; x: number; y: number; w: number; h: number; id?: string };
+let usersUiHotspots: UsersHotspot[] = [];
+
+// Level Editor UI hotspots and state
+type EditorTool = 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'sand' | 'sandPoly' | 'hill';
+type EditorHotspot = { kind: 'tool'; tool: EditorTool; x: number; y: number; w: number; h: number };
+let editorUiHotspots: EditorHotspot[] = [];
+let selectedEditorTool: EditorTool = 'select';
+let editorShowGrid = true;
+let editorGridSize = 20; // px
+
 // Boot-time dev diagnostics
 try {
   const rawEnv = (import.meta as any)?.env?.DEV;
@@ -58,11 +72,11 @@ window.addEventListener('unhandledrejection', (ev) => {
 
 // Game state
 let lastTime = performance.now();
-let gameState: 'menu' | 'course' | 'options' | 'changelog' | 'loading' | 'play' | 'sunk' | 'summary' = 'menu';
+let gameState: 'menu' | 'course' | 'options' | 'users' | 'changelog' | 'loading' | 'play' | 'sunk' | 'summary' | 'levelEditor' = 'menu';
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
-const APP_VERSION = '0.3.20';
+const APP_VERSION = '0.3.23';
 const restitution = 0.9; // wall bounce energy retention
 const frictionK = 1.2; // base exponential damping (reduced for less "sticky" green)
 const stopSpeed = 5; // px/s threshold to consider stopped (tunable)
@@ -164,6 +178,45 @@ function getBestScore(levelPath: string): number | null {
 }
 
 try { loadUserProfile(); loadUserScores(); } catch {}
+// Initialize UsersStore (async); fall back gracefully if it fails
+let usersStoreReady = false;
+(async () => {
+  try {
+    await usersStore.init();
+    usersStoreReady = true;
+  } catch (e) {
+    console.error('Failed to initialize UsersStore', e);
+  }
+})();
+
+// Helper: is the typed name blocked due to a disabled user record?
+function isNameDisabled(name: string): boolean {
+  const n = (name || '').trim();
+  if (!n) return false;
+  try {
+    if (usersStoreReady) {
+      const all = usersStore.getAll();
+      const match = all.find(u => (u.name || '').toLowerCase() === n.toLowerCase());
+      return !!(match && match.enabled === false);
+    } else {
+      const raw = localStorage.getItem('vp.users');
+      if (raw) {
+        const doc = JSON.parse(raw);
+        const arr = Array.isArray(doc?.users) ? doc.users : [];
+        const match = arr.find((u: any) => (u?.name || '').toLowerCase() === n.toLowerCase());
+        if (match && typeof match.enabled === 'boolean') return match.enabled === false;
+      }
+    }
+  } catch {}
+  return false;
+}
+
+function isStartEnabled(): boolean {
+  const n = (userProfile.name || '').trim();
+  if (!n) return false;
+  if (isNameDisabled(n)) return false;
+  return true;
+}
 
 type Wall = { x: number; y: number; w: number; h: number };
 type Rect = { x: number; y: number; w: number; h: number };
@@ -359,11 +412,13 @@ let hoverPauseReplay = false;
 let hoverPauseClose = false;
 let hoverPauseBack = false;
 let hoverMainStart = false;
+let hoverMainLevelEditor = false;
 let hoverMainOptions = false;
 let hoverMainChangelog = false;
 let hoverMainName = false;
 let hoverCourseDev = false;
 let hoverCourseBack = false;
+let hoverLevelEditorBack = false;
 let hoverChangelogBack = false;
 let hoverSummaryBack = false;
 let hoverOptionsBack = false;
@@ -372,11 +427,12 @@ let hoverOptionsVolPlus = false;
 let hoverOptionsMute = false;
 let hoverPauseOptions = false;
 let hoverOptionsVolSlider = false;
+let hoverOptionsUsers = false; // admin-only users button
 let transitioning = false; // prevent double-advance while changing holes
 let lastAdvanceFromSunkMs = 0; // used to swallow trailing click after mousedown
 const CLICK_SWALLOW_MS = 180; // shorten delay for snappier feel
 
-let previousGameState: 'menu' | 'course' | 'options' | 'changelog' | 'loading' | 'play' | 'sunk' | 'summary' = 'menu';
+let previousGameState: 'menu' | 'course' | 'options' | 'users' | 'changelog' | 'loading' | 'play' | 'sunk' | 'summary' | 'levelEditor' = 'menu';
 
 // (duplicate block removed)
 
@@ -519,13 +575,19 @@ async function startCourseFromFile(courseJsonPath: string): Promise<void> {
 function getMainStartRect() {
   const w = 160, h = 36;
   const x = WIDTH / 2 - w / 2;
-  const y = HEIGHT / 2 - 10;
+  const y = HEIGHT / 2 + 4; // moved down slightly to give the hint more room
+  return { x, y, w, h };
+}
+function getMainLevelEditorRect() {
+  const w = 160, h = 36;
+  const x = WIDTH / 2 - w / 2;
+  const y = HEIGHT / 2 + 54; // between Start and Options
   return { x, y, w, h };
 }
 function getMainOptionsRect() {
   const w = 160, h = 36;
   const x = WIDTH / 2 - w / 2;
-  const y = HEIGHT / 2 + 40;
+  const y = HEIGHT / 2 + 104; // moved down to sit below Level Editor
   return { x, y, w, h };
 }
 
@@ -534,7 +596,7 @@ function getMainNameRect() {
   const w = 260, h = 28;
   const s = getMainStartRect();
   const x = WIDTH / 2 - w / 2;
-  const y = s.y - 34; // moved down to avoid clipping into the main graphic
+  const y = s.y - 46; // increased gap to give disabled-user hint more room
   return { x, y, w, h };
 }
 
@@ -613,10 +675,65 @@ canvas.addEventListener('mousedown', (e) => {
     }
     // Start button (disabled unless username non-empty)
     const s = getMainStartRect();
-    const canStart = ((userProfile.name || '').trim().length > 0);
+    const canStart = isStartEnabled();
     if (canStart && p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h) {
       // Go to Course Select
       gameState = 'course';
+      // On Start: sync active profile with UsersStore (login by name)
+      try {
+        const name = (userProfile.name || '').trim();
+        if (!name) { /* nothing to sync */ }
+        else if (usersStoreReady) {
+          const all = usersStore.getAll();
+          const match = all.find(u => (u.name || '').toLowerCase() === name.toLowerCase());
+          if (match) {
+            // If typed 'admin' but record isn't admin yet, promote it
+            if (name.toLowerCase() === 'admin' && match.role !== 'admin') {
+              try { usersStore.toggleRole(match.id); match.role = 'admin'; } catch {}
+            }
+            userProfile.role = match.role as any;
+            userProfile.id = match.id;
+            saveUserProfile();
+          } else {
+            // Create a new user in the store (admin if name is 'admin')
+            const defaultRole = (name.toLowerCase() === 'admin') ? 'admin' : 'user';
+            const rec = usersStore.addUser(name, defaultRole as any);
+            userProfile.role = rec.role as any;
+            userProfile.id = rec.id;
+            saveUserProfile();
+          }
+        } else {
+          // Fallback: try reading localStorage users doc (no await)
+          try {
+            const raw = localStorage.getItem('vp.users');
+            if (raw) {
+              const doc = JSON.parse(raw);
+              const arr = Array.isArray(doc?.users) ? doc.users : [];
+              const match = arr.find((u: any) => (u?.name || '').toLowerCase() === name.toLowerCase());
+              if (match && (match.role === 'admin' || match.role === 'user') && typeof match.id === 'string') {
+                // If typed 'admin' but stored record is user, bootstrap elevate in profile (persist will happen once store is ready)
+                const role = (name.toLowerCase() === 'admin') ? 'admin' : match.role;
+                userProfile.role = role as any;
+                userProfile.id = match.id;
+                saveUserProfile();
+              } else if (name.toLowerCase() === 'admin') {
+                // Last resort: treat name 'admin' as admin until store init completes
+                userProfile.role = 'admin' as any;
+                saveUserProfile();
+              }
+            } else if (name.toLowerCase() === 'admin') {
+              userProfile.role = 'admin' as any;
+              saveUserProfile();
+            }
+          } catch {}
+        }
+      } catch {}
+      return;
+    }
+    // Level Editor button (disabled unless username non-empty)
+    const le = getMainLevelEditorRect();
+    if (canStart && p.x >= le.x && p.x <= le.x + le.w && p.y >= le.y && p.y <= le.y + le.h) {
+      gameState = 'levelEditor';
       return;
     }
     const o = getMainOptionsRect();
@@ -654,6 +771,24 @@ canvas.addEventListener('mousedown', (e) => {
       return;
     }
   }
+  // Handle Level Editor buttons
+  if (gameState === 'levelEditor') {
+    // Tool palette interactions
+    for (const hs of editorUiHotspots) {
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
+        if (hs.kind === 'tool') {
+          selectedEditorTool = hs.tool;
+          return;
+        }
+      }
+    }
+    // Back button
+    const back = getCourseBackRect();
+    if (p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h) {
+      gameState = 'menu';
+      return;
+    }
+  }
   // Handle Options Back button
   if (gameState === 'options') {
     const back = getCourseBackRect();
@@ -673,6 +808,62 @@ canvas.addEventListener('mousedown', (e) => {
       AudioSfx.setVolume(t);
       return;
     }
+    // Users button removed from Options (access via Shift+F after Start)
+  }
+  // Users admin actions
+  if (gameState === 'users') {
+    for (const hs of usersUiHotspots) {
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
+        if (!usersStoreReady) { try { alert('Users store is not ready yet.'); } catch {} return; }
+        try {
+          switch (hs.kind) {
+            case 'back':
+              gameState = previousGameState;
+              break;
+            case 'addUser': {
+              const name = prompt('Enter new user name');
+              if (name && name.trim()) usersStore.addUser(name.trim(), 'user');
+              break;
+            }
+            case 'addAdmin': {
+              const name = prompt('Enter new admin name');
+              if (name && name.trim()) usersStore.addUser(name.trim(), 'admin');
+              break;
+            }
+            case 'export': {
+              const json = usersStore.exportToJsonString(true);
+              prompt('Users JSON — copy to clipboard:', json);
+              break;
+            }
+            case 'import': {
+              const text = prompt('Paste Users JSON to import');
+              if (text && text.trim()) usersStore.importFromJsonString(text.trim());
+              break;
+            }
+            case 'promote':
+            case 'demote':
+              if (hs.id) usersStore.toggleRole(hs.id, getUserId());
+              break;
+            case 'enable':
+              if (hs.id) usersStore.setEnabled(hs.id, true);
+              break;
+            case 'disable':
+              if (hs.id) usersStore.setEnabled(hs.id, false);
+              break;
+            case 'remove':
+              if (hs.id) {
+                const ok = confirm('Remove this user? This cannot be undone.');
+                if (ok) usersStore.removeUser(hs.id);
+              }
+              break;
+          }
+        } catch (e) {
+          try { alert((e as any)?.message || 'Operation failed'); } catch {}
+        }
+        return;
+      }
+    }
+    return;
   }
   // Handle HUD Menu button first (toggles pause)
   if (!paused) {
@@ -719,9 +910,11 @@ canvas.addEventListener('mousemove', (e) => {
   // Hover for menus
   if (gameState === 'menu') {
     const s = getMainStartRect();
+    const le = getMainLevelEditorRect();
     const o = getMainOptionsRect();
     const nr = getMainNameRect();
     hoverMainStart = p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h;
+    hoverMainLevelEditor = p.x >= le.x && p.x <= le.x + le.w && p.y >= le.y && p.y <= le.y + le.h;
     hoverMainOptions = p.x >= o.x && p.x <= o.x + o.w && p.y >= o.y && p.y <= o.y + o.h;
     hoverMainName = p.x >= nr.x && p.x <= nr.x + nr.w && p.y >= nr.y && p.y <= nr.y + nr.h;
     const cg = getMainChangelogRect();
@@ -729,10 +922,21 @@ canvas.addEventListener('mousemove', (e) => {
     if (hoverMainName || isEditingUserName) {
       canvas.style.cursor = 'text';
     } else {
-      const canStart = ((userProfile.name || '').trim().length > 0);
-      const showPointer = (hoverMainOptions || hoverMainChangelog || (hoverMainStart && canStart));
+      const canStart = isStartEnabled();
+      const showPointer = (hoverMainOptions || hoverMainChangelog || ((hoverMainStart || hoverMainLevelEditor) && canStart));
       canvas.style.cursor = showPointer ? 'pointer' : 'default';
     }
+    return;
+  }
+  if (gameState === 'levelEditor') {
+    const back = getCourseBackRect();
+    hoverLevelEditorBack = p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h;
+    // Any tool button hover?
+    let overTool = false;
+    for (const hs of editorUiHotspots) {
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) { overTool = true; break; }
+    }
+    canvas.style.cursor = (hoverLevelEditorBack || overTool) ? 'pointer' : 'default';
     return;
   }
   if (gameState === 'changelog') {
@@ -771,11 +975,22 @@ canvas.addEventListener('mousemove', (e) => {
     hoverOptionsVolPlus = p.x >= vp.x && p.x <= vp.x + vp.w && p.y >= vp.y && p.y <= vp.y + vp.h;
     hoverOptionsMute = p.x >= mu.x && p.x <= mu.x + mu.w && p.y >= mu.y && p.y <= mu.y + mu.h;
     hoverOptionsVolSlider = p.x >= vs.x && p.x <= vs.x + vs.w && p.y >= vs.y - 6 && p.y <= vs.y + vs.h + 6;
+    // Users button removed from Options; no hover
+    hoverOptionsUsers = false;
     if (isOptionsVolumeDragging) {
       const t = Math.max(0, Math.min(1, (p.x - vs.x) / vs.w));
       AudioSfx.setVolume(t);
     }
-    canvas.style.cursor = (hoverOptionsBack || hoverOptionsVolMinus || hoverOptionsVolPlus || hoverOptionsMute || hoverOptionsVolSlider) ? 'pointer' : 'default';
+    canvas.style.cursor = (hoverOptionsBack || hoverOptionsVolMinus || hoverOptionsVolPlus || hoverOptionsMute || hoverOptionsVolSlider || hoverOptionsUsers) ? 'pointer' : 'default';
+    return;
+  }
+  if (gameState === 'users') {
+    // Pointer feedback based on hotspots
+    let over = false;
+    for (const hs of usersUiHotspots) {
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) { over = true; break; }
+    }
+    canvas.style.cursor = over ? 'pointer' : 'default';
     return;
   }
   // Hover state for Menu button
@@ -797,6 +1012,9 @@ canvas.addEventListener('mouseup', (e) => {
   }
   if (gameState === 'options') {
     isOptionsVolumeDragging = false;
+  }
+  if (gameState === 'levelEditor') {
+    // no drag states
   }
   if (!isAiming || paused || gameState !== 'play') return;
   const p = canvasToPlayCoords(worldFromEvent(e));
@@ -928,6 +1146,24 @@ function handleNameEditKey(e: KeyboardEvent) {
   }
 }
 window.addEventListener('keydown', handleNameEditKey);
+
+// Admin-only: open Users UI with Shift+F after Start (not on Main Menu)
+function handleAdminUsersShortcut(e: KeyboardEvent) {
+  // Only allow after Start on specific screens (from Select Course onward)
+  // Only allow on: course selection, in-game, sunk banner, or summary
+  if (!(gameState === 'course' || gameState === 'play' || gameState === 'sunk' || gameState === 'summary')) return;
+  // Require Shift+F
+  const keyLower = (e.key || '').toLowerCase();
+  const isShiftF = !!e.shiftKey && (e.code === 'KeyF' || keyLower === 'f');
+  if (!isShiftF) return;
+  // Only admins can open Users UI
+  if (userProfile.role !== 'admin') return;
+  // Transition into Users UI
+  previousGameState = gameState;
+  gameState = 'users';
+  try { e.preventDefault(); } catch {}
+}
+window.addEventListener('keydown', handleAdminUsersShortcut);
 
 // Hover handling for Pause overlay buttons
 canvas.addEventListener('mousemove', (e) => {
@@ -1518,9 +1754,25 @@ function draw() {
       }
     }
 
+    // Disabled user hint below input
+    {
+      const typedName = (userProfile.name || '').trim();
+      if (typedName && isNameDisabled(typedName)) {
+        ctx.save();
+        ctx.font = '12px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = '#d11e2a';
+        ctx.globalAlpha = 0.9;
+        const msg = 'User is disabled. Ask an admin to re-enable or select a new name.';
+        ctx.fillText(msg, WIDTH/2, nr.y + nr.h + 8);
+        ctx.restore();
+      }
+    }
+
     // Buttons
     const s = getMainStartRect();
-    const canStart = ((userProfile.name || '').trim().length > 0);
+    const canStart = isStartEnabled();
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = canStart ? (hoverMainStart ? '#ffffff' : '#cfd2cf') : 'rgba(255,255,255,0.15)';
     ctx.fillStyle = hoverMainStart && canStart ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
@@ -1531,6 +1783,19 @@ function draw() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.globalAlpha = canStart ? 1 : 0.5;
     ctx.fillText('Start', s.x + s.w/2, s.y + s.h/2 + 0.5);
+    ctx.globalAlpha = 1;
+    // Level Editor button (between Start and Options)
+    const le = getMainLevelEditorRect();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = canStart ? (hoverMainLevelEditor ? '#ffffff' : '#cfd2cf') : 'rgba(255,255,255,0.15)';
+    ctx.fillStyle = hoverMainLevelEditor && canStart ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillRect(le.x, le.y, le.w, le.h);
+    ctx.strokeRect(le.x, le.y, le.w, le.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '18px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.globalAlpha = canStart ? 1 : 0.5;
+    ctx.fillText('Level Editor', le.x + le.w/2, le.y + le.h/2 + 0.5);
     ctx.globalAlpha = 1;
     const o = getMainOptionsRect();
     ctx.lineWidth = 1.5;
@@ -1555,6 +1820,153 @@ function draw() {
     // Version bottom-left
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.font = '12px system-ui, sans-serif';
+    ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
+    return;
+  }
+  // Level Editor screen
+  if (gameState === 'levelEditor') {
+    // Title
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.font = '28px system-ui, sans-serif';
+    ctx.fillText('Level Editor (WIP)', WIDTH/2, 60);
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.fillText('Select a tool to begin placing/editing. Back returns to Main Menu.', WIDTH/2, 86);
+
+    // Tool palette (rebuilt every frame)
+    editorUiHotspots = [];
+    const tools: EditorTool[] = ['select','tee','cup','wall','wallsPoly','post','bridge','water','waterPoly','sand','sandPoly','hill'];
+    const labels: Record<EditorTool, string> = {
+      select: 'Select',
+      tee: 'Tee',
+      cup: 'Cup',
+      wall: 'Wall',
+      wallsPoly: 'WallsPoly',
+      post: 'Post',
+      bridge: 'Bridge',
+      water: 'Water',
+      waterPoly: 'WaterPoly',
+      sand: 'Sand',
+      sandPoly: 'SandPoly',
+      hill: 'Hill'
+    };
+    // Layout: left column list
+    const px = WIDTH/2 - 320; // left column anchor (aligned with other UIs)
+    let py = 120;
+    const btnW = 140, btnH = 24, gap = 8;
+    ctx.lineWidth = 1.5;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.font = '13px system-ui, sans-serif';
+    for (const tool of tools) {
+      const isSel = selectedEditorTool === tool;
+      ctx.strokeStyle = isSel ? '#ffffff' : '#cfd2cf';
+      ctx.fillStyle = isSel ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.10)';
+      ctx.fillRect(px, py, btnW, btnH);
+      ctx.strokeRect(px, py, btnW, btnH);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(labels[tool], px + 10, py + btnH/2 + 0.5);
+      editorUiHotspots.push({ kind: 'tool', tool, x: px, y: py, w: btnW, h: btnH });
+      py += btnH + gap;
+    }
+
+    // Back button
+    const back = getCourseBackRect();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = hoverLevelEditorBack ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverLevelEditorBack ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillRect(back.x, back.y, back.w, back.h);
+    ctx.strokeRect(back.x, back.y, back.w, back.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Back', back.x + back.w/2, back.y + back.h/2 + 0.5);
+
+    // Version bottom-left
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
+    return;
+  }
+  // Users admin screen
+  if (gameState === 'users') {
+    usersUiHotspots = [];
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.font = '28px system-ui, sans-serif';
+    ctx.fillText('Users (Admin)', WIDTH/2, 60);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.font = '14px system-ui, sans-serif';
+    // Active profile info
+    const activeName = (userProfile.name || '').trim() || '(unnamed)';
+    ctx.fillText(`Active: ${activeName} (${userProfile.role})`, WIDTH/2 - 220, 96);
+    // Top action buttons
+    const topY = 120;
+    const btnW = 120, btnH = 26, gap = 12;
+    let bx = WIDTH/2 - (btnW*4 + gap*3)/2;
+    function drawTopBtn(label: string, kind: UsersHotspot['kind']) {
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#cfd2cf';
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillRect(bx, topY, btnW, btnH); ctx.strokeRect(bx, topY, btnW, btnH);
+      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(label, bx + btnW/2, topY + btnH/2 + 0.5);
+      usersUiHotspots.push({ kind, x: bx, y: topY, w: btnW, h: btnH });
+      bx += btnW + gap;
+    }
+    drawTopBtn('Add User', 'addUser');
+    drawTopBtn('Add Admin', 'addAdmin');
+    drawTopBtn('Export JSON', 'export');
+    drawTopBtn('Import JSON', 'import');
+
+    // Table header
+    const tableX = WIDTH/2 - 340;
+    const tableY = topY + 46;
+    const rowH = 28;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.font = '14px system-ui, sans-serif';
+    ctx.fillText('Name', tableX + 10, tableY);
+    ctx.fillText('Role', tableX + 250, tableY);
+    ctx.fillText('Enabled', tableX + 330, tableY);
+    ctx.fillText('Actions', tableX + 430, tableY);
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.beginPath(); ctx.moveTo(tableX, tableY + 10); ctx.lineTo(tableX + 680, tableY + 10); ctx.stroke();
+
+    // Rows
+    const list = usersStoreReady ? usersStore.getAll() : [];
+    let ry = tableY + 26;
+    const actionW = 86, actionH = 22, actionGap = 8;
+    for (const u of list) {
+      // name and meta
+      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText(u.name, tableX + 10, ry);
+      ctx.fillText(u.role, tableX + 250, ry);
+      ctx.fillText(u.enabled ? 'Yes' : 'No', tableX + 330, ry);
+      // actions: promote/demote, enable/disable, remove
+      let ax = tableX + 430;
+      function drawRowBtn(label: string, kind: UsersHotspot['kind'], id: string) {
+        ctx.lineWidth = 1.2; ctx.strokeStyle = '#cfd2cf'; ctx.fillStyle = 'rgba(255,255,255,0.10)';
+        ctx.fillRect(ax, ry - actionH/2, actionW, actionH); ctx.strokeRect(ax, ry - actionH/2, actionW, actionH);
+        ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '12px system-ui, sans-serif';
+        ctx.fillText(label, ax + actionW/2, ry + 0.5);
+        usersUiHotspots.push({ kind, id, x: ax, y: ry - actionH/2, w: actionW, h: actionH });
+        ax += actionW + actionGap;
+      }
+      if (u.role === 'admin') drawRowBtn('Demote', 'demote', u.id); else drawRowBtn('Promote', 'promote', u.id);
+      if (u.enabled) drawRowBtn('Disable', 'disable', u.id); else drawRowBtn('Enable', 'enable', u.id);
+      drawRowBtn('Remove', 'remove', u.id);
+      ry += rowH;
+    }
+
+    // Back button
+    const back = getCourseBackRect();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#cfd2cf';
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
+    ctx.fillRect(back.x, back.y, back.w, back.h);
+    ctx.strokeRect(back.x, back.y, back.w, back.h);
+    ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '16px system-ui, sans-serif';
+    ctx.fillText('Back', back.x + back.w/2, back.y + back.h/2 + 0.5);
+    usersUiHotspots.push({ kind: 'back', x: back.x, y: back.y, w: back.w, h: back.h });
+    // Version
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.font = '12px system-ui, sans-serif';
     ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
     return;
   }

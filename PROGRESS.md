@@ -4,7 +4,7 @@
 
 # Project Progress — Vector Putt
 
-Updated: 2025-08-17 (local)
+Updated: 2025-08-18 (local) — Level Editor tool palette UI (initial) implemented; Admin-only Users UI complete; Level Editor entry added
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 
@@ -39,20 +39,38 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
   - [x] Score visuals: color-coded sunk banner and summary deltas
 
 - [ ] Level Editor & Browser
-  - [ ] Editor selectable from Main Menu (launch editor mode)
+  - [x] Editor selectable from Main Menu (launch editor mode) — placeholder screen with Back
+  - [x] Tool palette UI (initial): render tool buttons, hover pointer, click to select (`selectedEditorTool`)
   - [ ] Course Select: add "User Made Levels" category; list entries as Title — Author; load/play
   - [ ] Open/edit existing `levels/*.json` and create new levels (with schema validation)
-  - [ ] Tool palette: Tee, Cup, Walls/WallsPoly, Posts, Bridges, Water/WaterPoly, Sand/SandPoly, Hills, decorations
+  - [ ] Tool palette: Tee, Cup, Walls/WallsPoly, Posts, Bridges, Water/WaterPoly, Sand/SandPoly, Hills, decorations (full authoring behaviors)
   - [ ] Metadata editor: Level title and Author (persist in JSON)
   - [ ] Par/Birdie suggestion engine based on path analysis and bank heuristics
 
 - [ ] User System
   - [x] Local profiles: create/select active user; persist name and role (admin/user)
   - [ ] Roles & permissions: Admin can edit/delete any level; Normal users can edit/delete their own and duplicate others
-  - [ ] Admin-only role management UI (no toggle on Main Menu)
+    - [ ] Verify current enforcement across Save/Delete flows and any editor entry points
+    - [ ] Add clear UI messaging when an action is blocked due to permissions
+    - [x] Add unit tests for permission rules (UsersStore invariants: last-admin safeguards, enable/disable, promote/demote, import/export, init fallbacks)
+  - [x] Admin-only role management UI (no toggle on Main Menu)
+    - Access: Press Shift+F after clicking Start (from Select Course and onward). Options button removed.
+    - Admin-only Role Management UI:
+      - Add/Remove Users
+      - Promote/Demote Users (toggle role user ⇄ admin)
+      - Safeguards: cannot remove the last remaining admin; confirm destructive actions; prevent self-demotion when last admin.
+    - Default Admin bootstrap (first run): seed a built-in `admin` account with role `admin` so an admin can create another user and promote them. After another admin exists, the built-in `admin` can be disabled.
+    - Persistence: JSON-backed store for users and roles
+      - Source of truth file: `data/users.json` (editable outside the game UI).
+      - Browser build: read `data/users.json` at load; persist runtime changes to `localStorage`; provide Import/Export JSON in Admin Menu.
+      - Desktop build (future): write changes directly to `data/users.json`.
+      - No passwords/auth yet (MVP): "login" = selecting an existing user as active profile.
+    - [optional] Better UI feedback: Replace alert/prompt/confirm with inline messages/snackbar for a smoother admin experience.
   - [x] Level ownership: store `meta.authorId`/`meta.authorName` in level JSON; enforce Save/Delete permissions; enable Save a Copy for non-owners
   - [x] Scores by user: record per-level and per-course scores keyed by active user; show best for current user (optional all-users view)
   - [x] Main Menu: username input field placed above Start and below the graphic; Start disabled until a non-empty username is entered; persist/prefill last user
+  - [x] Start is blocked when the entered username matches a disabled user (disabled users cannot proceed past Main Menu)
+  - [x] Disabled-user hint under username input (“User is disabled. Ask an admin to re-enable or select a new name.”)
 
 ## Soon (After MVP Slice Works)
 - [x] Water tiles: splash SFX → +1 stroke → reset to pre-shot location

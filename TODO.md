@@ -96,10 +96,11 @@ Notes:
   - [ ] Open/edit existing `levels/*.json` (load, modify, validate) and Save/Save As
   - [ ] Create new level workflow (canvas size, par, initial metadata)
   - [ ] Metadata editor: Level title and author name (persisted in JSON)
+  - [x] Tool palette UI (initial): render tool buttons, hover pointer, click to select (`selectedEditorTool`)
   - [ ] Tool palette: Tee, Cup, Walls, WallsPoly, Posts, Bridges, Water, WaterPoly, Sand, SandPoly, Hills, decorations
   - [ ] Selection tools: select/move/duplicate/delete; vertex edit for polygons; rotate/scale where applicable
   - [ ] Grid snapping and nudge controls (arrow keys); configurable grid size
-  - [ ] Main Menu: add "Level Editor" entry to launch editor mode
+  - [x] Main Menu: add "Level Editor" entry to launch editor mode
   - [ ] Course Select: add "User Made Levels" category; list by Level Title — Author; load+play selected
   - [ ] Par/Birdie suggestion engine: estimate recommended par and birdie strokes via fairway path analysis (A*/raycast over corridors, bank count heuristic)
   - [ ] Logical cup placement tools: toggle line-of-sight from tee, show path-length heatmap, validate “must pass gates/banks” rules
@@ -276,6 +277,7 @@ Implementation follow-ups:
 - [ ] Config persistence (audio volumes, last course)
 
 ## Testing & QA
+- [x] UsersStore invariants unit tests (roles/admin safeguards, enable/disable, promote/demote, import/export, init fallbacks)
 - [ ] Unit tests for physics integration/energy loss
 - [ ] Deterministic collision tests (angle in/out)
 - [ ] Terrain friction table tests

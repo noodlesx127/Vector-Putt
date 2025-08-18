@@ -31,6 +31,26 @@ A classic mini golf recreation using TypeScript + Canvas with data‑driven leve
 
 See `TODO.md` for roadmap, `PROGRESS.md` for current focus, and `docs/PALETTE.md` for the canonical color palette.
 
+## Testing
+
+- Run unit tests (Vitest):
+
+```bash
+npm run test
+```
+
+- Watch mode:
+
+```bash
+npm run test:watch
+```
+
+- Coverage report:
+
+```bash
+npm run coverage
+```
+
 ## Suggested GitHub Topics
 
 `typescript`, `html5-canvas`, `game-dev`, `physics`, `mini-golf`, `retro`, `vite`, `howler`, `vitest`

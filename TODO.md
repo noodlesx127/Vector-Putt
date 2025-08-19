@@ -108,15 +108,15 @@ Notes:
   - [x] Editor preview: render existing geometry (water, sand, bridges, hills, decorations, walls, polygon walls, posts) using play-mode visuals
   - [x] Interactive placement: Posts (click); Walls/Bridges/Water/Sand/Hills (click-drag rectangles) with grid snapping, fairway clamping, and minimum drag threshold
   - [x] Drag outline preview while dragging rectangle tools (grid-snapped, clamped to fairway bounds)
-  - [ ] Editor UI: Menubar with pull-down menus (replace compact toolbar)
+  - [x] Editor UI: Menubar with pull-down menus (replaces compact toolbar)
     - File menu: New, Save, Save As, Level Load, Delete, Back/Exit
     - Objects menu: Tee, Cup, Post, Wall, WallsPoly, Bridge, Water, WaterPoly, Sand, SandPoly, Hill
-    - Decorations menu: Decorations
+    - Decorations menu: Flowers
     - Editor Tools menu: Select, Grid -, Grid +, Grid On/Off
     - Hotspots & rendering: build dropdowns into `editorUiHotspots`; manage open/close state, hover, and click routing; keyboard navigation for menus/items
     - Layout: top menubar with pulldown panels; render above preview; ensure readability and spacing; maintain current preview layering
-    - Shortcuts: preserve existing shortcuts (e.g., G, -, +); consider mnemonics (Alt+F/O/E)
-    - Docs: update `PROGRESS.md` and `CHANGELOG.md` upon implementing
+    - Shortcuts: preserved existing shortcuts (G, -, +); mnemonics (Alt+F/O/D/E), arrow keys navigate, Enter selects, Esc closes
+    - Docs: updated `PROGRESS.md` and `CHANGELOG.md`
     - Tests: hover/click open-close behavior; action dispatch correctness
   - [ ] Undo/Redo in Level Editor: toolbar buttons and shortcuts (Ctrl+Z/Ctrl+Y); snapshot editor state on placements and actions (Save/Load/New/Delete)
   - [ ] Tool palette: Tee, Cup, Walls, WallsPoly, Posts, Bridges, Water, WaterPoly, Sand, SandPoly, Hill, decorations

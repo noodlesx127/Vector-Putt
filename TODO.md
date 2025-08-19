@@ -97,47 +97,55 @@ Notes:
   - [ ] Create new level workflow (canvas size, par, initial metadata)
   - [ ] Metadata editor: Level title and author name (persisted in JSON)
   - [x] Tool palette UI (initial): render tool buttons, hover pointer, click to select (`selectedEditorTool`)
-  - [ ] Tool palette: Tee, Cup, Walls, WallsPoly, Posts, Bridges, Water, WaterPoly, Sand, SandPoly, Hills, decorations
-  - [ ] Selection tools: select/move/duplicate/delete; vertex edit for polygons; rotate/scale where applicable
-  - [ ] Grid snapping and nudge controls (arrow keys); configurable grid size
-  - [x] Main Menu: add "Level Editor" entry to launch editor mode
+  - [x] Tee & Cup placement (editor): 20px grid snapping, clamped to fairway bounds, updates editor level data
+  - [x] Editor persistence (multi-level): Save, Save As, Load, New, Delete using `localStorage` key `vp.levels.v1`; track current saved ID for overwrite semantics
+  - [x] Permissions (editor): owner/admin-only overwrite and delete; non-owners are prompted and routed to "Save As"
+  - [x] Migration: on first editor entry, migrate legacy single-slot `vp.editor.level` into `vp.levels.v1` with ownership/timestamps
+  - [x] CRUD UI wiring: action buttons live in `editorUiHotspots`; handled in Level Editor `mousedown`; hotspots rebuilt each frame
+  - [x] Editor preview rendering: fairway panel + outline, grid overlay, and Tee/Cup markers
+  - [x] Menu UI layering: render menu panel/buttons after fairway/grid so they appear on top; add semi-transparent panel background and border for readability
+  - [x] Toolbar refactor: compact horizontal top toolbar (tools row + actions row with Back on right); unify hover/click via `editorUiHotspots`
+  - [x] Editor preview: render existing geometry (water, sand, bridges, hills, decorations, walls, polygon walls, posts) using play-mode visuals
+  - [x] Interactive placement: Posts (click); Walls/Bridges/Water/Sand/Hills (click-drag rectangles) with grid snapping, fairway clamping, and minimum drag threshold
+  - [x] Drag outline preview while dragging rectangle tools (grid-snapped, clamped to fairway bounds)
+  - [ ] Editor UI: Menubar with pull-down menus (replace compact toolbar)
+    - File menu: New, Save, Save As, Level Load, Delete, Back/Exit
+    - Objects menu: Tee, Cup, Post, Wall, WallsPoly, Bridge, Water, WaterPoly, Sand, SandPoly, Hill
+    - Decorations menu: Decorations
+    - Editor Tools menu: Select, Grid -, Grid +, Grid On/Off
+    - Hotspots & rendering: build dropdowns into `editorUiHotspots`; manage open/close state, hover, and click routing; keyboard navigation for menus/items
+    - Layout: top menubar with pulldown panels; render above preview; ensure readability and spacing; maintain current preview layering
+    - Shortcuts: preserve existing shortcuts (e.g., G, -, +); consider mnemonics (Alt+F/O/E)
+    - Docs: update `PROGRESS.md` and `CHANGELOG.md` upon implementing
+    - Tests: hover/click open-close behavior; action dispatch correctness
+  - [ ] Undo/Redo in Level Editor: toolbar buttons and shortcuts (Ctrl+Z/Ctrl+Y); snapshot editor state on placements and actions (Save/Load/New/Delete)
+  - [ ] Tool palette: Tee, Cup, Walls, WallsPoly, Posts, Bridges, Water, WaterPoly, Sand, SandPoly, Hill, decorations
+ - [ ] Selection tools: select/move/duplicate/delete; vertex edit for polygons; rotate/scale where applicable
+ - [ ] Select tool: move and resize items (MS Paint-style)
+    - Drag inside selection to move; 8 resize handles on corners/sides to resize
+    - Grid snapping and fairway-bounds clamping on move/resize; min size = 1 grid step; no negative sizes
+    - Rect items: walls/bridges/water/sand/hills; Posts: resize radius via handles; Tee/Cup: move-only
+ - [ ] Delete selected item(s) via existing Delete button in the toolbar UI
+ - [x] Grid snapping and nudge controls (arrow keys); configurable grid size
+ - [x] Main Menu: add "Level Editor" entry to launch editor mode
   - [ ] Course Select: add "User Made Levels" category; list by Level Title — Author; load+play selected
-  - [ ] Par/Birdie suggestion engine: estimate recommended par and birdie strokes via fairway path analysis (A*/raycast over corridors, bank count heuristic)
-  - [ ] Logical cup placement tools: toggle line-of-sight from tee, show path-length heatmap, validate “must pass gates/banks” rules
-  - [ ] Shape stamps/presets: chevrons, diamonds, octagons, sawtooth edges, post grids
-  - [ ] Min-corridor-width and wall-thickness helpers to preserve 1-ball lanes
-
-## Obstacles & Geometry from Reference Screens (new work)
-- [x] Diagonal walls and polygon bumpers
-  - [x] Add polygonal wall support (triangles, chamfers) with correct reflections
-  - [x] Update level schema (e.g., `wallsPoly: [{ points: [x,y,...] }]`)
-  - [ ] Editor support (drag vertices, snap, rotate)
-- [x] Round posts/pillars (circular colliders)
-  - [x] Add circular obstacle type (e.g., `posts: [{ x, y, r }]`)
-  - [x] Collision: circle–circle with ball; wall restitution respected
-  - [ ] Optional decorative caps (non-colliding)
-- [ ] Triangle/wedge deflectors
-  - [ ] Implement as polygon walls; verify bounce angles feel correct
-  - [ ] Visuals: light-gray face with subtle edge highlight
-- [ ] Flower fence borders (decoration-only)
-  - [ ] Keep as non-colliding visuals; ball can pass through into underlying terrain (e.g., water)
 
 ## User System & Profiles
 - [ ] User accounts (local profiles)
   - [ ] Create/select active user; store display name and role (admin/user)
   - [ ] Persist users to local storage or file (JSON); simple migration/versioning plan
-- [ ] Roles & permissions
+{{ ... }}
   - [ ] Admin (Super User): edit/delete any level; manage users
   - [ ] Normal user: edit/delete own levels; duplicate existing levels to create user-owned copies
-- [ ] Level ownership
-  - [ ] Persist `meta.authorId` and `meta.authorName` in level JSON; show Title — Author in lists
-  - [ ] Editor: restrict Save/Delete to owner or admin; allow "Save a Copy" for non-owners
+ - [x] Level ownership
+  - [x] Persist `meta.authorId` and `meta.authorName` in level JSON
+  - [ ] Show Title — Author in lists (Course Select "User Made Levels")
+  - [x] Editor: restrict Save/Delete to owner or admin; allow "Save a Copy" for non-owners
 - [ ] Scores per user
   - [ ] Track per-level and per-course scores keyed by user
   - [ ] Course summary: show best scores for the active user; optional all-users leaderboard
 - [ ] UI integration
   - [x] Main Menu: username input field between the graphic and the Start button; Start disabled until a non-empty username is entered; persist and prefill last user
-  - [ ] Course Select: optional filter/sort by author; include "User Made Levels" category
 
   - [ ] Allow placement overlapping fairway/water edges; draw above water; no collision mask
 - [x] Land bridge over water (static, no slope)

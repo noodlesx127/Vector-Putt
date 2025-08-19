@@ -16,7 +16,234 @@ function isDevBuild(): boolean {
   } catch {
     return false;
   }
+} // Added closing brace here
+
+// Multilevel persistence (vp.levels.v1)
+type SavedLevelV1 = { id: string; level: Level };
+type LevelsDocV1 = { version: 1; levels: SavedLevelV1[] };
+const LS_LEVELS_KEY = 'vp.levels.v1';
+
+function newLevelId(): string {
+  return 'lvl_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
 }
+
+function readLevelsDoc(): LevelsDocV1 {
+  try {
+    const s = localStorage.getItem(LS_LEVELS_KEY);
+    if (!s) return { version: 1, levels: [] };
+    const doc = JSON.parse(s) as LevelsDocV1;
+    if (!doc || (doc as any).version !== 1 || !Array.isArray((doc as any).levels)) return { version: 1, levels: [] };
+    // sanitize entries
+    const levels: SavedLevelV1[] = (doc as any).levels
+      .filter((e: any) => e && typeof e.id === 'string' && e.level && typeof e.level === 'object')
+      .map((e: any) => ({ id: String(e.id), level: e.level as Level }));
+    return { version: 1, levels };
+  } catch {
+    return { version: 1, levels: [] };
+  }
+}
+
+function writeLevelsDoc(doc: LevelsDocV1): void {
+  try { localStorage.setItem(LS_LEVELS_KEY, JSON.stringify(doc)); } catch {}
+}
+
+function assembleEditorLevel(): Level {
+  const lvl: Level = {
+    canvas: { width: levelCanvas.width, height: levelCanvas.height },
+    course: editorLevelData?.course ?? { index: 1, total: 1, title: (editorLevelData?.course?.title || 'Untitled') },
+    par: editorLevelData?.par ?? 3,
+    tee: { x: Math.round(ball.x), y: Math.round(ball.y) },
+    cup: { x: Math.round(hole.x), y: Math.round(hole.y), r: (hole as any).r ?? 8 },
+    walls: walls ?? [],
+    wallsPoly: polyWalls ?? [],
+    posts: posts ?? [],
+    bridges: bridges ?? [],
+    water: waters ?? [],
+    waterPoly: watersPoly ?? [],
+    sand: sands ?? [],
+    sandPoly: sandsPoly ?? [],
+    hills: hills ?? [],
+    decorations: decorations ?? [],
+    meta: {
+      authorId: editorLevelData?.meta?.authorId,
+      authorName: editorLevelData?.meta?.authorName,
+      created: editorLevelData?.meta?.created,
+      modified: new Date().toISOString(),
+    }
+  } as Level;
+  return lvl;
+}
+
+function applyLevelToGlobals(parsed: Level): void {
+  // Apply to globals for rendering
+  levelCanvas = { width: parsed.canvas?.width ?? WIDTH, height: parsed.canvas?.height ?? HEIGHT };
+  walls = parsed.walls ?? [];
+  sands = parsed.sand ?? [];
+  sandsPoly = parsed.sandPoly ?? [];
+  waters = parsed.water ?? [];
+  watersPoly = parsed.waterPoly ?? [];
+  decorations = parsed.decorations ?? [];
+  hills = parsed.hills ?? [];
+  bridges = parsed.bridges ?? [];
+  posts = parsed.posts ?? [];
+  polyWalls = parsed.wallsPoly ?? [];
+  ball.x = parsed.tee.x; ball.y = parsed.tee.y; ball.vx = 0; ball.vy = 0; ball.moving = false;
+  hole.x = parsed.cup.x; hole.y = parsed.cup.y; (hole as any).r = parsed.cup.r;
+}
+
+function canModifyLevel(level: Level): boolean {
+  const authorId = (level as any)?.meta?.authorId;
+  const isOwner = authorId && authorId === getUserId();
+  const isAdmin = userProfile.role === 'admin';
+  return !!(isOwner || isAdmin);
+}
+
+function saveEditorLevel(): void {
+  // Overwrite if we have a saved id and permissions, otherwise Save As
+  if (editorCurrentSavedId) {
+    const doc = readLevelsDoc();
+    const idx = doc.levels.findIndex(l => l.id === editorCurrentSavedId);
+    if (idx >= 0) {
+      const existing = doc.levels[idx].level;
+      if (!canModifyLevel(existing)) {
+        try { alert('You can only overwrite your own levels or if you are an admin. Use Save As to create a copy.'); } catch {}
+        saveEditorLevelAs();
+        return;
+      }
+      // overwrite, preserve created/author, update modified
+      const newLevel = assembleEditorLevel();
+      newLevel.meta = {
+        authorId: existing.meta?.authorId,
+        authorName: existing.meta?.authorName,
+        created: existing.meta?.created || new Date().toISOString(),
+        modified: new Date().toISOString(),
+      };
+      // Keep title
+      if (!newLevel.course) newLevel.course = { index: 1, total: 1 } as any;
+      if (!newLevel.course.title) newLevel.course.title = existing.course?.title || 'Untitled';
+      doc.levels[idx].level = newLevel;
+      writeLevelsDoc(doc);
+      editorLevelData = newLevel;
+      return;
+    }
+  }
+  saveEditorLevelAs();
+}
+
+function saveEditorLevelAs(): void {
+  const title = safePrompt('Enter a title for this level:', (editorLevelData?.course?.title || 'Untitled')).trim();
+  if (!title) return;
+  const doc = readLevelsDoc();
+  const id = newLevelId();
+  const lvl = assembleEditorLevel();
+  // Set title and ownership
+  if (!lvl.course) (lvl as any).course = { index: 1, total: 1 } as any;
+  (lvl.course as any).title = title;
+  const uid = getUserId();
+  lvl.meta = {
+    authorId: uid,
+    authorName: userProfile.name || 'unknown',
+    created: new Date().toISOString(),
+    modified: new Date().toISOString(),
+  };
+  doc.levels.push({ id, level: lvl });
+  writeLevelsDoc(doc);
+  editorCurrentSavedId = id;
+  editorLevelData = lvl;
+}
+
+function openLoadPicker(): void {
+  const doc = readLevelsDoc();
+  if (doc.levels.length === 0) { try { alert('No saved levels found. Use Save As to create one.'); } catch {} return; }
+  const lines = doc.levels.map((e, i) => {
+    const lvl = e.level;
+    const t = lvl.course?.title || 'Untitled';
+    const a = lvl.meta?.authorName || 'unknown';
+    const badge = (lvl.meta?.authorId === getUserId()) ? ' (you)' : (userProfile.role === 'admin' ? ' (admin can edit)' : '');
+    return `${i+1}. ${t} — ${a}${badge}`;
+  }).join('\n');
+  const answer = safePrompt(`Load which level?\n${lines}\n\nEnter number:`, '1').trim();
+  const n = parseInt(answer, 10);
+  if (!n || n < 1 || n > doc.levels.length) return;
+  const chosen = doc.levels[n-1];
+  const lvl = chosen.level;
+  editorLevelData = lvl;
+  editorCurrentSavedId = chosen.id;
+  applyLevelToGlobals(lvl);
+}
+
+function openDeletePicker(): void {
+  const doc = readLevelsDoc();
+  if (doc.levels.length === 0) { try { alert('No saved levels to delete.'); } catch {} return; }
+  const lines = doc.levels.map((e, i) => {
+    const lvl = e.level; const t = lvl.course?.title || 'Untitled'; const a = lvl.meta?.authorName || 'unknown';
+    return `${i+1}. ${t} — ${a}`;
+  }).join('\n');
+  const answer = safePrompt(`Delete which level?\n${lines}\n\nEnter number:`, '').trim();
+  const n = parseInt(answer, 10);
+  if (!n || n < 1 || n > doc.levels.length) return;
+  const idx = n-1; const entry = doc.levels[idx];
+  if (!canModifyLevel(entry.level)) { try { alert('You can only delete your own levels or if you are an admin.'); } catch {} return; }
+  const ok = safeConfirm(`Really delete "${entry.level.course?.title || 'Untitled'}"? This cannot be undone.`);
+  if (!ok) return;
+  doc.levels.splice(idx, 1);
+  writeLevelsDoc(doc);
+  if (editorCurrentSavedId === entry.id) editorCurrentSavedId = null;
+}
+
+function newEditorLevel(): void {
+  const proceed = safeConfirm('Start a new level? Unsaved changes will be lost.');
+  if (!proceed) return;
+  editorCurrentSavedId = null;
+  // Build a minimal default level (reuse logic from enterLevelEditor)
+  const defaultCupR = hole.r || 8;
+  editorLevelData = {
+    canvas: { width: WIDTH, height: HEIGHT },
+    course: { index: 1, total: 1, title: 'Untitled' },
+    par: 3,
+    tee: { x: COURSE_MARGIN + 60, y: Math.floor(HEIGHT / 2) },
+    cup: { x: WIDTH - COURSE_MARGIN - 60, y: Math.floor(HEIGHT / 2), r: defaultCupR },
+    walls: [],
+    wallsPoly: [],
+    posts: [],
+    bridges: [],
+    water: [],
+    waterPoly: [],
+    sand: [],
+    sandPoly: [],
+    hills: [],
+    decorations: []
+  } as Level;
+  applyLevelToGlobals(editorLevelData);
+}
+
+function migrateSingleSlotIfNeeded(): void {
+  try {
+    const doc = readLevelsDoc();
+    if (doc.levels.length > 0) return;
+    const raw = localStorage.getItem('vp.editor.level');
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as Level;
+    if (!parsed || !parsed.tee || !parsed.cup) return;
+    // Set ownership if missing
+    const uid = getUserId();
+    parsed.meta = {
+      authorId: parsed.meta?.authorId || uid,
+      authorName: parsed.meta?.authorName || (userProfile.name || 'unknown'),
+      created: parsed.meta?.created || new Date().toISOString(),
+      modified: new Date().toISOString(),
+    };
+    if (!parsed.course) (parsed as any).course = { index: 1, total: 1 } as any;
+    if (!parsed.course.title) (parsed.course as any).title = 'Untitled (migrated)';
+    doc.levels.push({ id: newLevelId(), level: parsed });
+    writeLevelsDoc(doc);
+  } catch {}
+}
+
+function safePrompt(message: string, def: string): string {
+  try { const v = prompt(message, def); return typeof v === 'string' ? v : ''; } catch { return def || ''; }
+}
+function safeConfirm(message: string): boolean { try { return !!confirm(message); } catch { return true; } }
 
 // Users Admin UI hotspots (rebuilt every frame while in users screen)
 type UsersHotspot = { kind: 'back' | 'addUser' | 'addAdmin' | 'export' | 'import' | 'promote' | 'demote' | 'enable' | 'disable' | 'remove'; x: number; y: number; w: number; h: number; id?: string };
@@ -24,11 +251,192 @@ let usersUiHotspots: UsersHotspot[] = [];
 
 // Level Editor UI hotspots and state
 type EditorTool = 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'sand' | 'sandPoly' | 'hill';
-type EditorHotspot = { kind: 'tool'; tool: EditorTool; x: number; y: number; w: number; h: number };
+type EditorAction = 'save' | 'saveAs' | 'load' | 'new' | 'delete' | 'gridToggle' | 'gridMinus' | 'gridPlus' | 'back';
+type EditorMenuId = 'file' | 'objects' | 'decorations' | 'tools';
+type EditorMenuItem = 
+  | { kind: 'tool'; tool: EditorTool }
+  | { kind: 'action'; action: EditorAction }
+  | { kind: 'decoration'; decoration: string };
+type EditorHotspot =
+  | { kind: 'tool'; tool: EditorTool; x: number; y: number; w: number; h: number }
+  | { kind: 'action'; action: EditorAction; x: number; y: number; w: number; h: number }
+  | { kind: 'menu'; menu: EditorMenuId; x: number; y: number; w: number; h: number }
+  | { kind: 'menuItem'; menu: EditorMenuId; item: EditorMenuItem; x: number; y: number; w: number; h: number };
 let editorUiHotspots: EditorHotspot[] = [];
 let selectedEditorTool: EditorTool = 'select';
 let editorShowGrid = true;
 let editorGridSize = 20; // px
+let editorLevelData: Level | null = null; // working level for the editor
+let editorCurrentSavedId: string | null = null; // current saved entry id when editing
+let openEditorMenu: EditorMenuId | null = null; // current open dropdown in menubar
+
+// Menubar keyboard focus state: which item is highlighted in the open dropdown
+let editorMenuActiveItemIndex: number = 0;
+
+// Define menu structures
+const EDITOR_MENUS: Record<EditorMenuId, { title: string; items: Array<{ label: string; item: EditorMenuItem; separator?: boolean }> }> = {
+  file: {
+    title: 'File',
+    items: [
+      { label: 'New', item: { kind: 'action', action: 'new' } },
+      { label: 'Save', item: { kind: 'action', action: 'save' } },
+      { label: 'Save As', item: { kind: 'action', action: 'saveAs' } },
+      { label: 'Level Load', item: { kind: 'action', action: 'load' } },
+      { label: 'Delete', item: { kind: 'action', action: 'delete' } },
+      { label: 'Back/Exit', item: { kind: 'action', action: 'back' }, separator: true }
+    ]
+  },
+  objects: {
+    title: 'Objects',
+    items: [
+      { label: 'Select', item: { kind: 'tool', tool: 'select' } },
+      { label: 'Tee', item: { kind: 'tool', tool: 'tee' }, separator: true },
+      { label: 'Cup', item: { kind: 'tool', tool: 'cup' } },
+      { label: 'Post', item: { kind: 'tool', tool: 'post' }, separator: true },
+      { label: 'Wall', item: { kind: 'tool', tool: 'wall' } },
+      { label: 'WallsPoly', item: { kind: 'tool', tool: 'wallsPoly' } },
+      { label: 'Bridge', item: { kind: 'tool', tool: 'bridge' }, separator: true },
+      { label: 'Water', item: { kind: 'tool', tool: 'water' } },
+      { label: 'WaterPoly', item: { kind: 'tool', tool: 'waterPoly' } },
+      { label: 'Sand', item: { kind: 'tool', tool: 'sand' } },
+      { label: 'SandPoly', item: { kind: 'tool', tool: 'sandPoly' } },
+      { label: 'Hill', item: { kind: 'tool', tool: 'hill' } }
+    ]
+  },
+  decorations: {
+    title: 'Decorations',
+    items: [
+      { label: 'Flowers', item: { kind: 'decoration', decoration: 'flowers' } }
+    ]
+  },
+  tools: {
+    title: 'Editor Tools',
+    items: [
+      { label: editorShowGrid ? 'Grid On' : 'Grid Off', item: { kind: 'action', action: 'gridToggle' } },
+      { label: `Grid - (${editorGridSize}px)`, item: { kind: 'action', action: 'gridMinus' } },
+      { label: `Grid + (${editorGridSize}px)`, item: { kind: 'action', action: 'gridPlus' } }
+    ]
+  }
+};
+
+// Level Editor drag state for rectangle placements
+let isEditorDragging = false;
+let editorDragTool: EditorTool | null = null;
+let editorDragStart = { x: 0, y: 0 }; // play coords (snapped & clamped)
+let editorDragCurrent = { x: 0, y: 0 }; // play coords (snapped & clamped)
+
+function enterLevelEditor(): void {
+  // Try to initialize from saved local storage once per session
+  // Run single-slot migration on first use
+  try { migrateSingleSlotIfNeeded(); } catch {}
+  if (editorLevelData === null) {
+    try {
+      const raw = localStorage.getItem('vp.editor.level');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.tee && parsed.cup) {
+          editorLevelData = parsed as Level;
+        }
+      }
+    } catch {}
+  }
+  if (editorLevelData === null) {
+    // Build a minimal default level
+    const defaultCupR = hole.r || 8;
+    editorLevelData = {
+      canvas: { width: WIDTH, height: HEIGHT },
+      course: { index: 1, total: 1, title: 'Untitled' },
+      par: 3,
+      tee: { x: COURSE_MARGIN + 60, y: Math.floor(HEIGHT / 2) },
+      cup: { x: WIDTH - COURSE_MARGIN - 60, y: Math.floor(HEIGHT / 2), r: defaultCupR },
+      walls: [],
+      wallsPoly: [],
+      posts: [],
+      bridges: [],
+      water: [],
+      waterPoly: [],
+      sand: [],
+      sandPoly: [],
+      hills: [],
+      decorations: []
+    } as Level;
+  }
+  // Apply editor data to rendering globals
+  levelCanvas = {
+    width: editorLevelData.canvas?.width ?? WIDTH,
+    height: editorLevelData.canvas?.height ?? HEIGHT
+  };
+  walls = editorLevelData.walls ?? [];
+  sands = editorLevelData.sand ?? [];
+  sandsPoly = editorLevelData.sandPoly ?? [];
+  waters = editorLevelData.water ?? [];
+  watersPoly = editorLevelData.waterPoly ?? [];
+  decorations = editorLevelData.decorations ?? [];
+  hills = editorLevelData.hills ?? [];
+  bridges = editorLevelData.bridges ?? [];
+  posts = editorLevelData.posts ?? [];
+  polyWalls = editorLevelData.wallsPoly ?? [];
+  // Use tee/cup as ball/hole preview locations
+  ball.x = editorLevelData.tee.x; ball.y = editorLevelData.tee.y; ball.vx = 0; ball.vy = 0; ball.moving = false;
+  hole.x = editorLevelData.cup.x; hole.y = editorLevelData.cup.y; (hole as any).r = editorLevelData.cup.r;
+}
+
+function saveEditorLevelToLocal(): void {
+  // Assemble a Level object from current editor state and save to localStorage
+  const lvl: Level = {
+    canvas: { width: levelCanvas.width, height: levelCanvas.height },
+    course: editorLevelData?.course ?? { index: 1, total: 1, title: 'Untitled' },
+    par: editorLevelData?.par ?? 3,
+    tee: { x: Math.round(ball.x), y: Math.round(ball.y) },
+    cup: { x: Math.round(hole.x), y: Math.round(hole.y), r: (hole as any).r ?? 8 },
+    walls: walls ?? [],
+    wallsPoly: polyWalls ?? [],
+    posts: posts ?? [],
+    bridges: bridges ?? [],
+    water: waters ?? [],
+    waterPoly: watersPoly ?? [],
+    sand: sands ?? [],
+    sandPoly: sandsPoly ?? [],
+    hills: hills ?? [],
+    decorations: decorations ?? []
+  } as Level;
+  try { localStorage.setItem('vp.editor.level', JSON.stringify(lvl)); } catch {}
+  editorLevelData = lvl;
+}
+
+function loadEditorLevelFromLocal(): void {
+  try {
+    const raw = localStorage.getItem('vp.editor.level');
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as Level;
+    if (!parsed || !parsed.tee || !parsed.cup) return;
+    editorLevelData = parsed;
+    // Apply to globals for rendering
+    levelCanvas = { width: parsed.canvas?.width ?? WIDTH, height: parsed.canvas?.height ?? HEIGHT };
+    walls = parsed.walls ?? [];
+    sands = parsed.sand ?? [];
+    sandsPoly = parsed.sandPoly ?? [];
+    waters = parsed.water ?? [];
+    watersPoly = parsed.waterPoly ?? [];
+    decorations = parsed.decorations ?? [];
+    hills = parsed.hills ?? [];
+    bridges = parsed.bridges ?? [];
+    posts = parsed.posts ?? [];
+    polyWalls = parsed.wallsPoly ?? [];
+    ball.x = parsed.tee.x; ball.y = parsed.tee.y; ball.vx = 0; ball.vy = 0; ball.moving = false;
+    hole.x = parsed.cup.x; hole.y = parsed.cup.y; (hole as any).r = parsed.cup.r;
+  } catch {}
+}
+
+function clampToFairway(x: number, y: number): { x: number; y: number } {
+  const fairX = COURSE_MARGIN;
+  const fairY = COURSE_MARGIN;
+  const fairW = Math.max(0, Math.min(levelCanvas.width, WIDTH) - COURSE_MARGIN * 2);
+  const fairH = Math.max(0, Math.min(levelCanvas.height, HEIGHT) - COURSE_MARGIN * 2);
+  const cx = Math.max(fairX, Math.min(fairX + fairW, x));
+  const cy = Math.max(fairY, Math.min(fairY + fairH, y));
+  return { x: cx, y: cy };
+}
 
 // Boot-time dev diagnostics
 try {
@@ -418,7 +826,6 @@ let hoverMainChangelog = false;
 let hoverMainName = false;
 let hoverCourseDev = false;
 let hoverCourseBack = false;
-let hoverLevelEditorBack = false;
 let hoverChangelogBack = false;
 let hoverSummaryBack = false;
 let hoverOptionsBack = false;
@@ -734,6 +1141,7 @@ canvas.addEventListener('mousedown', (e) => {
     const le = getMainLevelEditorRect();
     if (canStart && p.x >= le.x && p.x <= le.x + le.w && p.y >= le.y && p.y <= le.y + le.h) {
       gameState = 'levelEditor';
+      enterLevelEditor();
       return;
     }
     const o = getMainOptionsRect();
@@ -771,21 +1179,128 @@ canvas.addEventListener('mousedown', (e) => {
       return;
     }
   }
-  // Handle Level Editor buttons
+  // Handle Level Editor menubar interactions
   if (gameState === 'levelEditor') {
-    // Tool palette interactions
+    // Check menubar hotspots
     for (const hs of editorUiHotspots) {
       if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
-        if (hs.kind === 'tool') {
+        if (hs.kind === 'menu') {
+          // Toggle menu open/close
+          if (openEditorMenu === hs.menu) {
+            openEditorMenu = null;
+          } else {
+            openEditorMenu = hs.menu;
+            editorMenuActiveItemIndex = 0;
+          }
+          return;
+        } else if (hs.kind === 'menuItem') {
+          // Handle menu item selection
+          const item = hs.item;
+          
+          if (item.kind === 'tool') {
+            selectedEditorTool = item.tool;
+          } else if (item.kind === 'action') {
+            if (item.action === 'gridToggle') { editorShowGrid = !editorShowGrid; }
+            else if (item.action === 'gridMinus') {
+              const step = editorGridSize >= 20 ? 10 : 5;
+              editorGridSize = Math.max(5, editorGridSize - step);
+            }
+            else if (item.action === 'gridPlus') {
+              const step = editorGridSize >= 20 ? 10 : 5;
+              editorGridSize = Math.min(80, editorGridSize + step);
+            }
+            else if (item.action === 'save') { saveEditorLevel(); }
+            else if (item.action === 'saveAs') { saveEditorLevelAs(); }
+            else if (item.action === 'load') { openLoadPicker(); }
+            else if (item.action === 'new') { newEditorLevel(); }
+            else if (item.action === 'delete') { openDeletePicker(); }
+            else if (item.action === 'back') { gameState = 'menu'; }
+          } else if (item.kind === 'decoration') {
+            // Handle decoration placement (flowers)
+            selectedEditorTool = 'select'; // Switch to select for decoration placement
+          }
+          
+          // Close menu after selection
+          openEditorMenu = null;
+          return;
+        } else if (hs.kind === 'tool') {
           selectedEditorTool = hs.tool;
+          return;
+        } else if (hs.kind === 'action') {
+          if (hs.action === 'gridToggle') { editorShowGrid = !editorShowGrid; return; }
+          if (hs.action === 'gridMinus') {
+            const step = editorGridSize >= 20 ? 10 : 5;
+            editorGridSize = Math.max(5, editorGridSize - step);
+            return;
+          }
+          if (hs.action === 'gridPlus') {
+            const step = editorGridSize >= 20 ? 10 : 5;
+            editorGridSize = Math.min(80, editorGridSize + step);
+            return;
+          }
+          if (hs.action === 'save') { saveEditorLevel(); return; }
+          if (hs.action === 'saveAs') { saveEditorLevelAs(); return; }
+          if (hs.action === 'load') { openLoadPicker(); return; }
+          if (hs.action === 'new') { newEditorLevel(); return; }
+          if (hs.action === 'delete') { openDeletePicker(); return; }
+          if (hs.action === 'back') { gameState = 'menu'; return; }
           return;
         }
       }
     }
-    // Back button
-    const back = getCourseBackRect();
-    if (p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h) {
-      gameState = 'menu';
+    
+    // Close any open menu if clicking outside
+    if (openEditorMenu) {
+      openEditorMenu = null;
+      return;
+    }
+    // Placement on canvas (click anywhere not on UI/back)
+    if (selectedEditorTool === 'tee' || selectedEditorTool === 'cup') {
+      const pp = canvasToPlayCoords(p);
+      // snap to grid
+      let sx = Math.round(pp.x / editorGridSize) * editorGridSize;
+      let sy = Math.round(pp.y / editorGridSize) * editorGridSize;
+      const clamped = clampToFairway(sx, sy);
+      sx = clamped.x; sy = clamped.y;
+      if (selectedEditorTool === 'tee') {
+        ball.x = sx; ball.y = sy; ball.vx = 0; ball.vy = 0; ball.moving = false;
+        if (!editorLevelData) editorLevelData = { tee: { x: sx, y: sy }, cup: { x: hole.x, y: hole.y, r: (hole as any).r ?? 8 }, par: 3, course: { index: 1, total: 1 } } as unknown as Level;
+        editorLevelData.tee = { x: sx, y: sy } as any;
+      } else if (selectedEditorTool === 'cup') {
+        hole.x = sx; hole.y = sy;
+        const r = (hole as any).r ?? 8;
+        if (!editorLevelData) editorLevelData = { tee: { x: ball.x, y: ball.y }, cup: { x: sx, y: sy, r }, par: 3, course: { index: 1, total: 1 } } as unknown as Level;
+        editorLevelData.cup = { x: sx, y: sy, r } as any;
+      }
+      return;
+    }
+    // Post placement (single click)
+    if (selectedEditorTool === 'post') {
+      const pp = canvasToPlayCoords(p);
+      let sx = Math.round(pp.x / editorGridSize) * editorGridSize;
+      let sy = Math.round(pp.y / editorGridSize) * editorGridSize;
+      const clamped = clampToFairway(sx, sy);
+      sx = clamped.x; sy = clamped.y;
+      const r = 8;
+      posts.push({ x: sx, y: sy, r });
+      if (editorLevelData) {
+        if (!Array.isArray(editorLevelData.posts)) (editorLevelData as any).posts = [];
+        (editorLevelData.posts as any).push({ x: sx, y: sy, r });
+      }
+      return;
+    }
+    // Rectangle tools: begin drag on mousedown
+    const rectTools: EditorTool[] = ['wall', 'bridge', 'water', 'sand', 'hill'];
+    if (rectTools.includes(selectedEditorTool)) {
+      const pp = canvasToPlayCoords(p);
+      let sx = Math.round(pp.x / editorGridSize) * editorGridSize;
+      let sy = Math.round(pp.y / editorGridSize) * editorGridSize;
+      const clamped = clampToFairway(sx, sy);
+      sx = clamped.x; sy = clamped.y;
+      isEditorDragging = true;
+      editorDragTool = selectedEditorTool;
+      editorDragStart = { x: sx, y: sy };
+      editorDragCurrent = { x: sx, y: sy };
       return;
     }
   }
@@ -929,14 +1444,24 @@ canvas.addEventListener('mousemove', (e) => {
     return;
   }
   if (gameState === 'levelEditor') {
-    const back = getCourseBackRect();
-    hoverLevelEditorBack = p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h;
-    // Any tool button hover?
-    let overTool = false;
+    // Any menubar/UI element hover?
+    let overUI = false;
     for (const hs of editorUiHotspots) {
-      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) { overTool = true; break; }
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) { overUI = true; break; }
     }
-    canvas.style.cursor = (hoverLevelEditorBack || overTool) ? 'pointer' : 'default';
+    // Update drag current if dragging a rectangle
+    if (isEditorDragging) {
+      const pp = canvasToPlayCoords(p);
+      let sx = Math.round(pp.x / editorGridSize) * editorGridSize;
+      let sy = Math.round(pp.y / editorGridSize) * editorGridSize;
+      const clamped = clampToFairway(sx, sy);
+      editorDragCurrent = { x: clamped.x, y: clamped.y };
+    }
+    const rectTools: EditorTool[] = ['wall', 'bridge', 'water', 'sand', 'hill'];
+    const wantsCrosshair = !overUI && (
+      selectedEditorTool === 'tee' || selectedEditorTool === 'cup' || selectedEditorTool === 'post' || rectTools.includes(selectedEditorTool)
+    );
+    canvas.style.cursor = wantsCrosshair ? 'crosshair' : (overUI ? 'pointer' : 'default');
     return;
   }
   if (gameState === 'changelog') {
@@ -1014,7 +1539,44 @@ canvas.addEventListener('mouseup', (e) => {
     isOptionsVolumeDragging = false;
   }
   if (gameState === 'levelEditor') {
-    // no drag states
+    // finalize rectangle placement if dragging
+    if (isEditorDragging && editorDragTool) {
+      const x0 = editorDragStart.x;
+      const y0 = editorDragStart.y;
+      const x1 = editorDragCurrent.x;
+      const y1 = editorDragCurrent.y;
+      let rx = Math.min(x0, x1);
+      let ry = Math.min(y0, y1);
+      let rw = Math.abs(x1 - x0);
+      let rh = Math.abs(y1 - y0);
+      // Ignore tiny drags (accidental clicks)
+      if (rw >= editorGridSize || rh >= editorGridSize) {
+        if (editorDragTool === 'wall') {
+          const r = { x: rx, y: ry, w: rw, h: rh };
+          walls.push(r);
+          if (editorLevelData) { if (!Array.isArray(editorLevelData.walls)) (editorLevelData as any).walls = []; (editorLevelData.walls as any).push(r); }
+        } else if (editorDragTool === 'bridge') {
+          const r = { x: rx, y: ry, w: rw, h: rh };
+          bridges.push(r);
+          if (editorLevelData) { if (!Array.isArray(editorLevelData.bridges)) (editorLevelData as any).bridges = []; (editorLevelData.bridges as any).push(r); }
+        } else if (editorDragTool === 'water') {
+          const r = { x: rx, y: ry, w: rw, h: rh };
+          waters.push(r);
+          if (editorLevelData) { if (!Array.isArray(editorLevelData.water)) (editorLevelData as any).water = []; (editorLevelData.water as any).push(r); }
+        } else if (editorDragTool === 'sand') {
+          const r = { x: rx, y: ry, w: rw, h: rh };
+          sands.push(r);
+          if (editorLevelData) { if (!Array.isArray(editorLevelData.sand)) (editorLevelData as any).sand = []; (editorLevelData.sand as any).push(r); }
+        } else if (editorDragTool === 'hill') {
+          const r = { x: rx, y: ry, w: rw, h: rh, dir: 'N' as const };
+          hills.push(r);
+          if (editorLevelData) { if (!Array.isArray(editorLevelData.hills)) (editorLevelData as any).hills = []; (editorLevelData.hills as any).push(r); }
+        }
+      }
+    }
+    // clear drag state
+    isEditorDragging = false;
+    editorDragTool = null;
   }
   if (!isAiming || paused || gameState !== 'play') return;
   const p = canvasToPlayCoords(worldFromEvent(e));
@@ -1119,7 +1681,118 @@ function devLogAnyB(e: KeyboardEvent) {
 window.addEventListener('keydown', devLogAnyB);
 window.addEventListener('keyup', devLogAnyB);
 document.addEventListener('keydown', devLogAnyB);
-canvas.addEventListener('keydown', devLogAnyB);
+
+// Level Editor keyboard shortcuts: grid and nudge
+function handleLevelEditorKeys(e: KeyboardEvent) {
+  if (gameState !== 'levelEditor') return;
+  
+  // Menu keyboard handling
+  if (e.altKey) {
+    // Menu mnemonics: Alt+F, Alt+O, Alt+D, Alt+E
+    if (e.key === 'f' || e.key === 'F') {
+      openEditorMenu = openEditorMenu === 'file' ? null : 'file';
+      editorMenuActiveItemIndex = 0;
+      e.preventDefault();
+      return;
+    }
+    if (e.key === 'o' || e.key === 'O') {
+      openEditorMenu = openEditorMenu === 'objects' ? null : 'objects';
+      editorMenuActiveItemIndex = 0;
+      e.preventDefault();
+      return;
+    }
+    if (e.key === 'd' || e.key === 'D') {
+      openEditorMenu = openEditorMenu === 'decorations' ? null : 'decorations';
+      editorMenuActiveItemIndex = 0;
+      e.preventDefault();
+      return;
+    }
+    if (e.key === 'e' || e.key === 'E') {
+      openEditorMenu = openEditorMenu === 'tools' ? null : 'tools';
+      editorMenuActiveItemIndex = 0;
+      e.preventDefault();
+      return;
+    }
+  }
+  
+  // Menu navigation when a menu is open
+  if (openEditorMenu) {
+    const menu = EDITOR_MENUS[openEditorMenu];
+    if (e.key === 'ArrowDown') {
+      editorMenuActiveItemIndex = Math.min(menu.items.length - 1, editorMenuActiveItemIndex + 1);
+      e.preventDefault();
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      editorMenuActiveItemIndex = Math.max(0, editorMenuActiveItemIndex - 1);
+      e.preventDefault();
+      return;
+    }
+    if (e.key === 'Enter') {
+      // Execute the active menu item
+      const activeItem = menu.items[editorMenuActiveItemIndex];
+      if (activeItem) {
+        const item = activeItem.item;
+        if (item.kind === 'tool') {
+          selectedEditorTool = item.tool;
+        } else if (item.kind === 'action') {
+          if (item.action === 'gridToggle') { editorShowGrid = !editorShowGrid; }
+          else if (item.action === 'gridMinus') {
+            const step = editorGridSize >= 20 ? 10 : 5;
+            editorGridSize = Math.max(5, editorGridSize - step);
+          }
+          else if (item.action === 'gridPlus') {
+            const step = editorGridSize >= 20 ? 10 : 5;
+            editorGridSize = Math.min(80, editorGridSize + step);
+          }
+          else if (item.action === 'save') { saveEditorLevel(); }
+          else if (item.action === 'saveAs') { saveEditorLevelAs(); }
+          else if (item.action === 'load') { openLoadPicker(); }
+          else if (item.action === 'new') { newEditorLevel(); }
+          else if (item.action === 'delete') { openDeletePicker(); }
+          else if (item.action === 'back') { gameState = 'menu'; }
+        } else if (item.kind === 'decoration') {
+          selectedEditorTool = 'select';
+        }
+        openEditorMenu = null;
+      }
+      e.preventDefault();
+      return;
+    }
+    if (e.key === 'Escape') {
+      openEditorMenu = null;
+      e.preventDefault();
+      return;
+    }
+  }
+  
+  // Existing keyboard shortcuts (preserve legacy behavior)
+  if (e.key === 'g' || e.key === 'G') { editorShowGrid = !editorShowGrid; e.preventDefault(); return; }
+  if (e.key === '-' || e.code === 'Minus' || e.key === '_') { editorGridSize = Math.max(5, editorGridSize - (editorGridSize >= 20 ? 10 : 5)); e.preventDefault(); return; }
+  if (e.key === '+' || e.key === '=' || e.code === 'Equal' || e.code === 'NumpadAdd') { editorGridSize = Math.min(80, editorGridSize + (editorGridSize >= 20 ? 10 : 5)); e.preventDefault(); return; }
+  
+  // Arrow key nudges for tee/cup (only if no menu is open)
+  if (!openEditorMenu) {
+    let dx = 0, dy = 0;
+    if (e.code === 'ArrowLeft') dx = -editorGridSize;
+    else if (e.code === 'ArrowRight') dx = editorGridSize;
+    else if (e.code === 'ArrowUp') dy = -editorGridSize;
+    else if (e.code === 'ArrowDown') dy = editorGridSize;
+    if (dx === 0 && dy === 0) return;
+    if (selectedEditorTool === 'tee') {
+      const clamped = clampToFairway(ball.x + dx, ball.y + dy);
+      ball.x = clamped.x; ball.y = clamped.y;
+      ball.vx = 0; ball.vy = 0; ball.moving = false;
+      e.preventDefault(); return;
+    }
+    if (selectedEditorTool === 'cup') {
+      const clamped = clampToFairway(hole.x + dx, hole.y + dy);
+      hole.x = clamped.x; hole.y = clamped.y;
+      e.preventDefault(); return;
+    }
+  }
+}
+window.addEventListener('keydown', handleLevelEditorKeys);
 
 // Username input handling (menu only)
 function handleNameEditKey(e: KeyboardEvent) {
@@ -1825,66 +2498,376 @@ function draw() {
   }
   // Level Editor screen
   if (gameState === 'levelEditor') {
-    // Title
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.font = '28px system-ui, sans-serif';
-    ctx.fillText('Level Editor (WIP)', WIDTH/2, 60);
-    ctx.font = '14px system-ui, sans-serif';
-    ctx.fillText('Select a tool to begin placing/editing. Back returns to Main Menu.', WIDTH/2, 86);
-
-    // Tool palette (rebuilt every frame)
+    // Update dynamic menu labels
+    EDITOR_MENUS.tools.items[0].label = editorShowGrid ? 'Grid On' : 'Grid Off';
+    EDITOR_MENUS.tools.items[1].label = `Grid - (${editorGridSize}px)`;
+    EDITOR_MENUS.tools.items[2].label = `Grid + (${editorGridSize}px)`;
+    
+    // Build menubar hotspots (rebuilt each frame)
     editorUiHotspots = [];
-    const tools: EditorTool[] = ['select','tee','cup','wall','wallsPoly','post','bridge','water','waterPoly','sand','sandPoly','hill'];
-    const labels: Record<EditorTool, string> = {
-      select: 'Select',
-      tee: 'Tee',
-      cup: 'Cup',
-      wall: 'Wall',
-      wallsPoly: 'WallsPoly',
-      post: 'Post',
-      bridge: 'Bridge',
-      water: 'Water',
-      waterPoly: 'WaterPoly',
-      sand: 'Sand',
-      sandPoly: 'SandPoly',
-      hill: 'Hill'
-    };
-    // Layout: left column list
-    const px = WIDTH/2 - 320; // left column anchor (aligned with other UIs)
-    let py = 120;
-    const btnW = 140, btnH = 24, gap = 8;
-    ctx.lineWidth = 1.5;
-    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    ctx.font = '13px system-ui, sans-serif';
-    for (const tool of tools) {
-      const isSel = selectedEditorTool === tool;
-      ctx.strokeStyle = isSel ? '#ffffff' : '#cfd2cf';
-      ctx.fillStyle = isSel ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.10)';
-      ctx.fillRect(px, py, btnW, btnH);
-      ctx.strokeRect(px, py, btnW, btnH);
+
+    // Canvas preview: fairway + grid + tee/cup markers
+    ctx.fillStyle = COLORS.fairway;
+    ctx.fillRect(fairX, fairY, fairW, fairH);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = COLORS.fairwayLine;
+    ctx.strokeRect(fairX + 1, fairY + 1, Math.max(0, fairW - 2), Math.max(0, fairH - 2));
+    if (editorShowGrid && editorGridSize > 0) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(fairX, fairY, fairW, fairH);
+      ctx.clip();
+      ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = fairX; x <= fairX + fairW; x += editorGridSize) {
+        ctx.moveTo(Math.round(x) + 0.5, fairY);
+        ctx.lineTo(Math.round(x) + 0.5, fairY + fairH);
+      }
+      for (let y = fairY; y <= fairY + fairH; y += editorGridSize) {
+        ctx.moveTo(fairX, Math.round(y) + 0.5);
+        ctx.lineTo(fairX + fairW, Math.round(y) + 0.5);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+    // Existing geometry preview (terrain before walls)
+    // Water (rectangles)
+    for (const r of waters) {
+      ctx.fillStyle = COLORS.waterFill;
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = COLORS.waterStroke;
+      ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+    }
+    // Water (polygons)
+    if (watersPoly.length > 0) {
+      ctx.fillStyle = COLORS.waterFill;
+      for (const wp of watersPoly) {
+        const pts = wp.points;
+        if (!pts || pts.length < 6) continue;
+        ctx.beginPath();
+        ctx.moveTo(pts[0], pts[1]);
+        for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+        ctx.closePath();
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = COLORS.waterStroke;
+        ctx.stroke();
+      }
+    }
+    // Sand (rectangles)
+    for (const r of sands) {
+      ctx.fillStyle = COLORS.sandFill;
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = COLORS.sandStroke;
+      ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+    }
+    // Sand (polygons)
+    if (sandsPoly.length > 0) {
+      ctx.fillStyle = COLORS.sandFill;
+      for (const sp of sandsPoly) {
+        const pts = sp.points;
+        if (!pts || pts.length < 6) continue;
+        ctx.beginPath();
+        ctx.moveTo(pts[0], pts[1]);
+        for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+        ctx.closePath();
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = COLORS.sandStroke;
+        ctx.stroke();
+      }
+    }
+    // Bridges
+    for (const r of bridges) {
+      ctx.fillStyle = COLORS.fairway;
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = COLORS.fairwayLine;
+      ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+    }
+    // Hills (directional gradient overlay)
+    for (const h of hills) {
+      const grad = (() => {
+        const d = h.dir;
+        let x0 = h.x, y0 = h.y, x1 = h.x + h.w, y1 = h.y + h.h;
+        if (d === 'N') { x0 = h.x; y0 = h.y + h.h; x1 = h.x; y1 = h.y; }
+        else if (d === 'S') { x0 = h.x; y0 = h.y; x1 = h.x; y1 = h.y + h.h; }
+        else if (d === 'W') { x0 = h.x + h.w; y0 = h.y; x1 = h.x; y1 = h.y; }
+        else if (d === 'E') { x0 = h.x; y0 = h.y; x1 = h.x + h.w; y1 = h.y; }
+        else if (d === 'NE') { x0 = h.x; y0 = h.y + h.h; x1 = h.x + h.w; y1 = h.y; }
+        else if (d === 'NW') { x0 = h.x + h.w; y0 = h.y + h.h; x1 = h.x; y1 = h.y; }
+        else if (d === 'SE') { x0 = h.x; y0 = h.y; x1 = h.x + h.w; y1 = h.y + h.h; }
+        else /* SW */ { x0 = h.x + h.w; y0 = h.y; x1 = h.x; y1 = h.y + h.h; }
+        return ctx.createLinearGradient(x0, y0, x1, y1);
+      })();
+      grad.addColorStop(0, 'rgba(255,255,255,0.10)');
+      grad.addColorStop(1, 'rgba(0,0,0,0.10)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(h.x, h.y, h.w, h.h);
+    }
+    // Decorations (clip to fairway)
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(fairX, fairY, fairW, fairH);
+    ctx.clip();
+    for (const d of decorations) {
+      if (d.kind === 'flowers') {
+        const step = 16;
+        for (let y = d.y; y < d.y + d.h; y += step) {
+          for (let x = d.x; x < d.x + d.w; x += step) {
+            ctx.save();
+            ctx.translate(x + 8, y + 8);
+            ctx.fillStyle = '#ffffff';
+            for (let i = 0; i < 4; i++) {
+              const ang = (i * Math.PI) / 2;
+              ctx.beginPath();
+              ctx.arc(Math.cos(ang) * 5, Math.sin(ang) * 5, 3, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            ctx.fillStyle = '#d11e2a';
+            ctx.beginPath();
+            ctx.arc(0, 0, 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
+        }
+      }
+    }
+    ctx.restore();
+    // Walls (rectangles)
+    for (const w of walls) {
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.fillRect(w.x + 2, w.y + 2, w.w, w.h);
+      ctx.fillStyle = COLORS.wallFill;
+      ctx.fillRect(w.x, w.y, w.w, w.h);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = COLORS.wallStroke;
+      ctx.strokeRect(w.x + 1, w.y + 1, w.w - 2, w.h - 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      ctx.beginPath();
+      ctx.moveTo(w.x + 1, w.y + 1);
+      ctx.lineTo(w.x + w.w - 1, w.y + 1);
+      ctx.moveTo(w.x + 1, w.y + 1);
+      ctx.lineTo(w.x + 1, w.y + w.h - 1);
+      ctx.stroke();
+    }
+    // Polygon walls
+    ctx.lineWidth = 2;
+    for (const poly of polyWalls) {
+      const pts = poly.points;
+      if (!pts || pts.length < 6) continue;
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.moveTo(pts[0] + 2, pts[1] + 2);
+      for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i] + 2, pts[i + 1] + 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = COLORS.wallFill;
+      ctx.beginPath();
+      ctx.moveTo(pts[0], pts[1]);
+      for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = COLORS.wallStroke;
+      ctx.stroke();
+    }
+    // Posts
+    for (const p of posts) {
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath(); ctx.arc(p.x + 2, p.y + 2, p.r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = COLORS.wallFill;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = COLORS.wallStroke; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r - 1, 0, Math.PI * 2); ctx.stroke();
+    }
+    // Tee marker (ball position)
+    {
+      const r = 6;
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(labels[tool], px + 10, py + btnH/2 + 0.5);
-      editorUiHotspots.push({ kind: 'tool', tool, x: px, y: py, w: btnW, h: btnH });
-      py += btnH + gap;
+      ctx.beginPath(); ctx.arc(ball.x, ball.y, r, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.beginPath(); ctx.ellipse(ball.x + 2, ball.y + 3, r * 0.9, r * 0.6, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    // Cup marker (hole)
+    {
+      const r = (hole as any).r ?? 8;
+      ctx.fillStyle = COLORS.holeFill;
+      ctx.beginPath(); ctx.arc(hole.x, hole.y, r, 0, Math.PI*2); ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = COLORS.holeRim; ctx.stroke();
+      ctx.fillStyle = COLORS.wallFill;
+      const stickW = 3, stickH = 24;
+      ctx.fillRect(hole.x - stickW/2, hole.y - stickH - r, stickW, stickH);
     }
 
-    // Back button
-    const back = getCourseBackRect();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = hoverLevelEditorBack ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = hoverLevelEditorBack ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
-    ctx.fillRect(back.x, back.y, back.w, back.h);
-    ctx.strokeRect(back.x, back.y, back.w, back.h);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '16px system-ui, sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('Back', back.x + back.w/2, back.y + back.h/2 + 0.5);
+    // Drag outline preview (rectangle tools)
+    if (isEditorDragging && editorDragTool && (
+      editorDragTool === 'wall' || editorDragTool === 'bridge' || editorDragTool === 'water' || editorDragTool === 'sand' || editorDragTool === 'hill'
+    )) {
+      const x0 = editorDragStart.x;
+      const y0 = editorDragStart.y;
+      const x1 = editorDragCurrent.x;
+      const y1 = editorDragCurrent.y;
+      const rx = Math.min(x0, x1);
+      const ry = Math.min(y0, y1);
+      const rw = Math.abs(x1 - x0);
+      const rh = Math.abs(y1 - y0);
+      if (rw > 0 || rh > 0) {
+        ctx.save();
+        // Clip to fairway to respect clamping visuals
+        ctx.beginPath(); ctx.rect(fairX, fairY, fairW, fairH); ctx.clip();
+        // Subtle translucent fill to preview area; color hint by tool
+        const tool = editorDragTool;
+        if (tool === 'water') {
+          ctx.globalAlpha = 0.35; ctx.fillStyle = COLORS.waterFill; ctx.fillRect(rx, ry, rw, rh); ctx.globalAlpha = 1;
+        } else if (tool === 'sand') {
+          ctx.globalAlpha = 0.35; ctx.fillStyle = COLORS.sandFill; ctx.fillRect(rx, ry, rw, rh); ctx.globalAlpha = 1;
+        } else if (tool === 'bridge') {
+          ctx.globalAlpha = 0.20; ctx.fillStyle = COLORS.fairway; ctx.fillRect(rx, ry, rw, rh); ctx.globalAlpha = 1;
+        } else if (tool === 'wall') {
+          ctx.globalAlpha = 0.18; ctx.fillStyle = '#ffffff'; ctx.fillRect(rx, ry, rw, rh); ctx.globalAlpha = 1;
+        } else /* hill */ {
+          ctx.globalAlpha = 0.18; ctx.fillStyle = '#ffffff'; ctx.fillRect(rx, ry, rw, rh); ctx.globalAlpha = 1;
+        }
+        // Dashed outline border for clarity
+        ctx.setLineDash([6, 4]);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#ffffff';
+        ctx.strokeRect(rx + 0.5, ry + 0.5, Math.max(0, rw - 1), Math.max(0, rh - 1));
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
 
-    // Version bottom-left
-    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-    ctx.font = '12px system-ui, sans-serif';
-    ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
+    // Menubar (drawn last over preview)
+    {
+      const menubarX = 0;
+      const menubarY = 0;
+      const menubarW = WIDTH;
+      const menubarH = 28;
+      
+      // Menubar background
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(menubarX, menubarY, menubarW, menubarH);
+      ctx.strokeStyle = '#cfd2cf';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(menubarX, menubarY, menubarW, menubarH - 1);
+      
+      // Menu headers
+      ctx.font = '14px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      
+      const menuIds: EditorMenuId[] = ['file', 'objects', 'decorations', 'tools'];
+      let x = 8;
+      const y = menubarH / 2;
+      
+      for (const menuId of menuIds) {
+        const menu = EDITOR_MENUS[menuId];
+        const textW = ctx.measureText(menu.title).width;
+        const menuW = textW + 16;
+        
+        const isOpen = openEditorMenu === menuId;
+        ctx.fillStyle = isOpen ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.10)';
+        ctx.fillRect(x, 2, menuW, menubarH - 4);
+        
+        if (isOpen) {
+          ctx.strokeStyle = '#ffffff';
+          ctx.strokeRect(x, 2, menuW, menubarH - 4);
+        }
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(menu.title, x + 8, y);
+        
+        editorUiHotspots.push({ kind: 'menu', menu: menuId, x, y: 0, w: menuW, h: menubarH });
+        x += menuW;
+      }
+      
+      // Dropdown menus
+      if (openEditorMenu) {
+        const menu = EDITOR_MENUS[openEditorMenu];
+        
+        // Find the header position for this menu
+        let headerX = 8;
+        for (const menuId of menuIds) {
+          if (menuId === openEditorMenu) break;
+          const m = EDITOR_MENUS[menuId];
+          const textW = ctx.measureText(m.title).width;
+          headerX += textW + 16;
+        }
+        
+        // Calculate dropdown dimensions
+        let maxWidth = 0;
+        for (const item of menu.items) {
+          const w = ctx.measureText(item.label).width;
+          if (w > maxWidth) maxWidth = w;
+        }
+        const dropdownW = Math.max(120, maxWidth + 24);
+        const itemH = 22;
+        const dropdownH = menu.items.length * itemH + 4;
+        const dropdownX = headerX;
+        const dropdownY = menubarH;
+        
+        // Dropdown background
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.fillRect(dropdownX, dropdownY, dropdownW, dropdownH);
+        ctx.strokeStyle = '#cfd2cf';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(dropdownX, dropdownY, dropdownW, dropdownH);
+        
+        // Menu items
+        let itemY = dropdownY + 2;
+        for (let i = 0; i < menu.items.length; i++) {
+          const menuItem = menu.items[i];
+          const isActive = i === editorMenuActiveItemIndex;
+          const isSelected = (() => {
+            if (menuItem.item.kind === 'tool') return selectedEditorTool === menuItem.item.tool;
+            return false;
+          })();
+          
+          // Item background
+          if (isActive || isSelected) {
+            ctx.fillStyle = isSelected ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.15)';
+            ctx.fillRect(dropdownX + 1, itemY, dropdownW - 2, itemH);
+          }
+          
+          // Separator line
+          if (menuItem.separator && i > 0) {
+            ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(dropdownX + 6, itemY - 1);
+            ctx.lineTo(dropdownX + dropdownW - 6, itemY - 1);
+            ctx.stroke();
+          }
+          
+          // Item text
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(menuItem.label, dropdownX + 8, itemY + itemH / 2);
+          
+          // Add hotspot for menu item
+          editorUiHotspots.push({
+            kind: 'menuItem',
+            menu: openEditorMenu,
+            item: menuItem.item,
+            x: dropdownX,
+            y: itemY,
+            w: dropdownW,
+            h: itemH
+          });
+          
+          itemY += itemH;
+        }
+      }
+
+      // Version bottom-left
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
+    }
     return;
   }
   // Users admin screen

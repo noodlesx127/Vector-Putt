@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- Level Editor: Menubar with pull-down menus (replaces compact toolbar)
+  - Four menus: File (New, Save, Save As, Level Load, Delete, Back/Exit), Objects (all tools: Select, Tee, Cup, Post, Wall, WallsPoly, Bridge, Water, WaterPoly, Sand, SandPoly, Hill), Decorations (Flowers), Editor Tools (Grid controls)
+  - Mouse interaction: click headers to open/close menus, click items to execute actions
+  - Keyboard navigation: Alt+F/O/D/E for menu mnemonics, Arrow keys for menu navigation, Enter to select, Escape to close
+  - Visual: semi-transparent background with proper layering above the level preview
+  - Integration: all existing editor actions and tools accessible through menubar
 - User System: Main Menu username input added above Start. Start is disabled until a non-empty name is entered. Username persists to `localStorage` and is prefilled on load. Cursor changes to text I-beam on hover, and placeholder shown when empty.
 - Fix: removed redundant Main Menu mouse handlers that could blur the username input on mouseup; consolidated focus handling so editing is stable.
  - UX: username input now has a clear focus state — placeholder hides while editing, caret blinks at the end of text, and I-beam cursor remains during edit. Input field nudged down to avoid clipping into the main graphic.
@@ -21,11 +27,48 @@ All notable changes to this project will be documented in this file.
  - Game State: introduced `levelEditor` state with a placeholder screen and a Back button (reuses `getCourseBackRect()`) to return to Main Menu.
  - Input: updated mousemove/mousedown handlers to manage hover and clicks for the Level Editor entry and the Level Editor Back button. Cursor shows pointer on hover when enabled.
  - Layout: added `getMainLevelEditorRect()` and moved Options down via `getMainOptionsRect()` to accommodate the new entry.
+ - Level Editor: Tee and Cup placement tools with 20px grid snapping; placement clamps to fairway bounds and updates in-memory editor level data.
+ - Editor Actions: Multi-level persistence with Save, Save As, Load, New, and Delete using `localStorage` key `vp.levels.v1`. Each saved level has a unique ID plus title and ownership metadata; editor tracks the current saved ID to enable overwrite semantics.
+ - Draw: Editor preview renders the fairway panel with outline, grid overlay (toggle respected), and Tee/Cup markers (ball + hole with flagstick).
+ - Input: cursor shows crosshair when Tee/Cup tools are active over the canvas; clicking Save/Load triggers persistence handlers.
+
+  - Permissions: Overwrite/Delete are restricted to the level owner or admins. Non-owners are shown an alert and automatically routed to "Save As" to create a copy. Enforced via `canModifyLevel()` in `saveEditorLevel()` and `openDeletePicker()`.
+  - Migration: On first entry to the Level Editor, `enterLevelEditor()` invokes `migrateSingleSlotIfNeeded()` to migrate legacy single-slot data from `vp.editor.level` into the new `vp.levels.v1` format with ownership/timestamps.
+  - UI Wiring: Editor action buttons (Save, Save As, Load, New, and Delete) are part of `editorUiHotspots` and handled in the Level Editor mousedown logic; hotspots are rebuilt each frame for reliable hit testing.
+
+ - Level Editor UI: menu panel now renders above the fairway/grid preview (draw order fixed). Added a semi-transparent panel background and border so controls remain readable.
+- Fix: editor buttons were visually obscured by the grid; buttons and hotspots are now drawn last to ensure proper layering (interaction unchanged).
+
+ - Level Editor: Grid controls added
+   - Panel actions: Grid On/Off toggle and Grid - / Grid + (labels show current size in px)
+   - Shortcuts: G toggles grid; +/- adjust grid size; Arrow keys nudge Tee/Cup by one grid step
+   - Hotspots and rendering order preserved; actions integrated into `editorUiHotspots`
+
+- Level Editor UI: compact horizontal top toolbar
+  - Replaced the vertical left panel with a compact two-row top toolbar (tools on top; actions below).
+  - Integrated Back as an action button on the right side of the toolbar; removed separate Back button/hitbox from the editor.
+  - Rebuild `editorUiHotspots` each frame to include tools, actions, and Back; all editor UI hover/click handling is now driven solely by these hotspots.
+  - Editor preview (fairway, grid, tee, cup) renders below the toolbar.
+- Input: simplified editor hover handling
+  - Removed `hoverLevelEditorBack` and editor usage of `getCourseBackRect()`.
+  - Mouse hover and clicks in the editor now check only against `editorUiHotspots`; crosshair cursor preserved for Tee/Cup placement over the canvas.
+- Level Editor: Editor preview now renders existing geometry (water, sand, bridges, hills, decorations, walls, polygon walls, posts) using the same visuals as play mode; drawn after the grid and before tee/cup markers.
+  - Posts: single-click placement with default radius, snapped to grid and clamped to fairway.
+  - Rectangles via click-drag: Walls, Bridges, Water, Sand, Hills. Start drag to define a rect; snapped to grid and clamped to fairway; ignored if drag is below one grid step.
+  - Input: crosshair cursor over canvas for these tools; drag state tracked until mouseup.
+  - Data: editor arrays (`walls`, `posts`, `bridges`, `waters`, `sands`, `hills`) updated on placement and reflected immediately in the preview using play-mode visuals.
+ - Level Editor: Drag outline preview while dragging rectangle tools
+   - Visual: semi-transparent fill and dashed white outline
+   - Behavior: respects grid snapping and fairway bounds clamping; preview is clipped to the fairway
+   - Order: rendered after existing geometry and before the toolbar/UI hotspots for proper layering
 
 ## v0.3.23 — 2025-08-18
 
 - Level Editor: initial Tool Palette UI
   - Renders a vertical list of tool buttons: Select, Tee, Cup, Wall, WallsPoly, Post, Bridge, Water, WaterPoly, Sand, SandPoly, Hill.
+ - Input: extended `mousemove` and `mousedown` for `levelEditor`
+ - Hover sets pointer cursor over Back and tool buttons.
+ - Click on a tool selects it (`selectedEditorTool`).
   - Selected tool is highlighted; palette rebuilt each frame into `editorUiHotspots` for interaction.
 - Input: extended `mousemove` and `mousedown` for `levelEditor`
   - Hover sets pointer cursor over Back and tool buttons.

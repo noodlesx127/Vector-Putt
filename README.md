@@ -14,6 +14,7 @@ A classic mini golf recreation using TypeScript + Canvas with data‑driven leve
 - Data‑driven levels: tee, cup, walls, decorations
 - Minimal HUD, pause overlay, keyboard shortcuts (R/N/Space/P/Esc)
 - Retro vector palette and clean course framing
+- Level Editor: Tee/Cup placement with 20px grid snapping; compact horizontal top toolbar (tools row + actions row with Back on right) driven by `editorUiHotspots`; multi-level persistence (Save, Save As, Load, New, Delete) stored under `localStorage` key `vp.levels.v1`; ownership metadata (authorId/authorName) with owner/admin overwrite/delete permissions; legacy single-slot data auto-migrated on first editor entry; in-editor grid preview; editor preview renders existing geometry (water, sand, bridges, hills, decorations, walls, polygon walls, posts) using play-mode visuals; interactive placement for Posts (click) and Walls/Bridges/Water/Sand/Hills (click-drag rectangles) with grid snapping and fairway clamping
 
 ## Stack
 

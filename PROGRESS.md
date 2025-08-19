@@ -4,11 +4,17 @@
 
 # Project Progress — Vector Putt
 
-Updated: 2025-08-18 (local) — Level Editor tool palette UI (initial) implemented; Admin-only Users UI complete; Level Editor entry added
+ Updated: 2025-08-18 (local) — Next: Option A selected — Course Select "User Made Levels" category; planning and criteria captured below
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 
 ## Now (Current Focus)
+- [ ] Option A: Course Select "User Made Levels" category (in progress)
+  - Listing: Title + Author from localStorage `vp.levels.v1`, sorted by modified desc
+  - Actions: Play; Edit/Delete only for owner/admin; confirm delete
+  - Permissions: non-owners see disabled Edit/Delete with hint
+  - Controls: Up/Down navigate, Enter Play, E Edit, Del Delete, Esc Back
+  - No regressions to bundled Course Select
 - [x] Axis-aligned walls + deterministic reflections (angle in = angle out)
 - [x] Minimal HUD (Hole x/y, Par n, Strokes m); increment strokes on release
 - [x] Level JSON: tee, hole cup, rectangular walls; load at startup
@@ -41,7 +47,44 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [ ] Level Editor & Browser
   - [x] Editor selectable from Main Menu (launch editor mode) — placeholder screen with Back
   - [x] Tool palette UI (initial): render tool buttons, hover pointer, click to select (`selectedEditorTool`)
-  - [ ] Course Select: add "User Made Levels" category; list entries as Title — Author; load/play
+  - [x] Tee & Cup placement: 20px grid snapping and nudge controls (arrow keys); configurable grid size
+  - [x] Multi-level persistence: Save, Save As, Load, New, Delete using `localStorage` key `vp.levels.v1`; track current saved ID for overwrite semantics
+  - [x] Preview rendering: fairway panel + outline, grid overlay, Tee/Cup markers
+  - [x] Permissions: owner/admin-only overwrite and delete; non-owners are alerted and routed to "Save As"
+  - [x] Migration: migrate legacy single-slot (`vp.editor.level`) into `vp.levels.v1` on first entry to the editor
+  - [x] CRUD UI wiring: action buttons are part of `editorUiHotspots` and handled in Level Editor `mousedown`; hotspots rebuilt each frame
+  - [x] Menu UI layering: draw menu panel/buttons last so they render above the grid; add semi-transparent panel background and border for readability
+  - [x] Toolbar refactor: compact horizontal top toolbar (tools row + actions row incl. Back on right); hover/click unified via `editorUiHotspots`; editor preview renders beneath toolbar
+  - [x] Editor preview: render existing geometry (water, sand, bridges, hills, decorations, walls, polygon walls, posts) using play-mode visuals
+  - [x] Interactive placement: Posts (click); Walls/Bridges/Water/Sand/Hills (click-drag rectangles) with grid snapping, fairway clamping, and minimum drag threshold; crosshair cursor and drag state until mouseup
+  - [x] Drag outline preview while dragging rectangle tools (grid-snapped, clamped to fairway bounds)
+  - Level Editor UI Selections Audit (2025-08-18 local)
+    - Tools working: Tee, Cup, Post, Wall, Bridge, Water, Sand, Hill (rectangles)
+    - Tools present but not yet implemented: Select, WallsPoly, WaterPoly, SandPoly (no placement/edit UI)
+    - Actions working: Grid toggle, Grid -/+, Save, Save As, Load, New, Delete (saved level entry), Back
+    - Gaps:
+      - Select tool: no hit-testing, move/resize, or delete-selected behavior
+      - Polygon tools: render-only if present in data; no create/vertex-edit UI
+      - Delete-selected: not wired; toolbar Delete currently deletes saved levels, not canvas items
+      - Hill direction control: missing; Post radius is fixed
+    - Code refs (`src/main.ts`): `saveEditorLevel()`, `saveEditorLevelAs()`, `openLoadPicker()`, `openDeletePicker()`, `newEditorLevel()`, `assembleEditorLevel()`, Level Editor `mousedown`/`mousemove`/`mouseup`
+  - [x] Editor UI: Menubar with pull-down menus (replace compact toolbar)
+    - File menu: New, Save, Save As, Level Load, Delete, Back/Exit
+    - Objects menu: Tee, Cup, Post, Wall, WallsPoly, Bridge, Water, WaterPoly, Sand, SandPoly, Hill
+    - Decorations menu: Flowers
+    - Editor Tools menu: Select, Grid -, Grid +, Grid On/Off
+    - Hotspots & rendering: build dropdowns into `editorUiHotspots`; manage open/close state, hover, and click routing; keyboard navigation for menus/items
+    - Layout: top menubar with pull-down panels; render above preview; ensure readability and spacing; maintain current preview layering
+    - Shortcuts: preserve existing shortcuts (G, -, +); mnemonics (Alt+F/O/D/E) and arrow navigation
+    - Docs: update `PROGRESS.md` and `CHANGELOG.md` upon implementing
+    - Tests: hover/click open-close behavior; action dispatch correctness
+  - [ ] Select tool: move and resize items (MS Paint-style)
+    - Drag inside selection to move; 8 corner/side handles to resize
+    - Grid snapping and fairway-bounds clamping on move/resize; min size = 1 grid step; no negative sizes
+    - Applies to rect items (walls/bridges/water/sand/hills); Posts: resize radius; Tee/Cup: move-only
+  - [ ] Delete selected item(s) via existing Delete button in the toolbar UI
+  - [ ] Undo/Redo in Level Editor: toolbar buttons and shortcuts (Ctrl+Z/Ctrl+Y); snapshot editor state on placements and actions (Save/Load/New/Delete)
+  - [ ] Course Select: add "User Made Levels" category; list Title — Author; Play; owner/admin Edit/Delete; permissions gating; no regression
   - [ ] Open/edit existing `levels/*.json` and create new levels (with schema validation)
   - [ ] Tool palette: Tee, Cup, Walls/WallsPoly, Posts, Bridges, Water/WaterPoly, Sand/SandPoly, Hills, decorations (full authoring behaviors)
   - [ ] Metadata editor: Level title and Author (persist in JSON)
@@ -50,7 +93,7 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [ ] User System
   - [x] Local profiles: create/select active user; persist name and role (admin/user)
   - [ ] Roles & permissions: Admin can edit/delete any level; Normal users can edit/delete their own and duplicate others
-    - [ ] Verify current enforcement across Save/Delete flows and any editor entry points
+    - [x] Verify current enforcement across Save/Delete flows and any editor entry points
     - [ ] Add clear UI messaging when an action is blocked due to permissions
     - [x] Add unit tests for permission rules (UsersStore invariants: last-admin safeguards, enable/disable, promote/demote, import/export, init fallbacks)
   - [x] Admin-only role management UI (no toggle on Main Menu)
@@ -109,6 +152,8 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [x] User System: removed Main Menu role toggle; roles will be managed by Admin-only controls (upcoming). Role still persists to localStorage for permissions.
 
 - [x] User System: level ownership metadata (authorId/authorName) added to Level schema; per-user score tracking with best scores shown in HUD.
+
+- [x] Docs: CHANGELOG structure restored (Unreleased on top); version 0.3.23 recorded
 
 ## Risks / Mitigations
 - **Physics feel mismatch** → Add tunable config (friction, restitution, stop-epsilon, power curve)

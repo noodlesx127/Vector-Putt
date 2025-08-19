@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- Fix: Resolved TypeScript errors in `src/main.ts`
+  - Verified and referenced implementations for `loadLevel`, `loadLevelByIndex`, and `preloadLevelByIndex` (present near end of file) to address previously reported "missing function" errors.
+  - Added explicit `unknown` type for a caught error parameter (`err`) to satisfy strict TypeScript settings.
+  - Closed a missing closing brace in `draw()` that caused TS1005 (`'}` expected`) at EOF; `npx tsc --noEmit` is now clean.
+
 - Level Editor: Menubar with pull-down menus (replaces compact toolbar)
   - Four menus: File (New, Save, Save As, Level Load, Delete, Back/Exit), Objects (fairway items: Tee, Cup, Post, Wall, WallsPoly, Bridge, Water, WaterPoly, Sand, SandPoly, Hill), Decorations (Flowers), Editor Tools (Select Tool and Grid controls)
   - Mouse interaction: click headers to open/close menus, click items to execute actions
@@ -17,8 +22,8 @@ All notable changes to this project will be documented in this file.
     - Move selected with mouse (grid snap, bounds clamp) and arrow-key nudges
     - Delete removes selected (tee/cup preserved)
     - 8-point resize handles for rect items (walls/water/sand/bridges/hills) with snapping, min size = 1 grid step, and bounds clamping
-    - Visuals: dashed blue outlines, handles, translucent selection box; cursors update for move/resize
-    - Rotation: deferred (not yet implemented)
+    - 4-point rotation handles for rect items with 15-degree angle snapping
+    - Visuals: dashed blue outlines, blue resize handles, orange rotation handles, translucent selection box; cursors update for move/resize/rotate
 - User System: Main Menu username input added above Start. Start is disabled until a non-empty name is entered. Username persists to `localStorage` and is prefilled on load. Cursor changes to text I-beam on hover, and placeholder shown when empty.
 - Fix: removed redundant Main Menu mouse handlers that could blur the username input on mouseup; consolidated focus handling so editing is stable.
  - UX: username input now has a clear focus state — placeholder hides while editing, caret blinks at the end of text, and I-beam cursor remains during edit. Input field nudged down to avoid clipping into the main graphic.

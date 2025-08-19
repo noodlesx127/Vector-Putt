@@ -4,7 +4,7 @@
 
 # Project Progress — Vector Putt
 
- Updated: 2025-08-18 (local) — Next: Option A selected — Course Select "User Made Levels" category; planning and criteria captured below
+ Updated: 2025-08-19 (local) — Next: Option A selected — Course Select "User Made Levels" category; planning and criteria captured below
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 
@@ -90,8 +90,9 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
     - Delete key to remove selected objects (preserves tee/cup as required elements)
     - 8-point resize handles for rectangular objects (walls, water, sand, bridges, hills)
     - Grid-snapped resize with minimum size constraints and fairway bounds clamping
-    - Visual feedback: blue dashed outlines, resize handles, selection box with translucent fill
-    - Cursor changes: appropriate resize cursors (nw-resize, e-resize, etc.) and move cursor
+    - 4-point rotation handles for rectangular objects with 15-degree angle snapping
+    - Visual feedback: blue dashed outlines, blue resize handles, orange rotation handles, selection box with translucent fill
+    - Cursor changes: appropriate resize cursors (nw-resize, e-resize, etc.), move cursor, and crosshair for rotation
   - [ ] Select Tool: move, resize, and rotate items (MS Paint/Photoshop-style); multi-select with bounding outline
     - Drag inside selection to move; 8 corner/side handles to resize; rotate via corner handles/outer arc; bounding outline drawn around selection
     - Grid snapping and fairway-bounds clamping on move/resize; min size = 1 grid step; no negative sizes
@@ -158,6 +159,8 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - References: Treat the three YouTube videos as canonical for gameplay, level design, look & feel, UI/UX, physics
 
 ## Done
+- [x] Fix: Resolved TypeScript errors in `src/main.ts` — verified `loadLevel`, `loadLevelByIndex`, `preloadLevelByIndex` implementations near file end; added explicit `unknown` type to a caught error parameter to satisfy strict TS.
+  - [x] Closed missing closing brace in `draw()` (TS1005 `'}` expected` at EOF); `npx tsc --noEmit` is clean.
 - [x] Create `TODO.md` with phase-structured checklist
 - [x] Consolidate video findings into a single section
 - [x] Record stack recommendation matching early-2000s simplicity

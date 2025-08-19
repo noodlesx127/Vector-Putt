@@ -739,9 +739,19 @@ let isDragMoving = false;
 let dragMoveStart: { x: number; y: number } | null = null;
 let dragMoveOffset: { x: number; y: number } = { x: 0, y: 0 };
 let isResizing = false;
-let resizeHandle: string | null = null; // 'nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'
+let resizeHandle: string | null = null;
 let resizeStartBounds: { x: number; y: number; w: number; h: number } | null = null;
 let resizeStartMouse: { x: number; y: number } | null = null;
+
+// Select Tool rotation state
+let isRotating = false;
+let rotationStartAngle = 0;
+let rotationStartMouse: { x: number; y: number } | null = null;
+let rotationCenter: { x: number; y: number } | null = null;
+let currentRotationAngle = 0;
+
+// Object rotation tracking (temporary until schemas support rotation)
+const objectRotations = new Map<string, number>();
 
 // Selection helper functions
 function clearSelection(): void {
@@ -891,6 +901,18 @@ function getResizeHandles(bounds: { x: number; y: number; w: number; h: number }
   ];
 }
 
+function getRotationHandles(bounds: { x: number; y: number; w: number; h: number }): Array<{ handle: string; x: number; y: number; w: number; h: number; cursor: string }> {
+  const handleSize = 10;
+  const hs = handleSize / 2;
+  const offset = 20; // Distance from bounds
+  return [
+    { handle: 'rot-nw', x: bounds.x - offset - hs, y: bounds.y - offset - hs, w: handleSize, h: handleSize, cursor: 'crosshair' },
+    { handle: 'rot-ne', x: bounds.x + bounds.w + offset - hs, y: bounds.y - offset - hs, w: handleSize, h: handleSize, cursor: 'crosshair' },
+    { handle: 'rot-se', x: bounds.x + bounds.w + offset - hs, y: bounds.y + bounds.h + offset - hs, w: handleSize, h: handleSize, cursor: 'crosshair' },
+    { handle: 'rot-sw', x: bounds.x - offset - hs, y: bounds.y + bounds.h + offset - hs, w: handleSize, h: handleSize, cursor: 'crosshair' }
+  ];
+}
+
 function findResizeHandle(px: number, py: number): string | null {
   if (selectedObjects.length !== 1) return null; // Only resize single selections
   const obj = selectedObjects[0];
@@ -907,6 +929,72 @@ function findResizeHandle(px: number, py: number): string | null {
     }
   }
   return null;
+}
+
+function findRotationHandle(px: number, py: number): string | null {
+  if (selectedObjects.length !== 1) return null; // Only rotate single selections
+  const obj = selectedObjects[0];
+  
+  // Only rotatable objects (rectangular objects for now)
+  if (obj.type === 'tee' || obj.type === 'cup' || obj.type === 'decoration' || obj.type === 'post') return null;
+  
+  const bounds = getObjectBounds(obj);
+  const handles = getRotationHandles(bounds);
+  
+  for (const handle of handles) {
+    if (px >= handle.x && px <= handle.x + handle.w && py >= handle.y && py <= handle.y + handle.h) {
+      return handle.handle;
+    }
+  }
+  return null;
+}
+
+function getObjectKey(obj: SelectableObject): string {
+  if (obj.type === 'tee' || obj.type === 'cup') {
+    return `${obj.type}_${obj.object.x}_${obj.object.y}`;
+  }
+  return `${obj.type}_${obj.index}`;
+}
+
+function getObjectRotation(obj: SelectableObject): number {
+  const objKey = getObjectKey(obj);
+  return objectRotations.get(objKey) || 0;
+}
+
+function renderWithRotation(ctx: CanvasRenderingContext2D, obj: SelectableObject, renderFn: () => void): void {
+  const rotation = getObjectRotation(obj);
+  if (Math.abs(rotation) < 0.001) {
+    // No rotation, render normally
+    renderFn();
+    return;
+  }
+  
+  // Apply rotation around object center
+  const bounds = getObjectBounds(obj);
+  const centerX = bounds.x + bounds.w / 2;
+  const centerY = bounds.y + bounds.h / 2;
+  
+  ctx.save();
+  ctx.translate(centerX, centerY);
+  ctx.rotate(rotation);
+  ctx.translate(-centerX, -centerY);
+  renderFn();
+  ctx.restore();
+}
+
+function applyRotation(startAngle: number, currentAngle: number, obj: SelectableObject): void {
+  const angleDiff = currentAngle - startAngle;
+  const snapIncrement = Math.PI / 12; // 15-degree snapping
+  const snappedAngleDiff = Math.round(angleDiff / snapIncrement) * snapIncrement;
+  
+  // Store rotation for this object
+  const objKey = getObjectKey(obj);
+  const baseRotation = objectRotations.get(objKey) || 0;
+  currentRotationAngle = baseRotation + snappedAngleDiff;
+  objectRotations.set(objKey, currentRotationAngle);
+  
+  // Debug output
+  console.log(`Rotating object ${objKey} by ${(snappedAngleDiff * 180 / Math.PI).toFixed(1)}°`);
 }
 
 function applyResize(handle: string, startBounds: { x: number; y: number; w: number; h: number }, dx: number, dy: number): { x: number; y: number; w: number; h: number } {
@@ -1246,7 +1334,7 @@ function advanceAfterSunk() {
     currentLevelIndex = next;
     loadLevelByIndex(currentLevelIndex)
       .then(() => { transitioning = false; })
-      .catch((err) => { console.error(err); transitioning = false; });
+      .catch((err: unknown) => { console.error(err); transitioning = false; });
   }
 }
 
@@ -1268,7 +1356,7 @@ async function startCourseFromFile(courseJsonPath: string): Promise<void> {
       // Set state to play after content is ready
       gameState = 'play';
     }
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('Failed to load course', err);
   }
 }
@@ -1553,16 +1641,29 @@ canvas.addEventListener('mousedown', (e) => {
     if (selectedEditorTool === 'select') {
       const pp = canvasToPlayCoords(p);
       
-      // Check for resize handle first (single selection only)
-      const handle = findResizeHandle(pp.x, pp.y);
-      if (handle && selectedObjects.length === 1) {
-        // Start resize operation
-        isResizing = true;
-        resizeHandle = handle;
-        resizeStartBounds = getObjectBounds(selectedObjects[0]);
-        resizeStartMouse = { x: pp.x, y: pp.y };
-        return;
-      }
+      // Check if clicking on a rotation handle first
+        const rotationHandleHit = findRotationHandle(pp.x, pp.y);
+        if (rotationHandleHit && selectedObjects.length === 1) {
+          // Start rotation operation
+          isRotating = true;
+          const bounds = getObjectBounds(selectedObjects[0]);
+          rotationCenter = { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 };
+          rotationStartAngle = Math.atan2(pp.y - rotationCenter.y, pp.x - rotationCenter.x);
+          rotationStartMouse = { x: pp.x, y: pp.y };
+          console.log('Started rotation:', rotationHandleHit);
+          return;
+        }
+        
+        // Check if clicking on a resize handle
+        const resizeHandleHit = findResizeHandle(pp.x, pp.y);
+        if (resizeHandleHit && selectedObjects.length === 1) {
+          // Start resize operation
+          isResizing = true;
+          resizeHandle = resizeHandleHit;
+          resizeStartBounds = getObjectBounds(selectedObjects[0]);
+          resizeStartMouse = { x: pp.x, y: pp.y };
+          return;
+        }
       
       const clickedObject = findObjectAtPoint(pp.x, pp.y);
       
@@ -1821,7 +1922,12 @@ canvas.addEventListener('mousemove', (e) => {
     if (selectedEditorTool === 'select') {
       const pp = canvasToPlayCoords(p);
       
-      if (isResizing && resizeHandle && resizeStartBounds && resizeStartMouse) {
+      if (isRotating && rotationCenter && rotationStartMouse) {
+        // Handle rotation operation
+        const currentAngle = Math.atan2(pp.y - rotationCenter.y, pp.x - rotationCenter.x);
+        const obj = selectedObjects[0];
+        applyRotation(rotationStartAngle, currentAngle, obj);
+      } else if (isResizing && resizeHandle && resizeStartBounds && resizeStartMouse) {
         // Handle resize operation
         const dx = pp.x - resizeStartMouse.x;
         const dy = pp.y - resizeStartMouse.y;
@@ -1858,7 +1964,9 @@ canvas.addEventListener('mousemove', (e) => {
     } else if (wantsCrosshair) {
       cursor = 'crosshair';
     } else if (selectedEditorTool === 'select') {
-      if (isResizing) {
+      if (isRotating) {
+        cursor = 'crosshair';
+      } else if (isResizing) {
         // Show resize cursor during resize
         const handles = getResizeHandles(resizeStartBounds || { x: 0, y: 0, w: 0, h: 0 });
         const activeHandle = handles.find(h => h.handle === resizeHandle);
@@ -1866,16 +1974,22 @@ canvas.addEventListener('mousemove', (e) => {
       } else if (isDragMoving) {
         cursor = 'move';
       } else {
-        // Check for resize handle hover
+        // Check for rotation handle hover first
         const pp = canvasToPlayCoords(p);
-        const handle = findResizeHandle(pp.x, pp.y);
-        if (handle && selectedObjects.length === 1) {
-          const bounds = getObjectBounds(selectedObjects[0]);
-          const handles = getResizeHandles(bounds);
-          const handleInfo = handles.find(h => h.handle === handle);
-          cursor = handleInfo ? handleInfo.cursor : 'default';
-        } else if (selectedObjects.length > 0 && findObjectAtPoint(pp.x, pp.y)) {
-          cursor = 'move';
+        const rotHandle = findRotationHandle(pp.x, pp.y);
+        if (rotHandle && selectedObjects.length === 1) {
+          cursor = 'crosshair';
+        } else {
+          // Check for resize handle hover
+          const handle = findResizeHandle(pp.x, pp.y);
+          if (handle && selectedObjects.length === 1) {
+            const bounds = getObjectBounds(selectedObjects[0]);
+            const handles = getResizeHandles(bounds);
+            const handleInfo = handles.find(h => h.handle === handle);
+            cursor = handleInfo ? handleInfo.cursor : 'default';
+          } else if (selectedObjects.length > 0 && findObjectAtPoint(pp.x, pp.y)) {
+            cursor = 'move';
+          }
         }
       }
     }
@@ -2042,15 +2156,26 @@ canvas.addEventListener('mouseup', (e) => {
         }
       }
       
+      // Finalize rotation on mouseup
+      if (isRotating && selectedObjects.length === 1) {
+        const obj = selectedObjects[0];
+        const objKey = getObjectKey(obj);
+        const finalRotation = objectRotations.get(objKey) || 0;
+        objectRotations.set(objKey, finalRotation);
+      }
+      
       // Clear drag states
       isDragMoving = false;
       isSelectionDragging = false;
       isResizing = false;
-      dragMoveStart = null;
+      isRotating = false;
       selectionBoxStart = null;
       resizeHandle = null;
       resizeStartBounds = null;
       resizeStartMouse = null;
+      rotationStartMouse = null;
+      rotationCenter = null;
+      currentRotationAngle = 0;
       dragMoveOffset = { x: 0, y: 0 };
     }
     
@@ -3083,12 +3208,16 @@ function draw() {
     }
     // Existing geometry preview (terrain before walls)
     // Water (rectangles)
-    for (const r of waters) {
-      ctx.fillStyle = COLORS.waterFill;
-      ctx.fillRect(r.x, r.y, r.w, r.h);
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = COLORS.waterStroke;
-      ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+    for (let i = 0; i < waters.length; i++) {
+      const r = waters[i];
+      const obj: SelectableObject = { type: 'water', object: r, index: i };
+      renderWithRotation(ctx, obj, () => {
+        ctx.fillStyle = COLORS.waterFill;
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = COLORS.waterStroke;
+        ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+      });
     }
     // Water (polygons)
     if (watersPoly.length > 0) {
@@ -3107,12 +3236,16 @@ function draw() {
       }
     }
     // Sand (rectangles)
-    for (const r of sands) {
-      ctx.fillStyle = COLORS.sandFill;
-      ctx.fillRect(r.x, r.y, r.w, r.h);
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = COLORS.sandStroke;
-      ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+    for (let i = 0; i < sands.length; i++) {
+      const r = sands[i];
+      const obj: SelectableObject = { type: 'sand', object: r, index: i };
+      renderWithRotation(ctx, obj, () => {
+        ctx.fillStyle = COLORS.sandFill;
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = COLORS.sandStroke;
+        ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+      });
     }
     // Sand (polygons)
     if (sandsPoly.length > 0) {
@@ -3131,32 +3264,33 @@ function draw() {
       }
     }
     // Bridges
-    for (const r of bridges) {
-      ctx.fillStyle = COLORS.fairway;
-      ctx.fillRect(r.x, r.y, r.w, r.h);
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = COLORS.fairwayLine;
-      ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+    for (let i = 0; i < bridges.length; i++) {
+      const r = bridges[i];
+      const obj: SelectableObject = { type: 'bridge', object: r, index: i };
+      renderWithRotation(ctx, obj, () => {
+        ctx.fillStyle = COLORS.fairway;
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = COLORS.fairwayLine;
+        ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+      });
     }
-    // Hills (directional gradient overlay)
-    for (const h of hills) {
-      const grad = (() => {
-        const d = h.dir;
-        let x0 = h.x, y0 = h.y, x1 = h.x + h.w, y1 = h.y + h.h;
-        if (d === 'N') { x0 = h.x; y0 = h.y + h.h; x1 = h.x; y1 = h.y; }
-        else if (d === 'S') { x0 = h.x; y0 = h.y; x1 = h.x; y1 = h.y + h.h; }
-        else if (d === 'W') { x0 = h.x + h.w; y0 = h.y; x1 = h.x; y1 = h.y; }
-        else if (d === 'E') { x0 = h.x; y0 = h.y; x1 = h.x + h.w; y1 = h.y; }
-        else if (d === 'NE') { x0 = h.x; y0 = h.y + h.h; x1 = h.x + h.w; y1 = h.y; }
-        else if (d === 'NW') { x0 = h.x + h.w; y0 = h.y + h.h; x1 = h.x; y1 = h.y; }
-        else if (d === 'SE') { x0 = h.x; y0 = h.y; x1 = h.x + h.w; y1 = h.y + h.h; }
-        else /* SW */ { x0 = h.x + h.w; y0 = h.y; x1 = h.x; y1 = h.y + h.h; }
-        return ctx.createLinearGradient(x0, y0, x1, y1);
-      })();
-      grad.addColorStop(0, 'rgba(255,255,255,0.10)');
-      grad.addColorStop(1, 'rgba(0,0,0,0.10)');
-      ctx.fillStyle = grad;
-      ctx.fillRect(h.x, h.y, h.w, h.h);
+    // Hills
+    for (let i = 0; i < hills.length; i++) {
+      const h = hills[i];
+      const obj: SelectableObject = { type: 'hill', object: h, index: i };
+      renderWithRotation(ctx, obj, () => {
+        const slopeDir = h.dir || 'S';
+        let grad: CanvasGradient;
+        if (slopeDir === 'N') grad = ctx.createLinearGradient(h.x, h.y + h.h, h.x, h.y);
+        else if (slopeDir === 'S') grad = ctx.createLinearGradient(h.x, h.y, h.x, h.y + h.h);
+        else if (slopeDir === 'W') grad = ctx.createLinearGradient(h.x + h.w, h.y, h.x, h.y);
+        else /* E */ grad = ctx.createLinearGradient(h.x, h.y, h.x + h.w, h.y);
+        grad.addColorStop(0, 'rgba(255,255,255,0.10)');
+        grad.addColorStop(1, 'rgba(0,0,0,0.10)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(h.x, h.y, h.w, h.h);
+      });
     }
     // Decorations (clip to fairway)
     ctx.save();
@@ -3188,22 +3322,26 @@ function draw() {
     }
     ctx.restore();
     // Walls (rectangles)
-    for (const w of walls) {
-      ctx.fillStyle = 'rgba(0,0,0,0.25)';
-      ctx.fillRect(w.x + 2, w.y + 2, w.w, w.h);
-      ctx.fillStyle = COLORS.wallFill;
-      ctx.fillRect(w.x, w.y, w.w, w.h);
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = COLORS.wallStroke;
-      ctx.strokeRect(w.x + 1, w.y + 1, w.w - 2, w.h - 2);
-      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-      ctx.beginPath();
-      ctx.moveTo(w.x + 1, w.y + 1);
-      ctx.lineTo(w.x + w.w - 1, w.y + 1);
-      ctx.moveTo(w.x + 1, w.y + 1);
-      ctx.lineTo(w.x + 1, w.y + w.h - 1);
-      ctx.stroke();
-    }
+    for (let i = 0; i < walls.length; i++) {
+      const w = walls[i];
+      const obj: SelectableObject = { type: 'wall', object: w, index: i };
+      renderWithRotation(ctx, obj, () => {
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.fillRect(w.x + 2, w.y + 2, w.w, w.h);
+        ctx.fillStyle = COLORS.wallFill;
+        ctx.fillRect(w.x, w.y, w.w, w.h);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = COLORS.wallStroke;
+        ctx.strokeRect(w.x + 1, w.y + 1, w.w - 2, w.h - 2);
+        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+        ctx.beginPath();
+        ctx.moveTo(w.x + 1, w.y + 1);
+        ctx.lineTo(w.x + w.w - 1, w.y + 1);
+        ctx.moveTo(w.x + 1, w.y + 1);
+        ctx.lineTo(w.x + 1, w.y + w.h - 1);
+        ctx.stroke();
+      });
+    }  
     // Polygon walls
     ctx.lineWidth = 2;
     for (const poly of polyWalls) {
@@ -3339,6 +3477,23 @@ function draw() {
             ctx.strokeStyle = '#ffffff';
             ctx.lineWidth = 1;
             ctx.strokeRect(handle.x, handle.y, handle.w, handle.h);
+          }
+          
+          // Draw rotation handles
+          const rotHandles = getRotationHandles(displayBounds);
+          for (const rotHandle of rotHandles) {
+            // Rotation handle background (circular)
+            ctx.fillStyle = '#ff6600';
+            ctx.beginPath();
+            ctx.arc(rotHandle.x + rotHandle.w / 2, rotHandle.y + rotHandle.h / 2, rotHandle.w / 2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Rotation handle border
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(rotHandle.x + rotHandle.w / 2, rotHandle.y + rotHandle.h / 2, rotHandle.w / 2, 0, Math.PI * 2);
+            ctx.stroke();
           }
           
           ctx.setLineDash([4, 4]);

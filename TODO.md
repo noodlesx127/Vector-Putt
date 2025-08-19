@@ -112,7 +112,7 @@ Notes:
     - File menu: New, Save, Save As, Level Load, Delete, Back/Exit
     - Objects menu: Tee, Cup, Post, Wall, WallsPoly, Bridge, Water, WaterPoly, Sand, SandPoly, Hill
     - Decorations menu: Flowers
-    - Editor Tools menu: Select, Grid -, Grid +, Grid On/Off
+    - Editor Tools menu: Select Tool, Grid -, Grid +, Grid On/Off
     - Hotspots & rendering: build dropdowns into `editorUiHotspots`; manage open/close state, hover, and click routing; keyboard navigation for menus/items
     - Layout: top menubar with pulldown panels; render above preview; ensure readability and spacing; maintain current preview layering
     - Shortcuts: preserved existing shortcuts (G, -, +); mnemonics (Alt+F/O/D/E), arrow keys navigate, Enter selects, Esc closes
@@ -121,17 +121,18 @@ Notes:
   - [ ] Undo/Redo in Level Editor: toolbar buttons and shortcuts (Ctrl+Z/Ctrl+Y); snapshot editor state on placements and actions (Save/Load/New/Delete)
   - [ ] Tool palette: Tee, Cup, Walls, WallsPoly, Posts, Bridges, Water, WaterPoly, Sand, SandPoly, Hill, decorations
  - [ ] Selection tools: select/move/duplicate/delete; vertex edit for polygons; rotate/scale where applicable
- - [ ] Select tool: move and resize items (MS Paint-style)
-    - Drag inside selection to move; 8 resize handles on corners/sides to resize
-    - Grid snapping and fairway-bounds clamping on move/resize; min size = 1 grid step; no negative sizes
-    - Rect items: walls/bridges/water/sand/hills; Posts: resize radius via handles; Tee/Cup: move-only
+   - Done: select, multi-select, move, delete; scale (resize) for rect items with grid snap and bounds clamp
+   - Pending: duplicate; polygon vertex edit; rotate
+ - [ ] Select Tool: move, resize, and rotate items (MS Paint/Photoshop-style); multi-select with bounding outline
+   - Drag inside selection to move; 8 corner/side handles to resize; rotate via corner handles/outer arc; outer bounding outline around selection
+   - Grid snapping and fairway-bounds clamping on move/resize/rotate; min size = 1 grid step; no negative sizes
+   - Applies to rect items (walls/bridges/water/sand/hills); Posts: resize radius; Tee/Cup: move-only; multi-select transforms apply to all selected
+   - Progress: selection + multi-select + move complete; 8-point resize implemented for rectangles; rotation pending
  - [ ] Delete selected item(s) via existing Delete button in the toolbar UI
  - [x] Grid snapping and nudge controls (arrow keys); configurable grid size
  - [x] Main Menu: add "Level Editor" entry to launch editor mode
   - [ ] Course Select: add "User Made Levels" category; list by Level Title — Author; load+play selected
 
-## User System & Profiles
-- [ ] User accounts (local profiles)
   - [ ] Create/select active user; store display name and role (admin/user)
   - [ ] Persist users to local storage or file (JSON); simple migration/versioning plan
 {{ ... }}

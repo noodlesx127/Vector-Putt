@@ -131,8 +131,14 @@ function saveEditorLevel(): void {
 }
 
 function saveEditorLevelAs(): void {
-  const title = safePrompt('Enter a title for this level:', (editorLevelData?.course?.title || 'Untitled')).trim();
-  if (!title) return;
+  console.log('saveEditorLevelAs: Starting function');
+  const defaultTitle = editorLevelData?.course?.title || 'Untitled';
+  const title = safePrompt('Enter a title for this level:', defaultTitle).trim();
+  if (!title) {
+    console.log('saveEditorLevelAs: No title provided');
+    return;
+  }
+  console.log('saveEditorLevelAs: Title provided:', title);
   const doc = readLevelsDoc();
   const id = newLevelId();
   const lvl = assembleEditorLevel();
@@ -153,8 +159,14 @@ function saveEditorLevelAs(): void {
 }
 
 function openLoadPicker(): void {
+  console.log('openLoadPicker: Starting function');
   const doc = readLevelsDoc();
-  if (doc.levels.length === 0) { try { alert('No saved levels found. Use Save As to create one.'); } catch {} return; }
+  console.log('openLoadPicker: Found', doc.levels.length, 'levels');
+  if (doc.levels.length === 0) { 
+    console.log('openLoadPicker: No levels, showing alert');
+    try { alert('No saved levels found. Use Save As to create one.'); } catch (e) { console.error('Alert failed:', e); }
+    return;
+  }
   const lines = doc.levels.map((e, i) => {
     const lvl = e.level;
     const t = lvl.course?.title || 'Untitled';
@@ -173,8 +185,14 @@ function openLoadPicker(): void {
 }
 
 function openDeletePicker(): void {
+  console.log('openDeletePicker: Starting function');
   const doc = readLevelsDoc();
-  if (doc.levels.length === 0) { try { alert('No saved levels to delete.'); } catch {} return; }
+  console.log('openDeletePicker: Found', doc.levels.length, 'levels');
+  if (doc.levels.length === 0) { 
+    console.log('openDeletePicker: No levels, showing alert');
+    try { alert('No saved levels to delete.'); } catch (e) { console.error('Alert failed:', e); }
+    return;
+  }
   const lines = doc.levels.map((e, i) => {
     const lvl = e.level; const t = lvl.course?.title || 'Untitled'; const a = lvl.meta?.authorName || 'unknown';
     return `${i+1}. ${t} — ${a}`;
@@ -192,8 +210,13 @@ function openDeletePicker(): void {
 }
 
 function newEditorLevel(): void {
+  console.log('newEditorLevel: Starting function');
   const proceed = safeConfirm('Start a new level? Unsaved changes will be lost.');
-  if (!proceed) return;
+  if (!proceed) {
+    console.log('newEditorLevel: User cancelled or confirm failed');
+    return;
+  }
+  console.log('newEditorLevel: Creating new level');
   editorCurrentSavedId = null;
   // Build a minimal default level (reuse logic from enterLevelEditor)
   const defaultCupR = hole.r || 8;
@@ -241,9 +264,27 @@ function migrateSingleSlotIfNeeded(): void {
 }
 
 function safePrompt(message: string, def: string): string {
-  try { const v = prompt(message, def); return typeof v === 'string' ? v : ''; } catch { return def || ''; }
+  try {
+    console.log('Attempting prompt:', message);
+    const v = prompt(message, def);
+    console.log('Prompt result:', v);
+    return typeof v === 'string' ? v : '';
+  } catch (e) {
+    console.error('Prompt failed:', e);
+    return def || '';
+  }
 }
-function safeConfirm(message: string): boolean { try { return !!confirm(message); } catch { return true; } }
+function safeConfirm(message: string): boolean {
+  try {
+    console.log('Attempting confirm:', message);
+    const result = !!confirm(message);
+    console.log('Confirm result:', result);
+    return result;
+  } catch (e) {
+    console.error('Confirm failed:', e);
+    return false; // Changed from true to false for safety
+  }
+}
 
 // Users Admin UI hotspots (rebuilt every frame while in users screen)
 type UsersHotspot = { kind: 'back' | 'addUser' | 'addAdmin' | 'export' | 'import' | 'promote' | 'demote' | 'enable' | 'disable' | 'remove'; x: number; y: number; w: number; h: number; id?: string };
@@ -289,8 +330,7 @@ const EDITOR_MENUS: Record<EditorMenuId, { title: string; items: Array<{ label: 
   objects: {
     title: 'Objects',
     items: [
-      { label: 'Select', item: { kind: 'tool', tool: 'select' } },
-      { label: 'Tee', item: { kind: 'tool', tool: 'tee' }, separator: true },
+      { label: 'Tee', item: { kind: 'tool', tool: 'tee' } },
       { label: 'Cup', item: { kind: 'tool', tool: 'cup' } },
       { label: 'Post', item: { kind: 'tool', tool: 'post' }, separator: true },
       { label: 'Wall', item: { kind: 'tool', tool: 'wall' } },
@@ -312,7 +352,8 @@ const EDITOR_MENUS: Record<EditorMenuId, { title: string; items: Array<{ label: 
   tools: {
     title: 'Editor Tools',
     items: [
-      { label: editorShowGrid ? 'Grid On' : 'Grid Off', item: { kind: 'action', action: 'gridToggle' } },
+      { label: 'Select Tool', item: { kind: 'tool', tool: 'select' } },
+      { label: editorShowGrid ? 'Grid On' : 'Grid Off', item: { kind: 'action', action: 'gridToggle' }, separator: true },
       { label: `Grid - (${editorGridSize}px)`, item: { kind: 'action', action: 'gridMinus' } },
       { label: `Grid + (${editorGridSize}px)`, item: { kind: 'action', action: 'gridPlus' } }
     ]
@@ -678,6 +719,260 @@ let decorations: Decoration[] = [];
 let hills: Slope[] = [];
 // Logical level canvas size from level JSON; defaults to actual canvas size
 let levelCanvas = { width: WIDTH, height: HEIGHT };
+
+// Selection system for Level Editor
+type SelectableObject = 
+  | { type: 'tee'; object: { x: number; y: number } }
+  | { type: 'cup'; object: { x: number; y: number; r: number } }
+  | { type: 'wall'; object: Wall; index: number }
+  | { type: 'post'; object: Circle; index: number }
+  | { type: 'decoration'; object: Decoration; index: number }
+  | { type: 'water'; object: Rect; index: number }
+  | { type: 'sand'; object: Rect; index: number }
+  | { type: 'bridge'; object: Rect; index: number }
+  | { type: 'hill'; object: Slope; index: number };
+
+let selectedObjects: SelectableObject[] = [];
+let selectionBoxStart: { x: number; y: number } | null = null;
+let isSelectionDragging = false;
+let isDragMoving = false;
+let dragMoveStart: { x: number; y: number } | null = null;
+let dragMoveOffset: { x: number; y: number } = { x: 0, y: 0 };
+let isResizing = false;
+let resizeHandle: string | null = null; // 'nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'
+let resizeStartBounds: { x: number; y: number; w: number; h: number } | null = null;
+let resizeStartMouse: { x: number; y: number } | null = null;
+
+// Selection helper functions
+function clearSelection(): void {
+  selectedObjects = [];
+}
+
+function getObjectBounds(obj: SelectableObject): { x: number; y: number; w: number; h: number } {
+  switch (obj.type) {
+    case 'tee':
+    case 'cup':
+      return { x: obj.object.x - 10, y: obj.object.y - 10, w: 20, h: 20 };
+    case 'post':
+      return { x: obj.object.x - obj.object.r, y: obj.object.y - obj.object.r, w: obj.object.r * 2, h: obj.object.r * 2 };
+    case 'wall':
+    case 'water':
+    case 'sand':
+    case 'bridge':
+      return { x: obj.object.x, y: obj.object.y, w: obj.object.w, h: obj.object.h };
+    case 'decoration':
+      return { x: obj.object.x - 15, y: obj.object.y - 15, w: 30, h: 30 };
+    case 'hill':
+      return { x: obj.object.x - 5, y: obj.object.y - 5, w: obj.object.w + 10, h: obj.object.h + 10 };
+    default:
+      return { x: 0, y: 0, w: 0, h: 0 };
+  }
+}
+
+function isPointInObject(px: number, py: number, obj: SelectableObject): boolean {
+  const bounds = getObjectBounds(obj);
+  return px >= bounds.x && px <= bounds.x + bounds.w && py >= bounds.y && py <= bounds.y + bounds.h;
+}
+
+function findObjectAtPoint(px: number, py: number): SelectableObject | null {
+  // Check tee
+  const teeObj: SelectableObject = { type: 'tee', object: { x: ball.x, y: ball.y } };
+  if (isPointInObject(px, py, teeObj)) return teeObj;
+  
+  // Check cup
+  const cupObj: SelectableObject = { type: 'cup', object: { x: hole.x, y: hole.y, r: (hole as any).r ?? 8 } };
+  if (isPointInObject(px, py, cupObj)) return cupObj;
+  
+  // Check posts
+  for (let i = 0; i < posts.length; i++) {
+    const obj: SelectableObject = { type: 'post', object: posts[i], index: i };
+    if (isPointInObject(px, py, obj)) return obj;
+  }
+  
+  // Check walls
+  for (let i = 0; i < walls.length; i++) {
+    const obj: SelectableObject = { type: 'wall', object: walls[i], index: i };
+    if (isPointInObject(px, py, obj)) return obj;
+  }
+  
+  // Check water
+  for (let i = 0; i < waters.length; i++) {
+    const obj: SelectableObject = { type: 'water', object: waters[i], index: i };
+    if (isPointInObject(px, py, obj)) return obj;
+  }
+  
+  // Check sand
+  for (let i = 0; i < sands.length; i++) {
+    const obj: SelectableObject = { type: 'sand', object: sands[i], index: i };
+    if (isPointInObject(px, py, obj)) return obj;
+  }
+  
+  // Check bridges
+  for (let i = 0; i < bridges.length; i++) {
+    const obj: SelectableObject = { type: 'bridge', object: bridges[i], index: i };
+    if (isPointInObject(px, py, obj)) return obj;
+  }
+  
+  // Check decorations
+  for (let i = 0; i < decorations.length; i++) {
+    const obj: SelectableObject = { type: 'decoration', object: decorations[i], index: i };
+    if (isPointInObject(px, py, obj)) return obj;
+  }
+  
+  // Check hills
+  for (let i = 0; i < hills.length; i++) {
+    const obj: SelectableObject = { type: 'hill', object: hills[i], index: i };
+    if (isPointInObject(px, py, obj)) return obj;
+  }
+  
+  return null;
+}
+
+function moveSelectedObjects(dx: number, dy: number): void {
+  for (const obj of selectedObjects) {
+    switch (obj.type) {
+      case 'tee':
+        const newTeePos = clampToFairway(ball.x + dx, ball.y + dy);
+        ball.x = newTeePos.x;
+        ball.y = newTeePos.y;
+        if (editorLevelData) {
+          editorLevelData.tee.x = newTeePos.x;
+          editorLevelData.tee.y = newTeePos.y;
+        }
+        break;
+      case 'cup':
+        const newCupPos = clampToFairway(hole.x + dx, hole.y + dy);
+        hole.x = newCupPos.x;
+        hole.y = newCupPos.y;
+        if (editorLevelData) {
+          editorLevelData.cup.x = newCupPos.x;
+          editorLevelData.cup.y = newCupPos.y;
+        }
+        break;
+      case 'post':
+        const newPostPos = clampToFairway(obj.object.x + dx, obj.object.y + dy);
+        obj.object.x = newPostPos.x;
+        obj.object.y = newPostPos.y;
+        break;
+      case 'wall':
+      case 'water':
+      case 'sand':
+      case 'bridge':
+        const newRectPos = clampToFairway(obj.object.x + dx, obj.object.y + dy);
+        obj.object.x = newRectPos.x;
+        obj.object.y = newRectPos.y;
+        break;
+      case 'decoration':
+        const newDecPos = clampToFairway(obj.object.x + dx, obj.object.y + dy);
+        obj.object.x = newDecPos.x;
+        obj.object.y = newDecPos.y;
+        break;
+      case 'hill':
+        const newHillPos = clampToFairway(obj.object.x + dx, obj.object.y + dy);
+        obj.object.x = newHillPos.x;
+        obj.object.y = newHillPos.y;
+        break;
+    }
+  }
+}
+
+function getResizeHandles(bounds: { x: number; y: number; w: number; h: number }): Array<{ handle: string; x: number; y: number; w: number; h: number; cursor: string }> {
+  const handleSize = 8;
+  const hs = handleSize / 2;
+  return [
+    { handle: 'nw', x: bounds.x - hs, y: bounds.y - hs, w: handleSize, h: handleSize, cursor: 'nw-resize' },
+    { handle: 'n', x: bounds.x + bounds.w / 2 - hs, y: bounds.y - hs, w: handleSize, h: handleSize, cursor: 'n-resize' },
+    { handle: 'ne', x: bounds.x + bounds.w - hs, y: bounds.y - hs, w: handleSize, h: handleSize, cursor: 'ne-resize' },
+    { handle: 'e', x: bounds.x + bounds.w - hs, y: bounds.y + bounds.h / 2 - hs, w: handleSize, h: handleSize, cursor: 'e-resize' },
+    { handle: 'se', x: bounds.x + bounds.w - hs, y: bounds.y + bounds.h - hs, w: handleSize, h: handleSize, cursor: 'se-resize' },
+    { handle: 's', x: bounds.x + bounds.w / 2 - hs, y: bounds.y + bounds.h - hs, w: handleSize, h: handleSize, cursor: 's-resize' },
+    { handle: 'sw', x: bounds.x - hs, y: bounds.y + bounds.h - hs, w: handleSize, h: handleSize, cursor: 'sw-resize' },
+    { handle: 'w', x: bounds.x - hs, y: bounds.y + bounds.h / 2 - hs, w: handleSize, h: handleSize, cursor: 'w-resize' }
+  ];
+}
+
+function findResizeHandle(px: number, py: number): string | null {
+  if (selectedObjects.length !== 1) return null; // Only resize single selections
+  const obj = selectedObjects[0];
+  
+  // Only resizable objects (not tee/cup/decoration/post)
+  if (obj.type === 'tee' || obj.type === 'cup' || obj.type === 'decoration' || obj.type === 'post') return null;
+  
+  const bounds = getObjectBounds(obj);
+  const handles = getResizeHandles(bounds);
+  
+  for (const handle of handles) {
+    if (px >= handle.x && px <= handle.x + handle.w && py >= handle.y && py <= handle.y + handle.h) {
+      return handle.handle;
+    }
+  }
+  return null;
+}
+
+function applyResize(handle: string, startBounds: { x: number; y: number; w: number; h: number }, dx: number, dy: number): { x: number; y: number; w: number; h: number } {
+  let { x, y, w, h } = startBounds;
+  const minSize = editorGridSize; // Minimum size is one grid step
+  
+  switch (handle) {
+    case 'nw':
+      const newX = x + dx;
+      const newY = y + dy;
+      w = Math.max(minSize, w - dx);
+      h = Math.max(minSize, h - dy);
+      x = x + startBounds.w - w;
+      y = y + startBounds.h - h;
+      break;
+    case 'n':
+      h = Math.max(minSize, h - dy);
+      y = y + startBounds.h - h;
+      break;
+    case 'ne':
+      w = Math.max(minSize, w + dx);
+      h = Math.max(minSize, h - dy);
+      y = y + startBounds.h - h;
+      break;
+    case 'e':
+      w = Math.max(minSize, w + dx);
+      break;
+    case 'se':
+      w = Math.max(minSize, w + dx);
+      h = Math.max(minSize, h + dy);
+      break;
+    case 's':
+      h = Math.max(minSize, h + dy);
+      break;
+    case 'sw':
+      w = Math.max(minSize, w - dx);
+      h = Math.max(minSize, h + dy);
+      x = x + startBounds.w - w;
+      break;
+    case 'w':
+      w = Math.max(minSize, w - dx);
+      x = x + startBounds.w - w;
+      break;
+  }
+  
+  // Snap to grid
+  x = Math.round(x / editorGridSize) * editorGridSize;
+  y = Math.round(y / editorGridSize) * editorGridSize;
+  w = Math.round(w / editorGridSize) * editorGridSize;
+  h = Math.round(h / editorGridSize) * editorGridSize;
+  
+  // Ensure minimum size after snapping
+  w = Math.max(minSize, w);
+  h = Math.max(minSize, h);
+  
+  // Clamp to fairway bounds
+  const clamped = clampToFairway(x, y);
+  const clampedEnd = clampToFairway(x + w, y + h);
+  x = clamped.x;
+  y = clamped.y;
+  w = clampedEnd.x - x;
+  h = clampedEnd.y - y;
+  
+  return { x, y, w, h };
+}
+
 // Transient visuals
 type SplashFx = { x: number; y: number; age: number };
 let splashes: SplashFx[] = [];
@@ -1254,6 +1549,70 @@ canvas.addEventListener('mousedown', (e) => {
       openEditorMenu = null;
       return;
     }
+    // Select Tool logic
+    if (selectedEditorTool === 'select') {
+      const pp = canvasToPlayCoords(p);
+      
+      // Check for resize handle first (single selection only)
+      const handle = findResizeHandle(pp.x, pp.y);
+      if (handle && selectedObjects.length === 1) {
+        // Start resize operation
+        isResizing = true;
+        resizeHandle = handle;
+        resizeStartBounds = getObjectBounds(selectedObjects[0]);
+        resizeStartMouse = { x: pp.x, y: pp.y };
+        return;
+      }
+      
+      const clickedObject = findObjectAtPoint(pp.x, pp.y);
+      
+      if (clickedObject) {
+        // Check if object is already selected
+        const isAlreadySelected = selectedObjects.some(obj => 
+          obj.type === clickedObject.type && 
+          (obj.type === 'tee' || obj.type === 'cup' || 
+           ('index' in obj && 'index' in clickedObject && obj.index === clickedObject.index))
+        );
+        
+        if (!e.ctrlKey && !e.shiftKey) {
+          // Single selection - clear others unless already selected
+          if (!isAlreadySelected) {
+            clearSelection();
+            selectedObjects.push(clickedObject);
+          }
+        } else if (e.ctrlKey || e.shiftKey) {
+          // Multi-selection
+          if (isAlreadySelected) {
+            // Deselect
+            selectedObjects = selectedObjects.filter(obj => 
+              !(obj.type === clickedObject.type && 
+                (obj.type === 'tee' || obj.type === 'cup' || 
+                 ('index' in obj && 'index' in clickedObject && obj.index === clickedObject.index)))
+            );
+          } else {
+            // Add to selection
+            selectedObjects.push(clickedObject);
+          }
+        }
+        
+        // Start drag move if object is selected
+        if (selectedObjects.length > 0) {
+          isDragMoving = true;
+          dragMoveStart = { x: pp.x, y: pp.y };
+        }
+      } else {
+        // Click on empty area - start selection box or clear selection
+        if (!e.ctrlKey && !e.shiftKey) {
+          clearSelection();
+        }
+        
+        // Start selection box
+        isSelectionDragging = true;
+        selectionBoxStart = { x: pp.x, y: pp.y };
+      }
+      return;
+    }
+    
     // Placement on canvas (click anywhere not on UI/back)
     if (selectedEditorTool === 'tee' || selectedEditorTool === 'cup') {
       const pp = canvasToPlayCoords(p);
@@ -1457,11 +1816,70 @@ canvas.addEventListener('mousemove', (e) => {
       const clamped = clampToFairway(sx, sy);
       editorDragCurrent = { x: clamped.x, y: clamped.y };
     }
+    
+    // Handle Select Tool dragging
+    if (selectedEditorTool === 'select') {
+      const pp = canvasToPlayCoords(p);
+      
+      if (isResizing && resizeHandle && resizeStartBounds && resizeStartMouse) {
+        // Handle resize operation
+        const dx = pp.x - resizeStartMouse.x;
+        const dy = pp.y - resizeStartMouse.y;
+        const newBounds = applyResize(resizeHandle, resizeStartBounds, dx, dy);
+        
+        // Apply resize to the selected object
+        const obj = selectedObjects[0];
+        if (obj.type === 'wall' || obj.type === 'water' || obj.type === 'sand' || obj.type === 'bridge' || obj.type === 'hill') {
+          obj.object.x = newBounds.x;
+          obj.object.y = newBounds.y;
+          obj.object.w = newBounds.w;
+          obj.object.h = newBounds.h;
+        }
+      } else if (isDragMoving && dragMoveStart) {
+        // Move selected objects
+        const dx = pp.x - dragMoveStart.x;
+        const dy = pp.y - dragMoveStart.y;
+        // Snap to grid
+        const snappedDx = Math.round(dx / editorGridSize) * editorGridSize;
+        const snappedDy = Math.round(dy / editorGridSize) * editorGridSize;
+        dragMoveOffset = { x: snappedDx, y: snappedDy };
+      } else if (isSelectionDragging && selectionBoxStart) {
+        // Update selection box end point
+        dragMoveOffset = { x: pp.x - selectionBoxStart.x, y: pp.y - selectionBoxStart.y };
+      }
+    }
     const rectTools: EditorTool[] = ['wall', 'bridge', 'water', 'sand', 'hill'];
     const wantsCrosshair = !overUI && (
       selectedEditorTool === 'tee' || selectedEditorTool === 'cup' || selectedEditorTool === 'post' || rectTools.includes(selectedEditorTool)
     );
-    canvas.style.cursor = wantsCrosshair ? 'crosshair' : (overUI ? 'pointer' : 'default');
+    let cursor = 'default';
+    if (overUI) {
+      cursor = 'pointer';
+    } else if (wantsCrosshair) {
+      cursor = 'crosshair';
+    } else if (selectedEditorTool === 'select') {
+      if (isResizing) {
+        // Show resize cursor during resize
+        const handles = getResizeHandles(resizeStartBounds || { x: 0, y: 0, w: 0, h: 0 });
+        const activeHandle = handles.find(h => h.handle === resizeHandle);
+        cursor = activeHandle ? activeHandle.cursor : 'default';
+      } else if (isDragMoving) {
+        cursor = 'move';
+      } else {
+        // Check for resize handle hover
+        const pp = canvasToPlayCoords(p);
+        const handle = findResizeHandle(pp.x, pp.y);
+        if (handle && selectedObjects.length === 1) {
+          const bounds = getObjectBounds(selectedObjects[0]);
+          const handles = getResizeHandles(bounds);
+          const handleInfo = handles.find(h => h.handle === handle);
+          cursor = handleInfo ? handleInfo.cursor : 'default';
+        } else if (selectedObjects.length > 0 && findObjectAtPoint(pp.x, pp.y)) {
+          cursor = 'move';
+        }
+      }
+    }
+    canvas.style.cursor = cursor;
     return;
   }
   if (gameState === 'changelog') {
@@ -1574,6 +1992,68 @@ canvas.addEventListener('mouseup', (e) => {
         }
       }
     }
+    // Handle Select Tool mouseup
+    if (selectedEditorTool === 'select') {
+      if (isDragMoving && dragMoveStart && selectedObjects.length > 0) {
+        // Apply the drag movement to selected objects
+        moveSelectedObjects(dragMoveOffset.x, dragMoveOffset.y);
+      } else if (isSelectionDragging && selectionBoxStart) {
+        // Complete selection box - find objects within the box
+        const pp = canvasToPlayCoords(worldFromEvent(e));
+        const boxX1 = Math.min(selectionBoxStart.x, pp.x);
+        const boxY1 = Math.min(selectionBoxStart.y, pp.y);
+        const boxX2 = Math.max(selectionBoxStart.x, pp.x);
+        const boxY2 = Math.max(selectionBoxStart.y, pp.y);
+        
+        // Clear selection if not holding Ctrl/Shift
+        if (!e.ctrlKey && !e.shiftKey) {
+          clearSelection();
+        }
+        
+        // Add objects within selection box
+        const allObjects = [
+          { type: 'tee' as const, object: { x: ball.x, y: ball.y } },
+          { type: 'cup' as const, object: { x: hole.x, y: hole.y, r: (hole as any).r ?? 8 } },
+          ...posts.map((p, i) => ({ type: 'post' as const, object: p, index: i })),
+          ...walls.map((w, i) => ({ type: 'wall' as const, object: w, index: i })),
+          ...waters.map((w, i) => ({ type: 'water' as const, object: w, index: i })),
+          ...sands.map((s, i) => ({ type: 'sand' as const, object: s, index: i })),
+          ...bridges.map((b, i) => ({ type: 'bridge' as const, object: b, index: i })),
+          ...decorations.map((d, i) => ({ type: 'decoration' as const, object: d, index: i })),
+          ...hills.map((h, i) => ({ type: 'hill' as const, object: h, index: i }))
+        ];
+        
+        for (const obj of allObjects) {
+          const bounds = getObjectBounds(obj);
+          const objCenterX = bounds.x + bounds.w / 2;
+          const objCenterY = bounds.y + bounds.h / 2;
+          
+          if (objCenterX >= boxX1 && objCenterX <= boxX2 && objCenterY >= boxY1 && objCenterY <= boxY2) {
+            // Check if not already selected
+            const isAlreadySelected = selectedObjects.some(selected => 
+              selected.type === obj.type && 
+              (selected.type === 'tee' || selected.type === 'cup' || 
+               ('index' in selected && 'index' in obj && selected.index === obj.index))
+            );
+            if (!isAlreadySelected) {
+              selectedObjects.push(obj);
+            }
+          }
+        }
+      }
+      
+      // Clear drag states
+      isDragMoving = false;
+      isSelectionDragging = false;
+      isResizing = false;
+      dragMoveStart = null;
+      selectionBoxStart = null;
+      resizeHandle = null;
+      resizeStartBounds = null;
+      resizeStartMouse = null;
+      dragMoveOffset = { x: 0, y: 0 };
+    }
+    
     // clear drag state
     isEditorDragging = false;
     editorDragTool = null;
@@ -1771,7 +2251,61 @@ function handleLevelEditorKeys(e: KeyboardEvent) {
   if (e.key === '-' || e.code === 'Minus' || e.key === '_') { editorGridSize = Math.max(5, editorGridSize - (editorGridSize >= 20 ? 10 : 5)); e.preventDefault(); return; }
   if (e.key === '+' || e.key === '=' || e.code === 'Equal' || e.code === 'NumpadAdd') { editorGridSize = Math.min(80, editorGridSize + (editorGridSize >= 20 ? 10 : 5)); e.preventDefault(); return; }
   
-  // Arrow key nudges for tee/cup (only if no menu is open)
+  // Delete key to remove selected objects
+  if (e.key === 'Delete' && selectedEditorTool === 'select' && selectedObjects.length > 0) {
+    for (const obj of selectedObjects) {
+      switch (obj.type) {
+        case 'post':
+          posts.splice(obj.index, 1);
+          if (editorLevelData && editorLevelData.posts) {
+            (editorLevelData.posts as any).splice(obj.index, 1);
+          }
+          break;
+        case 'wall':
+          walls.splice(obj.index, 1);
+          if (editorLevelData && editorLevelData.walls) {
+            (editorLevelData.walls as any).splice(obj.index, 1);
+          }
+          break;
+        case 'water':
+          waters.splice(obj.index, 1);
+          if (editorLevelData && editorLevelData.water) {
+            (editorLevelData.water as any).splice(obj.index, 1);
+          }
+          break;
+        case 'sand':
+          sands.splice(obj.index, 1);
+          if (editorLevelData && editorLevelData.sand) {
+            (editorLevelData.sand as any).splice(obj.index, 1);
+          }
+          break;
+        case 'bridge':
+          bridges.splice(obj.index, 1);
+          if (editorLevelData && editorLevelData.bridges) {
+            (editorLevelData.bridges as any).splice(obj.index, 1);
+          }
+          break;
+        case 'decoration':
+          decorations.splice(obj.index, 1);
+          if (editorLevelData && editorLevelData.decorations) {
+            (editorLevelData.decorations as any).splice(obj.index, 1);
+          }
+          break;
+        case 'hill':
+          hills.splice(obj.index, 1);
+          if (editorLevelData && editorLevelData.hills) {
+            (editorLevelData.hills as any).splice(obj.index, 1);
+          }
+          break;
+        // Note: tee and cup cannot be deleted as they are required level elements
+      }
+    }
+    clearSelection();
+    e.preventDefault();
+    return;
+  }
+  
+  // Arrow key nudges for tee/cup/selection (only if no menu is open)
   if (!openEditorMenu) {
     let dx = 0, dy = 0;
     if (e.code === 'ArrowLeft') dx = -editorGridSize;
@@ -1779,15 +2313,28 @@ function handleLevelEditorKeys(e: KeyboardEvent) {
     else if (e.code === 'ArrowUp') dy = -editorGridSize;
     else if (e.code === 'ArrowDown') dy = editorGridSize;
     if (dx === 0 && dy === 0) return;
+    if (selectedEditorTool === 'select' && selectedObjects.length > 0) {
+      // Move all selected objects
+      moveSelectedObjects(dx, dy);
+      e.preventDefault(); return;
+    }
     if (selectedEditorTool === 'tee') {
       const clamped = clampToFairway(ball.x + dx, ball.y + dy);
       ball.x = clamped.x; ball.y = clamped.y;
       ball.vx = 0; ball.vy = 0; ball.moving = false;
+      if (editorLevelData) {
+        editorLevelData.tee.x = clamped.x;
+        editorLevelData.tee.y = clamped.y;
+      }
       e.preventDefault(); return;
     }
     if (selectedEditorTool === 'cup') {
       const clamped = clampToFairway(hole.x + dx, hole.y + dy);
       hole.x = clamped.x; hole.y = clamped.y;
+      if (editorLevelData) {
+        editorLevelData.cup.x = clamped.x;
+        editorLevelData.cup.y = clamped.y;
+      }
       e.preventDefault(); return;
     }
   }
@@ -2499,9 +3046,12 @@ function draw() {
   // Level Editor screen
   if (gameState === 'levelEditor') {
     // Update dynamic menu labels
-    EDITOR_MENUS.tools.items[0].label = editorShowGrid ? 'Grid On' : 'Grid Off';
-    EDITOR_MENUS.tools.items[1].label = `Grid - (${editorGridSize}px)`;
-    EDITOR_MENUS.tools.items[2].label = `Grid + (${editorGridSize}px)`;
+    // tools.items indices:
+    // 0 = Select Tool (static label)
+    // 1 = Grid toggle, 2 = Grid -, 3 = Grid +
+    EDITOR_MENUS.tools.items[1].label = editorShowGrid ? 'Grid On' : 'Grid Off';
+    EDITOR_MENUS.tools.items[2].label = `Grid - (${editorGridSize}px)`;
+    EDITOR_MENUS.tools.items[3].label = `Grid + (${editorGridSize}px)`;
     
     // Build menubar hotspots (rebuilt each frame)
     editorUiHotspots = [];
@@ -2739,6 +3289,105 @@ function draw() {
         ctx.setLineDash([]);
         ctx.restore();
       }
+    }
+
+    // Selection Tool visuals
+    if (selectedEditorTool === 'select') {
+      // Draw selection outlines for selected objects
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#00aaff';
+      
+      for (const obj of selectedObjects) {
+        const bounds = getObjectBounds(obj);
+        // Draw selection outline with movement offset if dragging
+        const offsetX = isDragMoving ? dragMoveOffset.x : 0;
+        const offsetY = isDragMoving ? dragMoveOffset.y : 0;
+        const displayBounds = { 
+          x: bounds.x + offsetX, 
+          y: bounds.y + offsetY, 
+          w: bounds.w, 
+          h: bounds.h 
+        };
+        
+        // If resizing, show the updated bounds instead
+        if (isResizing && resizeStartBounds && resizeStartMouse && selectedObjects.length === 1 && selectedObjects[0] === obj) {
+          // Use the real-time resized bounds for visual feedback
+          displayBounds.x = obj.object.x;
+          displayBounds.y = obj.object.y;
+          if ('w' in obj.object && 'h' in obj.object) {
+            displayBounds.w = obj.object.w;
+            displayBounds.h = obj.object.h;
+          }
+        }
+        
+        ctx.strokeRect(displayBounds.x, displayBounds.y, displayBounds.w, displayBounds.h);
+        
+        // Draw resize handles for single selection of resizable objects
+        if (selectedObjects.length === 1 && obj === selectedObjects[0] && 
+            (obj.type === 'wall' || obj.type === 'water' || obj.type === 'sand' || obj.type === 'bridge' || obj.type === 'hill')) {
+          const handles = getResizeHandles(displayBounds);
+          ctx.setLineDash([]);
+          
+          for (const handle of handles) {
+            // Handle background
+            ctx.fillStyle = '#00aaff';
+            ctx.fillRect(handle.x, handle.y, handle.w, handle.h);
+            
+            // Handle border
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(handle.x, handle.y, handle.w, handle.h);
+          }
+          
+          ctx.setLineDash([4, 4]);
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = '#00aaff';
+        } else {
+          // For multi-selection or non-resizable objects, just show corner indicators
+          const handleSize = 6;
+          ctx.setLineDash([]);
+          ctx.fillStyle = '#00aaff';
+          const corners = [
+            { x: displayBounds.x - handleSize/2, y: displayBounds.y - handleSize/2 },
+            { x: displayBounds.x + displayBounds.w - handleSize/2, y: displayBounds.y - handleSize/2 },
+            { x: displayBounds.x - handleSize/2, y: displayBounds.y + displayBounds.h - handleSize/2 },
+            { x: displayBounds.x + displayBounds.w - handleSize/2, y: displayBounds.y + displayBounds.h - handleSize/2 }
+          ];
+          for (const corner of corners) {
+            ctx.fillRect(corner.x, corner.y, handleSize, handleSize);
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(corner.x, corner.y, handleSize, handleSize);
+          }
+          ctx.setLineDash([4, 4]);
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = '#00aaff';
+        }
+      }
+      
+      // Draw selection box if dragging
+      if (isSelectionDragging && selectionBoxStart) {
+        const boxX = Math.min(selectionBoxStart.x, selectionBoxStart.x + dragMoveOffset.x);
+        const boxY = Math.min(selectionBoxStart.y, selectionBoxStart.y + dragMoveOffset.y);
+        const boxW = Math.abs(dragMoveOffset.x);
+        const boxH = Math.abs(dragMoveOffset.y);
+        
+        // Selection box background
+        ctx.globalAlpha = 0.1;
+        ctx.fillStyle = '#00aaff';
+        ctx.fillRect(boxX, boxY, boxW, boxH);
+        ctx.globalAlpha = 1;
+        
+        // Selection box outline
+        ctx.setLineDash([2, 2]);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = '#00aaff';
+        ctx.strokeRect(boxX, boxY, boxW, boxH);
+      }
+      
+      ctx.restore();
     }
 
     // Menubar (drawn last over preview)

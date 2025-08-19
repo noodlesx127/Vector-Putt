@@ -58,34 +58,58 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
   - [x] Editor preview: render existing geometry (water, sand, bridges, hills, decorations, walls, polygon walls, posts) using play-mode visuals
   - [x] Interactive placement: Posts (click); Walls/Bridges/Water/Sand/Hills (click-drag rectangles) with grid snapping, fairway clamping, and minimum drag threshold; crosshair cursor and drag state until mouseup
   - [x] Drag outline preview while dragging rectangle tools (grid-snapped, clamped to fairway bounds)
-  - Level Editor UI Selections Audit (2025-08-18 local)
-    - Tools working: Tee, Cup, Post, Wall, Bridge, Water, Sand, Hill (rectangles)
-    - Tools present but not yet implemented: Select, WallsPoly, WaterPoly, SandPoly (no placement/edit UI)
-    - Actions working: Grid toggle, Grid -/+, Save, Save As, Load, New, Delete (saved level entry), Back
+  - Level Editor UI Selections Audit (2025-08-19 local)
+    - Tools working: Tee, Cup, Post, Wall, Bridge, Water, Sand, Hill (rectangles), Select Tool
+    - Tools present but not yet implemented: WallsPoly, WaterPoly, SandPoly (no placement/edit UI)
+    - Actions working: Grid toggle, Grid -/+, Back/Exit
+    - Actions not working: New, Save, Save As, Level Load, Delete (functions called but dialogs blocked/failing)
+    - Architecture issue: Level Editor only uses localStorage, cannot access actual `levels/` directory files
     - Gaps:
-      - Select tool: no hit-testing, move/resize, or delete-selected behavior
       - Polygon tools: render-only if present in data; no create/vertex-edit UI
-      - Delete-selected: not wired; toolbar Delete currently deletes saved levels, not canvas items
       - Hill direction control: missing; Post radius is fixed
+      - Rotation handles: resize implemented but rotation not yet implemented
     - Code refs (`src/main.ts`): `saveEditorLevel()`, `saveEditorLevelAs()`, `openLoadPicker()`, `openDeletePicker()`, `newEditorLevel()`, `assembleEditorLevel()`, Level Editor `mousedown`/`mousemove`/`mouseup`
   - [x] Editor UI: Menubar with pull-down menus (replace compact toolbar)
     - File menu: New, Save, Save As, Level Load, Delete, Back/Exit
     - Objects menu: Tee, Cup, Post, Wall, WallsPoly, Bridge, Water, WaterPoly, Sand, SandPoly, Hill
     - Decorations menu: Flowers
-    - Editor Tools menu: Select, Grid -, Grid +, Grid On/Off
+    - Editor Tools menu: Select Tool, Grid -, Grid +, Grid On/Off
     - Hotspots & rendering: build dropdowns into `editorUiHotspots`; manage open/close state, hover, and click routing; keyboard navigation for menus/items
     - Layout: top menubar with pull-down panels; render above preview; ensure readability and spacing; maintain current preview layering
     - Shortcuts: preserve existing shortcuts (G, -, +); mnemonics (Alt+F/O/D/E) and arrow navigation
     - Docs: update `PROGRESS.md` and `CHANGELOG.md` upon implementing
     - Tests: hover/click open-close behavior; action dispatch correctness
-  - [ ] Select tool: move and resize items (MS Paint-style)
-    - Drag inside selection to move; 8 corner/side handles to resize
+  - [x] Menubar tweak: move 'Select' tool from Objects to 'Editor Tools' menu and rename label to 'Select Tool' in code/UI
+  - [x] Select Tool implementation:
+    - Hit-testing and object bounds detection for all level objects (tee, cup, posts, walls, water, sand, bridges, decorations, hills)
+    - Single-click selection with visual bounding outlines and handles
+    - Multi-select with Ctrl/Shift + click to add/remove from selection
+    - Selection box drag to select multiple objects within rectangular area
+    - Move selected objects with mouse drag (grid-snapped, bounds-clamped)
+    - Arrow key movement for selected objects (respects grid size)
+    - Delete key to remove selected objects (preserves tee/cup as required elements)
+    - 8-point resize handles for rectangular objects (walls, water, sand, bridges, hills)
+    - Grid-snapped resize with minimum size constraints and fairway bounds clamping
+    - Visual feedback: blue dashed outlines, resize handles, selection box with translucent fill
+    - Cursor changes: appropriate resize cursors (nw-resize, e-resize, etc.) and move cursor
+  - [ ] Select Tool: move, resize, and rotate items (MS Paint/Photoshop-style); multi-select with bounding outline
+    - Drag inside selection to move; 8 corner/side handles to resize; rotate via corner handles/outer arc; bounding outline drawn around selection
     - Grid snapping and fairway-bounds clamping on move/resize; min size = 1 grid step; no negative sizes
-    - Applies to rect items (walls/bridges/water/sand/hills); Posts: resize radius; Tee/Cup: move-only
-  - [ ] Delete selected item(s) via existing Delete button in the toolbar UI
+    - Applies to rect items (walls/bridges/water/sand/hills); Posts: resize radius; Tee/Cup: move-only; multi-select transforms apply to all selected
   - [ ] Undo/Redo in Level Editor: toolbar buttons and shortcuts (Ctrl+Z/Ctrl+Y); snapshot editor state on placements and actions (Save/Load/New/Delete)
+    - Placement: Main toolbar, immediately next to the Editor Tools section
+    - Size: small icon buttons (compact footprint)
+    - Icons: conventional Undo/Redo arrow icons consistent with common editors
+    - Shortcuts: Ctrl+Z (Undo), Ctrl+Y (Redo); consider Shift+Ctrl+Z alternative on some platforms
   - [ ] Course Select: add "User Made Levels" category; list Title — Author; Play; owner/admin Edit/Delete; permissions gating; no regression
-  - [ ] Open/edit existing `levels/*.json` and create new levels (with schema validation)
+  - [ ] Level Editor file system integration:
+    - Dev mode/Admin: load any level from existing `levels/Courses/Level.json` diretory for editing
+    - Save levels to actual file system instead of localStorage only
+    - Policy: Never use localStorage for level persistence. In non-dev sessions and/or when an admin is editing, only filesystem-backed storage is allowed. For browser-only builds, provide Import/Export, but do not persist levels to localStorage.
+    - Directory structure: `User_Levels/Username/Level.json` for user-created levels
+    - Load existing `levels/*.json` files for editing and re-saving
+    - Schema validation on load/save operations
+    - Current issue: "No saved levels found" because only checking localStorage, not actual level files
   - [ ] Tool palette: Tee, Cup, Walls/WallsPoly, Posts, Bridges, Water/WaterPoly, Sand/SandPoly, Hills, decorations (full authoring behaviors)
   - [ ] Metadata editor: Level title and Author (persist in JSON)
   - [ ] Par/Birdie suggestion engine based on path analysis and bank heuristics

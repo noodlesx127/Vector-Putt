@@ -5,11 +5,20 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 - Level Editor: Menubar with pull-down menus (replaces compact toolbar)
-  - Four menus: File (New, Save, Save As, Level Load, Delete, Back/Exit), Objects (all tools: Select, Tee, Cup, Post, Wall, WallsPoly, Bridge, Water, WaterPoly, Sand, SandPoly, Hill), Decorations (Flowers), Editor Tools (Grid controls)
+  - Four menus: File (New, Save, Save As, Level Load, Delete, Back/Exit), Objects (fairway items: Tee, Cup, Post, Wall, WallsPoly, Bridge, Water, WaterPoly, Sand, SandPoly, Hill), Decorations (Flowers), Editor Tools (Select Tool and Grid controls)
   - Mouse interaction: click headers to open/close menus, click items to execute actions
   - Keyboard navigation: Alt+F/O/D/E for menu mnemonics, Arrow keys for menu navigation, Enter to select, Escape to close
   - Visual: semi-transparent background with proper layering above the level preview
-  - Integration: all existing editor actions and tools accessible through menubar
+ - Integration: all existing editor actions and tools accessible through menubar
+ - Fix: Editor Tools labels updated to reflect new order after moving 'Select Tool' — restores 'Select Tool' label and removes duplicate 'Grid +' entry
+  - Known issue: File menu actions may be blocked in some environments; added safePrompt/safeConfirm fallbacks and verbose logging. Persistence is localStorage-only for now; filesystem-backed editor I/O is planned.
+  - Level Editor: Select Tool enhancements
+    - Single/multi-select (Ctrl/Shift add/remove) + drag-selection rectangle
+    - Move selected with mouse (grid snap, bounds clamp) and arrow-key nudges
+    - Delete removes selected (tee/cup preserved)
+    - 8-point resize handles for rect items (walls/water/sand/bridges/hills) with snapping, min size = 1 grid step, and bounds clamping
+    - Visuals: dashed blue outlines, handles, translucent selection box; cursors update for move/resize
+    - Rotation: deferred (not yet implemented)
 - User System: Main Menu username input added above Start. Start is disabled until a non-empty name is entered. Username persists to `localStorage` and is prefilled on load. Cursor changes to text I-beam on hover, and placeholder shown when empty.
 - Fix: removed redundant Main Menu mouse handlers that could blur the username input on mouseup; consolidated focus handling so editing is stable.
  - UX: username input now has a clear focus state — placeholder hides while editing, caret blinks at the end of text, and I-beam cursor remains during edit. Input field nudged down to avoid clipping into the main graphic.

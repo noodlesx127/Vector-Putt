@@ -4,10 +4,39 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
-- Fix: Resolved TypeScript errors in `src/main.ts`
+ - UX: Replaced all browser-native dialogs (alert/prompt/confirm) with in-game overlay modals
+   - Level Editor: Save, Save As, Load, New, Delete now use `showUiToast`/`showUiConfirm`/`showUiPrompt`/`showUiList` (async, non-blocking, keyboard-friendly)
+   - Users Admin UI: add/remove/promote/demote/import/export actions now use overlays; errors reported via toasts
+   - Keyboard: Enter/Esc supported; menu Enter handler wraps async actions to avoid unhandled promise rejections
+ - Fix: Overlay dialogs were not visibly rendering. Integrated modal overlay drawing and `overlayHotspots` rebuilding into the main `draw()` loop so Confirm/Prompt/List appear and are interactive across all states. Mouse clicks are swallowed while an overlay is active to prevent click-through. Toast notifications now render as a top-right stack and auto-expire.
+ - Fix: TypeScript config — removed invalid `"vitest/globals"` type from `tsconfig.json` to resolve TS error. Tests import Vitest APIs directly, so global typings are not required. After installing dependencies, you may optionally restore typings via `"types": ["vitest"]`.
+ - Policy: Removed LocalStorage option from Editor "Save As"; only Filesystem and `User_Levels/<Username>/` allowed in dev/admin builds
+ - Fix: TypeScript narrowing in Users Admin "remove" confirm flow; captured `hs.id` prior to async
+ - Fix: Editor menu and keyboard handlers wrap async calls with `.catch(console.error)` to avoid unhandled rejections
+ - Fix: Overlays did not render on Course Select, Options, and Changelog screens due to early returns in `draw()`. Added inline `renderGlobalOverlays()` calls before those returns so overlays render consistently across all UI states. Mouse clicks are swallowed while an overlay is active to prevent click-through. Toast notifications now render as a top-right stack and auto-expire.
+
+ - Fix (Level Editor): Added local `COLORS` constant and `SelectableObject` union in `src/editor/levelEditor.ts` to avoid cross-module type mismatches. Palette values mirror `docs/PALETTE.md` and `src/main.ts`.
+ - Fix (Level Editor): Standardized naming to `wallsPoly` in `getObjectBounds()` (removed stray `wallPoly` reference) to match tools and data arrays.
+ - Fix (Level Editor): Removed legacy shadow drawing for walls, polygon walls, and posts outside rotation transforms. Shadows now render exclusively within `renderWithRotation()` so they rotate correctly without duplication (`src/main.ts`).
+ - Fix (Level Editor): Polygon objects (wallsPoly, waterPoly, sandPoly) are now fully selectable, movable, and deletable in the Level Editor.
+   - Selection and hit-testing include polygon variants via updates to `findObjectAtPoint()` and `getObjectBounds()`.
+   - Movement translates polygon vertex `points` in `moveSelectedObjects()` (arrow-key nudges and drag move).
+   - Delete-key handler removes selected polygon objects from runtime arrays and `editorLevelData`, then calls `clearSelection()`.
+   - Removed duplicate/incorrect definitions of `moveSelectedObjects()`, `isPointInObject()`, and `findObjectAtPoint()`; kept the correct implementations (`src/main.ts`).
+ - Feature (Level Editor): Filesystem integration for level persistence
+   - Load levels from both localStorage and `levels/` directory with [LS]/[FS] labels in picker
+   - Save options: LocalStorage, Filesystem (File System Access API/download), User Directory (`User_Levels/Username/`)
+   - Comprehensive schema validation for level files with detailed error reporting
+   - Filesystem cache with invalidation for performance
+   - Support for editing existing `levels/*.json` files from the game
+ - Fix: Resolved TypeScript errors in `src/main.ts`
   - Verified and referenced implementations for `loadLevel`, `loadLevelByIndex`, and `preloadLevelByIndex` (present near end of file) to address previously reported "missing function" errors.
   - Added explicit `unknown` type for a caught error parameter (`err`) to satisfy strict TypeScript settings.
   - Closed a missing closing brace in `draw()` that caused TS1005 (`'}` expected`) at EOF; `npx tsc --noEmit` is now clean.
+
+- Refactor (Level Editor): Delegated all editor keyboard handling from `src/main.ts` to `levelEditor.handleKeyDown()` with `editorEnv`.
+  - Removed legacy/unreachable code that referenced old globals (`selectedEditorTool`, `openEditorMenu`, `selectedObjects`, `editorLevelData`, `editorGridSize`, `clearSelection()`, `moveSelectedObjects()`).
+  - `main.ts` no longer contains editor-specific key logic; the Level Editor module fully owns shortcuts, grid controls, and menu navigation.
 
 - Level Editor: Menubar with pull-down menus (replaces compact toolbar)
   - Four menus: File (New, Save, Save As, Level Load, Delete, Back/Exit), Objects (fairway items: Tee, Cup, Post, Wall, WallsPoly, Bridge, Water, WaterPoly, Sand, SandPoly, Hill), Decorations (Flowers), Editor Tools (Select Tool and Grid controls)

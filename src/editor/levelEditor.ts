@@ -1,0 +1,1265 @@
+/*
+  Level Editor module
+  -------------------
+  This module encapsulates Level Editor state, input handling, rendering, and persistence helpers.
+  Migrated from main.ts to modularize the Level Editor code while maintaining existing behavior.
+
+  Note: Per project policy, avoid localStorage for persistence in dev/admin builds. The eventual
+  implementation will integrate file-based persistence; for browser-only builds expose Import/Export.
+*/
+
+// Local palette for the editor module (matches docs/PALETTE.md and main.ts)
+const COLORS = {
+  table: '#7a7b1e',
+  fairway: '#126a23',
+  fairwayBand: '#115e20',
+  fairwayLine: '#0b3b14',
+  wallFill: '#e2e2e2',
+  wallStroke: '#bdbdbd',
+  holeFill: '#0a1a0b',
+  holeRim:  '#0f3f19',
+  hudText: '#111111',
+  hudBg: '#0d1f10',
+  waterFill: '#1f6dff',
+  waterStroke: '#1348aa',
+  sandFill: '#d4b36a',
+  sandStroke: '#a98545'
+} as const;
+
+// Minimal shape aliases used by the editor selection system
+type Rect = { x: number; y: number; w: number; h: number; rot?: number };
+type Circle = { x: number; y: number; r: number };
+type Poly = { points: number[] };
+type Decoration = { x: number; y: number; w: number; h: number; kind: string };
+type Wall = Rect;
+type Slope = { x: number; y: number; w: number; h: number; dir: 'N' | 'S' | 'E' | 'W' | string; strength?: number; falloff?: number; rot?: number };
+
+// Discriminated union of selectable objects in the editor
+type SelectableObject =
+  | { type: 'tee'; object: { x: number; y: number } }
+  | { type: 'cup'; object: { x: number; y: number; r: number } }
+  | { type: 'wall'; object: Wall; index: number }
+  | { type: 'wallsPoly'; object: Poly; index: number }
+  | { type: 'post'; object: Circle; index: number }
+  | { type: 'decoration'; object: Decoration; index: number }
+  | { type: 'water'; object: Rect; index: number }
+  | { type: 'waterPoly'; object: Poly; index: number }
+  | { type: 'sand'; object: Rect; index: number }
+  | { type: 'sandPoly'; object: Poly; index: number }
+  | { type: 'bridge'; object: Rect; index: number }
+  | { type: 'hill'; object: Slope; index: number };
+
+export type EditorTool =
+  | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'sand' | 'sandPoly' | 'hill';
+
+export type EditorAction =
+  | 'save' | 'saveAs' | 'load' | 'new' | 'delete' | 'gridToggle' | 'gridMinus' | 'gridPlus' | 'back';
+
+export type EditorMenuId = 'file' | 'objects' | 'decorations' | 'tools';
+
+export type EditorMenuItem =
+  | { kind: 'tool'; tool: EditorTool }
+  | { kind: 'action'; action: EditorAction }
+  | { kind: 'decoration'; decoration: string };
+
+export type EditorHotspot =
+  | { kind: 'tool'; tool: EditorTool; x: number; y: number; w: number; h: number }
+  | { kind: 'action'; action: EditorAction; x: number; y: number; w: number; h: number }
+  | { kind: 'menu'; menu: EditorMenuId; x: number; y: number; w: number; h: number }
+  | { kind: 'menuItem'; menu: EditorMenuId; item: EditorMenuItem; x: number; y: number; w: number; h: number };
+
+// Adapter interface to decouple editor module from main globals.
+// We will extend this incrementally as we migrate code.
+// Level type definition
+export type Level = {
+  canvas: { width: number; height: number };
+  course: { index: number; total: number; title?: string };
+  par: number;
+  tee: { x: number; y: number };
+  cup: { x: number; y: number; r: number };
+  walls: Array<{ x: number; y: number; w: number; h: number }>;
+  wallsPoly: Array<{ points: number[] }>;
+  posts: Array<{ x: number; y: number; r: number }>;
+  bridges: Array<{ x: number; y: number; w: number; h: number }>;
+  water: Array<{ x: number; y: number; w: number; h: number }>;
+  waterPoly: Array<{ points: number[] }>;
+  sand: Array<{ x: number; y: number; w: number; h: number }>;
+  sandPoly: Array<{ points: number[] }>;
+  hills: Array<{ x: number; y: number; w: number; h: number; dir: string; strength?: number; falloff?: number }>;
+  decorations: Array<{ x: number; y: number; w: number; h: number; kind: string }>;
+  meta?: {
+    authorId?: string;
+    authorName?: string;
+    created?: string;
+    modified?: string;
+  };
+};
+
+export interface EditorEnv {
+  // Canvas and drawing surface
+  ctx: CanvasRenderingContext2D;
+  width: number;
+  height: number;
+
+  // Coordinate conversion helpers
+  canvasToPlayCoords(x: number, y: number): { x: number; y: number };
+  worldFromEvent(e: MouseEvent | PointerEvent | TouchEvent): { x: number; y: number };
+
+  // App/game state
+  isOverlayActive(): boolean;
+  renderGlobalOverlays(): void;
+
+  // Fairway rect used by editor rendering and clamping
+  fairwayRect(): { x: number; y: number; w: number; h: number };
+
+  // Grid settings persistence hooks
+  getGridSize(): number;
+  setGridSize(n: number): void;
+  getShowGrid(): boolean;
+  setShowGrid(b: boolean): void;
+
+  // Global state access for editor initialization
+  getGlobalState(): {
+    WIDTH: number;
+    HEIGHT: number;
+    COURSE_MARGIN: number;
+    ball: { x: number; y: number; vx: number; vy: number; moving: boolean };
+    hole: { x: number; y: number; r?: number };
+    levelCanvas: { width: number; height: number };
+    walls: any[];
+    sands: any[];
+    sandsPoly: any[];
+    waters: any[];
+    watersPoly: any[];
+    decorations: any[];
+    hills: any[];
+    bridges: any[];
+    posts: any[];
+    polyWalls: any[];
+    userProfile: { name: string; role: string; id?: string };
+  };
+
+  // Global state setters for editor initialization
+  setGlobalState(state: {
+    levelCanvas?: { width: number; height: number };
+    walls?: any[];
+    sands?: any[];
+    sandsPoly?: any[];
+    waters?: any[];
+    watersPoly?: any[];
+    decorations?: any[];
+    hills?: any[];
+    bridges?: any[];
+    posts?: any[];
+    polyWalls?: any[];
+    ball?: { x: number; y: number; vx: number; vy: number; moving: boolean };
+    hole?: { x: number; y: number; r?: number };
+  }): void;
+
+  // Persistence helpers
+  getUserId(): string;
+  migrateSingleSlotIfNeeded(): void;
+}
+
+export interface LevelEditorAPI {
+  // Lifecycle
+  enter(env: EditorEnv): void;
+
+  // Rendering
+  render(env: EditorEnv): void;
+
+  // Input
+  handleMouseDown(e: MouseEvent, env: EditorEnv): void;
+  handleMouseMove(e: MouseEvent, env: EditorEnv): void;
+  handleMouseUp(e: MouseEvent, env: EditorEnv): void;
+  handleKeyDown(e: KeyboardEvent, env: EditorEnv): void;
+
+  // Commands
+  newLevel(): Promise<void>;
+  openLoadPicker(): Promise<void>;
+  openDeletePicker(): Promise<void>;
+  save(): Promise<void>;
+  saveAs(): Promise<void>;
+
+  // State exposure (minimal, for main UI integration)
+  getSelectedTool(): EditorTool;
+  setSelectedTool(t: EditorTool): void;
+  getUiHotspots(): EditorHotspot[];
+}
+
+class LevelEditorImpl implements LevelEditorAPI {
+  private selectedTool: EditorTool = 'select';
+  private uiHotspots: EditorHotspot[] = [];
+
+  // Grid state (will be synced to main env via getters/setters if provided)
+  private showGrid = true;
+  private gridSize = 20;
+
+  // Editor state
+  private editorLevelData: Level | null = null;
+  private editorCurrentSavedId: string | null = null;
+  private openEditorMenu: EditorMenuId | null = null;
+  private editorMenuActiveItemIndex: number = 0;
+
+  // Drag state for rectangle placements
+  private isEditorDragging = false;
+  private editorDragTool: EditorTool | null = null;
+  private editorDragStart = { x: 0, y: 0 };
+  private editorDragCurrent = { x: 0, y: 0 };
+
+  // Selection state (migrated from main.ts selection system)
+  private selectedObjects: SelectableObject[] = [];
+  private isDragMoving: boolean = false;
+  private dragMoveOffset: { x: number; y: number } = { x: 0, y: 0 };
+  private isResizing: boolean = false;
+  private resizeStartBounds: { x: number; y: number; w: number; h: number } | null = null;
+  private resizeStartMouse: { x: number; y: number } | null = null;
+  private isSelectionDragging: boolean = false;
+  private selectionBoxStart: { x: number; y: number } | null = null;
+  private isRotating: boolean = false;
+  private rotationCenter: { x: number; y: number } | null = null;
+  private rotationStartAngle: number = 0;
+  private rotationStartMouse: { x: number; y: number } | null = null;
+  private rotationSensitivity: number = 0.05;
+  private resizeHandleIndex: number | null = null;
+  private dragMoveStart: { x: number; y: number } | null = null;
+
+  // Menu definitions
+  private readonly EDITOR_MENUS: Record<EditorMenuId, { title: string; items: Array<{ label: string; item: EditorMenuItem; separator?: boolean }> }> = {
+    file: {
+      title: 'File',
+      items: [
+        { label: 'New', item: { kind: 'action', action: 'new' } },
+        { label: 'Save', item: { kind: 'action', action: 'save' } },
+        { label: 'Save As', item: { kind: 'action', action: 'saveAs' } },
+        { label: 'Level Load', item: { kind: 'action', action: 'load' } },
+        { label: 'Delete', item: { kind: 'action', action: 'delete' } },
+        { label: 'Back/Exit', item: { kind: 'action', action: 'back' }, separator: true }
+      ]
+    },
+    objects: {
+      title: 'Objects',
+      items: [
+        { label: 'Tee', item: { kind: 'tool', tool: 'tee' } },
+        { label: 'Cup', item: { kind: 'tool', tool: 'cup' } },
+        { label: 'Post', item: { kind: 'tool', tool: 'post' }, separator: true },
+        { label: 'Wall', item: { kind: 'tool', tool: 'wall' } },
+        { label: 'WallsPoly', item: { kind: 'tool', tool: 'wallsPoly' } },
+        { label: 'Bridge', item: { kind: 'tool', tool: 'bridge' }, separator: true },
+        { label: 'Water', item: { kind: 'tool', tool: 'water' } },
+        { label: 'WaterPoly', item: { kind: 'tool', tool: 'waterPoly' } },
+        { label: 'Sand', item: { kind: 'tool', tool: 'sand' } },
+        { label: 'SandPoly', item: { kind: 'tool', tool: 'sandPoly' } },
+        { label: 'Hill', item: { kind: 'tool', tool: 'hill' } }
+      ]
+    },
+    decorations: {
+      title: 'Decorations',
+      items: [
+        { label: 'Flowers', item: { kind: 'decoration', decoration: 'flowers' } }
+      ]
+    },
+    tools: {
+      title: 'Editor Tools',
+      items: [
+        { label: 'Select Tool', item: { kind: 'tool', tool: 'select' } },
+        { label: this.showGrid ? 'Grid On' : 'Grid Off', item: { kind: 'action', action: 'gridToggle' }, separator: true },
+        { label: `Grid - (${this.gridSize}px)`, item: { kind: 'action', action: 'gridMinus' } },
+        { label: `Grid + (${this.gridSize}px)`, item: { kind: 'action', action: 'gridPlus' } }
+      ]
+    }
+  };
+
+  enter(env: EditorEnv): void {
+    // Try to initialize from saved local storage once per session
+    // Run single-slot migration on first use
+    try { env.migrateSingleSlotIfNeeded(); } catch {}
+    
+    if (this.editorLevelData === null) {
+      try {
+        const raw = localStorage.getItem('vp.editor.level');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed.tee && parsed.cup) {
+            this.editorLevelData = parsed as Level;
+          }
+        }
+      } catch {}
+    }
+    
+    if (this.editorLevelData === null) {
+      // Build a minimal default level
+      const globalState = env.getGlobalState();
+      const defaultCupR = globalState.hole.r || 8;
+      this.editorLevelData = {
+        canvas: { width: globalState.WIDTH, height: globalState.HEIGHT },
+        course: { index: 1, total: 1, title: 'Untitled' },
+        par: 3,
+        tee: { x: globalState.COURSE_MARGIN + 60, y: Math.floor(globalState.HEIGHT / 2) },
+        cup: { x: globalState.WIDTH - globalState.COURSE_MARGIN - 60, y: Math.floor(globalState.HEIGHT / 2), r: defaultCupR },
+        walls: [],
+        wallsPoly: [],
+        posts: [],
+        bridges: [],
+        water: [],
+        waterPoly: [],
+        sand: [],
+        sandPoly: [],
+        hills: [],
+        decorations: []
+      } as Level;
+    }
+    
+    // Apply editor data to rendering globals
+    const globalState = env.getGlobalState();
+    env.setGlobalState({
+      levelCanvas: {
+        width: this.editorLevelData.canvas?.width ?? globalState.WIDTH,
+        height: this.editorLevelData.canvas?.height ?? globalState.HEIGHT
+      },
+      walls: this.editorLevelData.walls ?? [],
+      sands: this.editorLevelData.sand ?? [],
+      sandsPoly: this.editorLevelData.sandPoly ?? [],
+      waters: this.editorLevelData.water ?? [],
+      watersPoly: this.editorLevelData.waterPoly ?? [],
+      decorations: this.editorLevelData.decorations ?? [],
+      hills: this.editorLevelData.hills ?? [],
+      bridges: this.editorLevelData.bridges ?? [],
+      posts: this.editorLevelData.posts ?? [],
+      polyWalls: this.editorLevelData.wallsPoly ?? [],
+      // Use tee/cup as ball/hole preview locations
+      ball: { x: this.editorLevelData.tee.x, y: this.editorLevelData.tee.y, vx: 0, vy: 0, moving: false },
+      hole: { x: this.editorLevelData.cup.x, y: this.editorLevelData.cup.y, r: this.editorLevelData.cup.r }
+    });
+  }
+
+  render(env: EditorEnv): void {
+    const { ctx, width: WIDTH, height: HEIGHT } = env;
+    const { x: fairX, y: fairY, w: fairW, h: fairH } = env.fairwayRect();
+
+    // Sync grid state from environment (if provided)
+    try {
+      this.showGrid = env.getShowGrid();
+      this.gridSize = env.getGridSize();
+    } catch {}
+
+    // Update dynamic menu labels
+    this.EDITOR_MENUS.tools.items[1].label = this.showGrid ? 'Grid On' : 'Grid Off';
+    this.EDITOR_MENUS.tools.items[2].label = `Grid - (${this.gridSize}px)`;
+    this.EDITOR_MENUS.tools.items[3].label = `Grid + (${this.gridSize}px)`;
+
+    // Reset hotspots each frame
+    this.uiHotspots = [];
+
+    // Background table felt
+    ctx.fillStyle = COLORS.table;
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    // Fairway panel
+    ctx.fillStyle = COLORS.fairway;
+    ctx.fillRect(fairX, fairY, fairW, fairH);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = COLORS.fairwayLine;
+    ctx.strokeRect(fairX + 1, fairY + 1, Math.max(0, fairW - 2), Math.max(0, fairH - 2));
+
+    // Grid
+    if (this.showGrid && this.gridSize > 0) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(fairX, fairY, fairW, fairH);
+      ctx.clip();
+      ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = fairX; x <= fairX + fairW; x += this.gridSize) {
+        ctx.moveTo(Math.round(x) + 0.5, fairY);
+        ctx.lineTo(Math.round(x) + 0.5, fairY + fairH);
+      }
+      for (let y = fairY; y <= fairY + fairH; y += this.gridSize) {
+        ctx.moveTo(fairX, Math.round(y) + 0.5);
+        ctx.lineTo(fairX + fairW, Math.round(y) + 0.5);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Pull globals for geometry render
+    const gs = env.getGlobalState();
+    const { waters, watersPoly, sands, sandsPoly, bridges, hills, decorations, walls, polyWalls, posts, ball, hole } = gs as any;
+
+    // Terrain before walls
+    // Water (rects)
+    for (let i = 0; i < waters.length; i++) {
+      const r = waters[i];
+      const obj: SelectableObject = { type: 'water', object: r, index: i };
+      this.renderWithRotation(ctx, obj, () => {
+        ctx.fillStyle = COLORS.waterFill;
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = COLORS.waterStroke;
+        ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+      });
+    }
+    // Water (polys)
+    if (watersPoly.length > 0) {
+      ctx.fillStyle = COLORS.waterFill;
+      for (const wp of watersPoly) {
+        const pts = wp.points;
+        if (!pts || pts.length < 6) continue;
+        ctx.beginPath();
+        ctx.moveTo(pts[0], pts[1]);
+        for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+        ctx.closePath();
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = COLORS.waterStroke;
+        ctx.stroke();
+      }
+    }
+    // Sand (rects)
+    for (let i = 0; i < sands.length; i++) {
+      const r = sands[i];
+      const obj: SelectableObject = { type: 'sand', object: r, index: i };
+      this.renderWithRotation(ctx, obj, () => {
+        ctx.fillStyle = COLORS.sandFill;
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = COLORS.sandStroke;
+        ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+      });
+    }
+    // Sand (polys)
+    if (sandsPoly.length > 0) {
+      ctx.fillStyle = COLORS.sandFill;
+      for (const sp of sandsPoly) {
+        const pts = sp.points;
+        if (!pts || pts.length < 6) continue;
+        ctx.beginPath();
+        ctx.moveTo(pts[0], pts[1]);
+        for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+        ctx.closePath();
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = COLORS.sandStroke;
+        ctx.stroke();
+      }
+    }
+    // Bridges
+    for (let i = 0; i < bridges.length; i++) {
+      const r = bridges[i];
+      const obj: SelectableObject = { type: 'bridge', object: r, index: i };
+      this.renderWithRotation(ctx, obj, () => {
+        ctx.fillStyle = COLORS.fairway;
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = COLORS.fairwayLine;
+        ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+      });
+    }
+    // Hills
+    for (let i = 0; i < hills.length; i++) {
+      const h = hills[i];
+      const obj: SelectableObject = { type: 'hill', object: h, index: i };
+      this.renderWithRotation(ctx, obj, () => {
+        const slopeDir = (h as any).dir || 'S';
+        let grad: CanvasGradient;
+        if (slopeDir === 'N') grad = ctx.createLinearGradient(h.x, h.y + h.h, h.x, h.y);
+        else if (slopeDir === 'S') grad = ctx.createLinearGradient(h.x, h.y, h.x, h.y + h.h);
+        else if (slopeDir === 'W') grad = ctx.createLinearGradient(h.x + h.w, h.y, h.x, h.y);
+        else grad = ctx.createLinearGradient(h.x, h.y, h.x + h.w, h.y);
+        grad.addColorStop(0, 'rgba(255,255,255,0.10)');
+        grad.addColorStop(1, 'rgba(0,0,0,0.10)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(h.x, h.y, h.w, h.h);
+      });
+    }
+    // Decorations clipped to fairway
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(fairX, fairY, fairW, fairH);
+    ctx.clip();
+    for (const d of decorations) {
+      if (d.kind === 'flowers') {
+        const step = 16;
+        for (let y = d.y; y < d.y + d.h; y += step) {
+          for (let x = d.x; x < d.x + d.w; x += step) {
+            ctx.save();
+            ctx.translate(x + 8, y + 8);
+            ctx.fillStyle = '#ffffff';
+            for (let i = 0; i < 4; i++) {
+              const ang = (i * Math.PI) / 2;
+              ctx.beginPath();
+              ctx.arc(Math.cos(ang) * 5, Math.sin(ang) * 5, 3, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            ctx.fillStyle = '#d11e2a';
+            ctx.beginPath();
+            ctx.arc(0, 0, 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
+        }
+      }
+    }
+    ctx.restore();
+
+    // Walls (rects)
+    for (let i = 0; i < walls.length; i++) {
+      const w = walls[i];
+      const obj: SelectableObject = { type: 'wall', object: w, index: i };
+      this.renderWithRotation(ctx, obj, () => {
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.fillRect(w.x + 2, w.y + 2, w.w, w.h);
+        ctx.fillStyle = COLORS.wallFill;
+        ctx.fillRect(w.x, w.y, w.w, w.h);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = COLORS.wallStroke;
+        ctx.strokeRect(w.x + 1, w.y + 1, w.w - 2, w.h - 2);
+        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+        ctx.beginPath();
+        ctx.moveTo(w.x + 1, w.y + 1);
+        ctx.lineTo(w.x + w.w - 1, w.y + 1);
+        ctx.moveTo(w.x + 1, w.y + 1);
+        ctx.lineTo(w.x + 1, w.y + w.h - 1);
+        ctx.stroke();
+      });
+    }
+    // Polygon walls
+    ctx.lineWidth = 2;
+    for (const poly of polyWalls) {
+      const pts = poly.points;
+      if (!pts || pts.length < 6) continue;
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.moveTo(pts[0] + 2, pts[1] + 2);
+      for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i] + 2, pts[i + 1] + 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = COLORS.wallFill;
+      ctx.beginPath();
+      ctx.moveTo(pts[0], pts[1]);
+      for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = COLORS.wallStroke;
+      ctx.stroke();
+    }
+    // Posts
+    for (const p of posts) {
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath(); ctx.arc(p.x + 2, p.y + 2, p.r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = COLORS.wallFill;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = COLORS.wallStroke; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r - 1, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    // Tee marker (ball)
+    {
+      const r = 6;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(ball.x, ball.y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.beginPath(); ctx.ellipse(ball.x + 2, ball.y + 3, r * 0.9, r * 0.6, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    // Cup marker (hole)
+    {
+      const r = (hole as any).r ?? 8;
+      ctx.fillStyle = COLORS.holeFill;
+      ctx.beginPath(); ctx.arc(hole.x, hole.y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = COLORS.holeRim; ctx.stroke();
+      ctx.fillStyle = COLORS.wallFill;
+      const stickW = 3, stickH = 24;
+      ctx.fillRect(hole.x - stickW / 2, hole.y - stickH - r, stickW, stickH);
+    }
+
+    // Drag outline preview for rectangle tools
+    if (this.isEditorDragging && this.editorDragTool && (
+      this.editorDragTool === 'wall' || this.editorDragTool === 'bridge' || this.editorDragTool === 'water' || this.editorDragTool === 'sand' || this.editorDragTool === 'hill'
+    )) {
+      const x0 = this.editorDragStart.x;
+      const y0 = this.editorDragStart.y;
+      const x1 = this.editorDragCurrent.x;
+      const y1 = this.editorDragCurrent.y;
+      const rx = Math.min(x0, x1);
+      const ry = Math.min(y0, y1);
+      const rw = Math.abs(x1 - x0);
+      const rh = Math.abs(y1 - y0);
+      if (rw > 0 || rh > 0) {
+        ctx.save();
+        // Clip to fairway for visuals
+        ctx.beginPath(); ctx.rect(fairX, fairY, fairW, fairH); ctx.clip();
+        const tool = this.editorDragTool;
+        if (tool === 'water') {
+          ctx.globalAlpha = 0.35; ctx.fillStyle = COLORS.waterFill; ctx.fillRect(rx, ry, rw, rh); ctx.globalAlpha = 1;
+        } else if (tool === 'sand') {
+          ctx.globalAlpha = 0.35; ctx.fillStyle = COLORS.sandFill; ctx.fillRect(rx, ry, rw, rh); ctx.globalAlpha = 1;
+        } else if (tool === 'bridge') {
+          ctx.globalAlpha = 0.20; ctx.fillStyle = COLORS.fairway; ctx.fillRect(rx, ry, rw, rh); ctx.globalAlpha = 1;
+        } else {
+          ctx.globalAlpha = 0.18; ctx.fillStyle = '#ffffff'; ctx.fillRect(rx, ry, rw, rh); ctx.globalAlpha = 1;
+        }
+        ctx.setLineDash([6, 4]);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#ffffff';
+        ctx.strokeRect(rx + 0.5, ry + 0.5, Math.max(0, rw - 1), Math.max(0, rh - 1));
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
+
+    // Selection tool visuals
+    if (this.selectedTool === 'select') {
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#00aaff';
+
+      for (const obj of this.selectedObjects) {
+        const bounds = this.getObjectBounds(obj);
+        const offsetX = this.isDragMoving ? this.dragMoveOffset.x : 0;
+        const offsetY = this.isDragMoving ? this.dragMoveOffset.y : 0;
+        const displayBounds = { x: bounds.x + offsetX, y: bounds.y + offsetY, w: bounds.w, h: bounds.h };
+        if (this.isResizing && this.resizeStartBounds && this.resizeStartMouse && this.selectedObjects.length === 1 && this.selectedObjects[0] === obj) {
+          displayBounds.x = (obj.object as any).x;
+          displayBounds.y = (obj.object as any).y;
+          if ('w' in obj.object && 'h' in obj.object) {
+            displayBounds.w = (obj.object as any).w;
+            displayBounds.h = (obj.object as any).h;
+          }
+        }
+        ctx.strokeRect(displayBounds.x, displayBounds.y, displayBounds.w, displayBounds.h);
+
+        if (this.selectedObjects.length === 1 && obj === this.selectedObjects[0] && (
+          obj.type === 'wall' || obj.type === 'water' || obj.type === 'sand' || obj.type === 'bridge' || obj.type === 'hill'
+        )) {
+          const handles = this.getResizeHandles(displayBounds);
+          ctx.setLineDash([]);
+          for (const handle of handles) {
+            ctx.fillStyle = '#00aaff';
+            ctx.fillRect(handle.x, handle.y, handle.w, handle.h);
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(handle.x, handle.y, handle.w, handle.h);
+          }
+          const rotHandles = this.getRotationHandles(displayBounds);
+          for (const rotHandle of rotHandles) {
+            ctx.fillStyle = '#ff6600';
+            ctx.beginPath();
+            ctx.arc(rotHandle.x + rotHandle.w / 2, rotHandle.y + rotHandle.h / 2, rotHandle.w / 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(rotHandle.x + rotHandle.w / 2, rotHandle.y + rotHandle.h / 2, rotHandle.w / 2, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+          ctx.setLineDash([4, 4]);
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = '#00aaff';
+        } else {
+          const handleSize = 6;
+          ctx.setLineDash([]);
+          ctx.fillStyle = '#00aaff';
+          const corners = [
+            { x: displayBounds.x - handleSize / 2, y: displayBounds.y - handleSize / 2 },
+            { x: displayBounds.x + displayBounds.w - handleSize / 2, y: displayBounds.y - handleSize / 2 },
+            { x: displayBounds.x - handleSize / 2, y: displayBounds.y + displayBounds.h - handleSize / 2 },
+            { x: displayBounds.x + displayBounds.w - handleSize / 2, y: displayBounds.y + displayBounds.h - handleSize / 2 }
+          ];
+          for (const corner of corners) {
+            ctx.fillRect(corner.x, corner.y, handleSize, handleSize);
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(corner.x, corner.y, handleSize, handleSize);
+          }
+          ctx.setLineDash([4, 4]);
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = '#00aaff';
+        }
+      }
+
+      // Selection box while dragging
+      if (this.isSelectionDragging && this.selectionBoxStart) {
+        const boxX = Math.min(this.selectionBoxStart.x, this.selectionBoxStart.x + this.dragMoveOffset.x);
+        const boxY = Math.min(this.selectionBoxStart.y, this.selectionBoxStart.y + this.dragMoveOffset.y);
+        const boxW = Math.abs(this.dragMoveOffset.x);
+        const boxH = Math.abs(this.dragMoveOffset.y);
+        ctx.globalAlpha = 0.1; ctx.fillStyle = '#00aaff'; ctx.fillRect(boxX, boxY, boxW, boxH); ctx.globalAlpha = 1;
+        ctx.setLineDash([2, 2]); ctx.lineWidth = 1; ctx.strokeStyle = '#00aaff'; ctx.strokeRect(boxX, boxY, boxW, boxH);
+      }
+      ctx.restore();
+    }
+
+    // Menubar (drawn last)
+    const menubarX = 0, menubarY = 0, menubarW = WIDTH, menubarH = 28;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(menubarX, menubarY, menubarW, menubarH);
+    ctx.strokeStyle = '#cfd2cf';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(menubarX, menubarY, menubarW, menubarH - 1);
+
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const menuIds: EditorMenuId[] = ['file', 'objects', 'decorations', 'tools'];
+    let mx = 8; const my = menubarH / 2;
+    for (const menuId of menuIds) {
+      const menu = this.EDITOR_MENUS[menuId];
+      const textW = ctx.measureText(menu.title).width;
+      const menuW = textW + 16;
+      const isOpen = this.openEditorMenu === menuId;
+      ctx.fillStyle = isOpen ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.10)';
+      ctx.fillRect(mx, 2, menuW, menubarH - 4);
+      if (isOpen) { ctx.strokeStyle = '#ffffff'; ctx.strokeRect(mx, 2, menuW, menubarH - 4); }
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(menu.title, mx + 8, my);
+      this.uiHotspots.push({ kind: 'menu', menu: menuId, x: mx, y: 0, w: menuW, h: menubarH });
+      mx += menuW;
+    }
+
+    // Dropdown
+    if (this.openEditorMenu) {
+      const menu = this.EDITOR_MENUS[this.openEditorMenu];
+      // Compute header x
+      let headerX = 8;
+      for (const menuId of menuIds) {
+        if (menuId === this.openEditorMenu) break;
+        const m = this.EDITOR_MENUS[menuId];
+        const tw = ctx.measureText(m.title).width;
+        headerX += tw + 16;
+      }
+      let maxWidth = 0;
+      for (const item of menu.items) {
+        const w = ctx.measureText(item.label).width; if (w > maxWidth) maxWidth = w;
+      }
+      const dropdownW = Math.max(120, maxWidth + 24);
+      const itemH = 22;
+      const dropdownH = menu.items.length * itemH + 4;
+      const dropdownX = headerX;
+      const dropdownY = menubarH;
+
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(dropdownX, dropdownY, dropdownW, dropdownH);
+      ctx.strokeStyle = '#cfd2cf';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(dropdownX, dropdownY, dropdownW, dropdownH);
+
+      let itemY = dropdownY + 2;
+      for (let i = 0; i < menu.items.length; i++) {
+        const menuItem = menu.items[i];
+        const isActive = i === this.editorMenuActiveItemIndex;
+        const isSelected = (() => {
+          if (menuItem.item.kind === 'tool') return this.selectedTool === menuItem.item.tool;
+          return false;
+        })();
+        if (isActive || isSelected) {
+          ctx.fillStyle = isSelected ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.15)';
+          ctx.fillRect(dropdownX + 1, itemY, dropdownW - 2, itemH);
+        }
+        if (menuItem.separator && i > 0) {
+          ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(dropdownX + 6, itemY - 1);
+          ctx.lineTo(dropdownX + dropdownW - 6, itemY - 1);
+          ctx.stroke();
+        }
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(menuItem.label, dropdownX + 8, itemY + itemH / 2);
+        this.uiHotspots.push({ kind: 'menuItem', menu: this.openEditorMenu, item: menuItem.item, x: dropdownX, y: itemY, w: dropdownW, h: itemH });
+        itemY += itemH;
+      }
+    }
+
+    env.renderGlobalOverlays();
+  }
+
+  handleMouseDown(e: MouseEvent, env: EditorEnv): void {
+    if (env.isOverlayActive()) return;
+    const p = env.worldFromEvent(e);
+
+    // 1) UI hotspots (menus)
+    for (const hs of this.uiHotspots) {
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
+        if (hs.kind === 'menu') {
+          this.openEditorMenu = (this.openEditorMenu === hs.menu) ? null : hs.menu;
+          this.editorMenuActiveItemIndex = 0;
+          return;
+        }
+        if (hs.kind === 'menuItem') {
+          const item = hs.item;
+          if (item.kind === 'tool') {
+            this.selectedTool = item.tool;
+            this.openEditorMenu = null;
+            return;
+          }
+          if (item.kind === 'action') {
+            if (item.action === 'gridToggle') {
+              try { env.setShowGrid(!env.getShowGrid()); } catch {}
+            } else if (item.action === 'gridMinus') {
+              try { const g = Math.max(2, Math.min(128, env.getGridSize() - 2)); env.setGridSize(g); } catch {}
+            } else if (item.action === 'gridPlus') {
+              try { const g = Math.max(2, Math.min(128, env.getGridSize() + 2)); env.setGridSize(g); } catch {}
+            } else if (item.action === 'new') {
+              void this.newLevel();
+            } else if (item.action === 'save') {
+              void this.save();
+            } else if (item.action === 'saveAs') {
+              void this.saveAs();
+            } else if (item.action === 'load') {
+              void this.openLoadPicker();
+            } else if (item.action === 'delete') {
+              void this.openDeletePicker();
+            } else if (item.action === 'back') {
+              // Main will handle state switch via keyboard/menu elsewhere
+            }
+            this.openEditorMenu = null;
+            return;
+          }
+        }
+      }
+    }
+
+    // 2) Tool-specific behavior
+    const { x: fairX, y: fairY, w: fairW, h: fairH } = env.fairwayRect();
+    const inFairway = (p.x >= fairX && p.x <= fairX + fairW && p.y >= fairY && p.y <= fairY + fairH);
+    const snap = (n: number) => {
+      try { if (this.showGrid && env.getShowGrid()) { const g = env.getGridSize(); return Math.round(n / g) * g; } } catch {}
+      return n;
+    };
+    const px = snap(Math.max(fairX, Math.min(fairX + fairW, p.x)));
+    const py = snap(Math.max(fairY, Math.min(fairY + fairH, p.y)));
+
+    if (this.selectedTool !== 'select') {
+      // Start rectangle placement for rect tools
+      if (inFairway && (this.selectedTool === 'wall' || this.selectedTool === 'bridge' || this.selectedTool === 'water' || this.selectedTool === 'sand' || this.selectedTool === 'hill')) {
+        this.isEditorDragging = true;
+        this.editorDragTool = this.selectedTool;
+        this.editorDragStart = { x: px, y: py };
+        this.editorDragCurrent = { x: px, y: py };
+        return;
+      }
+      // Poly tools (wallsPoly/waterPoly/sandPoly) are not implemented yet here.
+    }
+
+    // 3) Selection tool interactions
+    // Check rotation/resize handles first when single selection
+    if (this.selectedTool === 'select' && this.selectedObjects.length === 1) {
+      const obj = this.selectedObjects[0];
+      const bounds = this.getObjectBounds(obj);
+      const rotHandles = this.getRotationHandles(bounds);
+      for (const rh of rotHandles) {
+        if (p.x >= rh.x && p.x <= rh.x + rh.w && p.y >= rh.y && p.y <= rh.y + rh.h) {
+          // Begin rotation
+          this.isRotating = true;
+          const cx = bounds.x + bounds.w / 2, cy = bounds.y + bounds.h / 2;
+          this.rotationCenter = { x: cx, y: cy };
+          this.rotationStartMouse = { x: px, y: py };
+          const o: any = obj.object;
+          const baseRot = typeof o?.rot === 'number' ? o.rot : 0;
+          const angNow = Math.atan2(py - cy, px - cx);
+          this.rotationStartAngle = baseRot - angNow;
+          return;
+        }
+      }
+      const handles = this.getResizeHandles(bounds);
+      for (let i = 0; i < handles.length; i++) {
+        const h = handles[i];
+        if (p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h) {
+          // Begin resize for rect-like objects only
+          if (obj.type === 'wall' || obj.type === 'water' || obj.type === 'sand' || obj.type === 'bridge' || obj.type === 'hill') {
+            this.isResizing = true;
+            this.resizeHandleIndex = i;
+            this.resizeStartBounds = { ...this.getObjectBounds(obj) };
+            this.resizeStartMouse = { x: px, y: py };
+            return;
+          }
+        }
+      }
+    }
+
+    // Hit-test objects for selection and drag-move
+    const hit = this.findObjectAtPoint(px, py, env);
+    if (this.selectedTool === 'select') {
+      if (hit) {
+        if (e.shiftKey) {
+          // Toggle selection
+          const idx = this.selectedObjects.indexOf(hit);
+          if (idx >= 0) this.selectedObjects.splice(idx, 1); else this.selectedObjects.push(hit);
+        } else {
+          this.selectedObjects = [hit];
+        }
+        // Begin drag-move
+        this.isDragMoving = true;
+        this.dragMoveStart = { x: px, y: py };
+        this.dragMoveOffset = { x: 0, y: 0 };
+      } else {
+        // Begin marquee selection
+        this.isSelectionDragging = true;
+        this.selectionBoxStart = { x: px, y: py };
+        this.dragMoveOffset = { x: 0, y: 0 };
+        if (!e.shiftKey) this.selectedObjects = [];
+      }
+    }
+  }
+
+  handleMouseMove(e: MouseEvent, env: EditorEnv): void {
+    const p = env.worldFromEvent(e);
+    const { x: fairX, y: fairY, w: fairW, h: fairH } = env.fairwayRect();
+    const snap = (n: number) => {
+      try { if (this.showGrid && env.getShowGrid()) { const g = env.getGridSize(); return Math.round(n / g) * g; } } catch {}
+      return n;
+    };
+    const px = snap(Math.max(fairX, Math.min(fairX + fairW, p.x)));
+    const py = snap(Math.max(fairY, Math.min(fairY + fairH, p.y)));
+
+    // Update drag placement preview
+    if (this.isEditorDragging && this.editorDragTool) {
+      this.editorDragCurrent = { x: px, y: py };
+      return;
+    }
+
+    if (this.isRotating && this.selectedObjects.length === 1 && this.rotationCenter) {
+      const obj = this.selectedObjects[0];
+      const angNow = Math.atan2(py - this.rotationCenter.y, px - this.rotationCenter.x);
+      let newRot = this.rotationStartAngle + angNow;
+      if (e.shiftKey) {
+        const step = Math.PI / 12; // 15° snap
+        newRot = Math.round(newRot / step) * step;
+      }
+      (obj.object as any).rot = newRot;
+      return;
+    }
+
+    if (this.isResizing && this.selectedObjects.length === 1 && this.resizeStartBounds && this.resizeStartMouse && this.resizeHandleIndex !== null) {
+      const obj = this.selectedObjects[0];
+      const dx = px - this.resizeStartMouse.x;
+      const dy = py - this.resizeStartMouse.y;
+      // Start from original bounds
+      let { x, y, w, h } = { ...this.resizeStartBounds };
+      const idx = this.resizeHandleIndex;
+      // Corner handles (0..3) then edges (4..7)
+      if (idx === 0) { x += dx; y += dy; w -= dx; h -= dy; } // NW
+      else if (idx === 1) { y += dy; w += dx; h -= dy; } // NE
+      else if (idx === 2) { x += dx; w -= dx; h += dy; } // SW
+      else if (idx === 3) { w += dx; h += dy; } // SE
+      else if (idx === 4) { y += dy; h -= dy; } // N
+      else if (idx === 5) { w += dx; } // E
+      else if (idx === 6) { h += dy; } // S
+      else if (idx === 7) { x += dx; w -= dx; } // W
+
+      // Enforce minimums
+      if (w < 1) { x += (w - 1); w = 1; }
+      if (h < 1) { y += (h - 1); h = 1; }
+
+      // Apply to rect-like object
+      const o: any = obj.object as any;
+      o.x = x; o.y = y; if ('w' in o) o.w = w; if ('h' in o) o.h = h;
+      return;
+    }
+
+    if (this.isDragMoving && this.dragMoveStart) {
+      this.dragMoveOffset = { x: px - this.dragMoveStart.x, y: py - this.dragMoveStart.y };
+      return;
+    }
+
+    if (this.isSelectionDragging && this.selectionBoxStart) {
+      this.dragMoveOffset = { x: px - this.selectionBoxStart.x, y: py - this.selectionBoxStart.y };
+      return;
+    }
+  }
+
+  handleMouseUp(e: MouseEvent, env: EditorEnv): void {
+    void e;
+    const p = env.worldFromEvent(e);
+    const { x: fairX, y: fairY, w: fairW, h: fairH } = env.fairwayRect();
+    const clampX = (x: number) => Math.max(fairX, Math.min(fairX + fairW, x));
+    const clampY = (y: number) => Math.max(fairY, Math.min(fairY + fairH, y));
+    const snap = (n: number) => { try { if (this.showGrid && env.getShowGrid()) { const g = env.getGridSize(); return Math.round(n / g) * g; } } catch {} return n; };
+    const px = snap(clampX(p.x));
+    const py = snap(clampY(p.y));
+
+    // Commit rectangle placement
+    if (this.isEditorDragging && this.editorDragTool) {
+      const x0 = this.editorDragStart.x, y0 = this.editorDragStart.y;
+      const x1 = px, y1 = py;
+      const rx = Math.min(x0, x1), ry = Math.min(y0, y1);
+      const rw = Math.abs(x1 - x0), rh = Math.abs(y1 - y0);
+      if (rw > 0 && rh > 0) {
+        const gs = env.getGlobalState();
+        const rect = { x: rx, y: ry, w: rw, h: rh } as any;
+        if (this.editorDragTool === 'wall') (gs.walls as any[]).push(rect);
+        else if (this.editorDragTool === 'bridge') (gs.bridges as any[]).push(rect);
+        else if (this.editorDragTool === 'water') (gs.waters as any[]).push(rect);
+        else if (this.editorDragTool === 'sand') (gs.sands as any[]).push(rect);
+        else if (this.editorDragTool === 'hill') (gs.hills as any[]).push({ ...rect, dir: 'S' });
+      }
+      this.isEditorDragging = false; this.editorDragTool = null;
+      return;
+    }
+
+    // Commit rotation
+    if (this.isRotating) {
+      this.isRotating = false;
+      this.rotationCenter = null;
+      this.rotationStartMouse = null;
+      return;
+    }
+
+    // Commit resize
+    if (this.isResizing) {
+      this.isResizing = false;
+      this.resizeHandleIndex = null;
+      this.resizeStartBounds = null;
+      this.resizeStartMouse = null;
+      return;
+    }
+
+    // Commit drag-move
+    if (this.isDragMoving) {
+      const dx = this.dragMoveOffset.x;
+      const dy = this.dragMoveOffset.y;
+      if (Math.abs(dx) > 0 || Math.abs(dy) > 0) {
+        const gs = env.getGlobalState();
+        for (const obj of this.selectedObjects) {
+          if (obj.type === 'tee') {
+            // Update editor data tee and preview ball
+            if (this.editorLevelData) {
+              this.editorLevelData.tee.x = clampX(this.editorLevelData.tee.x + dx);
+              this.editorLevelData.tee.y = clampY(this.editorLevelData.tee.y + dy);
+            }
+            env.setGlobalState({ ball: { x: clampX(gs.ball.x + dx), y: clampY(gs.ball.y + dy), vx: 0, vy: 0, moving: false } });
+          } else if (obj.type === 'cup') {
+            if (this.editorLevelData) {
+              this.editorLevelData.cup.x = clampX(this.editorLevelData.cup.x + dx);
+              this.editorLevelData.cup.y = clampY(this.editorLevelData.cup.y + dy);
+            }
+            env.setGlobalState({ hole: { x: clampX(gs.hole.x + dx), y: clampY(gs.hole.y + dy), r: (gs.hole as any).r || 8 } });
+          } else if (obj.type === 'post') {
+            const o: any = obj.object; o.x = clampX(o.x + dx); o.y = clampY(o.y + dy);
+          } else if (obj.type === 'wall' || obj.type === 'water' || obj.type === 'sand' || obj.type === 'bridge' || obj.type === 'hill') {
+            const o: any = obj.object; o.x = clampX(o.x + dx); o.y = clampY(o.y + dy);
+          } else if (obj.type === 'wallsPoly' || obj.type === 'waterPoly' || obj.type === 'sandPoly') {
+            const poly: any = obj.object; const pts: number[] = poly.points || [];
+            for (let i = 0; i < pts.length; i += 2) { pts[i] = clampX(pts[i] + dx); pts[i + 1] = clampY(pts[i + 1] + dy); }
+          } else if (obj.type === 'decoration') {
+            const d: any = obj.object; d.x = clampX(d.x + dx); d.y = clampY(d.y + dy);
+          }
+        }
+      }
+      this.isDragMoving = false;
+      this.dragMoveStart = null;
+      this.dragMoveOffset = { x: 0, y: 0 };
+      return;
+    }
+
+    // Commit selection box
+    if (this.isSelectionDragging && this.selectionBoxStart) {
+      const x0 = Math.min(this.selectionBoxStart.x, px);
+      const y0 = Math.min(this.selectionBoxStart.y, py);
+      const x1 = Math.max(this.selectionBoxStart.x, px);
+      const y1 = Math.max(this.selectionBoxStart.y, py);
+      const box = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+      const gs = env.getGlobalState();
+      const inBox: SelectableObject[] = [];
+
+      // Tee
+      if (this.rectsIntersect(box, this.getObjectBounds({ type: 'tee', object: { x: gs.ball.x, y: gs.ball.y } } as any))) {
+        inBox.push({ type: 'tee', object: gs.ball } as any);
+      }
+      // Cup
+      if (this.rectsIntersect(box, this.getObjectBounds({ type: 'cup', object: { x: gs.hole.x, y: gs.hole.y, r: (gs.hole as any).r || 8 } } as any))) {
+        inBox.push({ type: 'cup', object: { x: gs.hole.x, y: gs.hole.y, r: (gs.hole as any).r || 8 } } as any);
+      }
+      const pushIf = (obj: SelectableObject) => { if (this.rectsIntersect(box, this.getObjectBounds(obj))) inBox.push(obj); };
+      for (let i = 0; i < (gs.posts as any[]).length; i++) pushIf({ type: 'post', object: (gs.posts as any[])[i], index: i } as any);
+      for (let i = 0; i < (gs.walls as any[]).length; i++) pushIf({ type: 'wall', object: (gs.walls as any[])[i], index: i } as any);
+      for (let i = 0; i < (gs.polyWalls as any[]).length; i++) pushIf({ type: 'wallsPoly', object: (gs.polyWalls as any[])[i], index: i } as any);
+      for (let i = 0; i < (gs.waters as any[]).length; i++) pushIf({ type: 'water', object: (gs.waters as any[])[i], index: i } as any);
+      for (let i = 0; i < (gs.watersPoly as any[]).length; i++) pushIf({ type: 'waterPoly', object: (gs.watersPoly as any[])[i], index: i } as any);
+      for (let i = 0; i < (gs.sands as any[]).length; i++) pushIf({ type: 'sand', object: (gs.sands as any[])[i], index: i } as any);
+      for (let i = 0; i < (gs.sandsPoly as any[]).length; i++) pushIf({ type: 'sandPoly', object: (gs.sandsPoly as any[])[i], index: i } as any);
+      for (let i = 0; i < (gs.bridges as any[]).length; i++) pushIf({ type: 'bridge', object: (gs.bridges as any[])[i], index: i } as any);
+      for (let i = 0; i < (gs.hills as any[]).length; i++) pushIf({ type: 'hill', object: (gs.hills as any[])[i], index: i } as any);
+      for (let i = 0; i < (gs.decorations as any[]).length; i++) pushIf({ type: 'decoration', object: (gs.decorations as any[])[i], index: i } as any);
+
+      if (inBox.length > 0) this.selectedObjects = e.shiftKey ? [...this.selectedObjects, ...inBox] : inBox;
+
+      this.isSelectionDragging = false;
+      this.selectionBoxStart = null;
+      this.dragMoveOffset = { x: 0, y: 0 };
+      return;
+    }
+  }
+
+  handleKeyDown(e: KeyboardEvent, env: EditorEnv): void {
+    void e; void env;
+  }
+
+  async newLevel(): Promise<void> {
+    // Will call into real implementation after migration
+  }
+
+  async openLoadPicker(): Promise<void> {
+    // Will call into real implementation after migration
+  }
+
+  async openDeletePicker(): Promise<void> {
+    // Will call into real implementation after migration
+  }
+
+  async save(): Promise<void> {
+    // Will call into real implementation after migration
+  }
+
+  async saveAs(): Promise<void> {
+    // Will call into real implementation after migration
+  }
+
+  getSelectedTool(): EditorTool { return this.selectedTool; }
+  setSelectedTool(t: EditorTool): void { this.selectedTool = t; }
+  getUiHotspots(): EditorHotspot[] { return this.uiHotspots; }
+
+  // --- Helpers migrated/replicated from main.ts ---
+  private getObjectBounds(obj: SelectableObject): { x: number; y: number; w: number; h: number } {
+    if (obj.type === 'post') {
+      const p: any = obj.object; return { x: p.x - p.r, y: p.y - p.r, w: p.r * 2, h: p.r * 2 };
+    }
+    if (obj.type === 'wall' || obj.type === 'water' || obj.type === 'sand' || obj.type === 'bridge' || obj.type === 'hill') {
+      const r: any = obj.object; return { x: r.x, y: r.y, w: r.w, h: r.h };
+    }
+    if (obj.type === 'wallsPoly' || obj.type === 'waterPoly' || obj.type === 'sandPoly') {
+      const pts: number[] = (obj.object as any).points || [];
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (let i = 0; i < pts.length; i += 2) { const x = pts[i], y = pts[i + 1]; if (x < minX) minX = x; if (y < minY) minY = y; if (x > maxX) maxX = x; if (y > maxY) maxY = y; }
+      if (!isFinite(minX)) return { x: 0, y: 0, w: 0, h: 0 };
+      return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+    }
+    // Default empty bounds
+    return { x: 0, y: 0, w: 0, h: 0 };
+  }
+
+  private isPointInObject(px: number, py: number, obj: SelectableObject): boolean {
+    const b = this.getObjectBounds(obj);
+    return px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h;
+  }
+
+  private rectsIntersect(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }): boolean {
+    return !(a.x + a.w < b.x || b.x + b.w < a.x || a.y + a.h < b.y || b.y + b.h < a.y);
+  }
+
+  private getResizeHandles(bounds: { x: number; y: number; w: number; h: number }): Array<{ x: number; y: number; w: number; h: number; cursor?: string }> {
+    const s = 8; // handle size
+    const midX = bounds.x + bounds.w / 2;
+    const midY = bounds.y + bounds.h / 2;
+    const corners = [
+      { x: bounds.x - s / 2, y: bounds.y - s / 2 },
+      { x: bounds.x + bounds.w - s / 2, y: bounds.y - s / 2 },
+      { x: bounds.x - s / 2, y: bounds.y + bounds.h - s / 2 },
+      { x: bounds.x + bounds.w - s / 2, y: bounds.y + bounds.h - s / 2 }
+    ];
+    const edges = [
+      { x: midX - s / 2, y: bounds.y - s / 2 },
+      { x: bounds.x + bounds.w - s / 2, y: midY - s / 2 },
+      { x: midX - s / 2, y: bounds.y + bounds.h - s / 2 },
+      { x: bounds.x - s / 2, y: midY - s / 2 }
+    ];
+    return [...corners, ...edges].map(h => ({ ...h, w: s, h: s }));
+  }
+
+  private getRotationHandles(bounds: { x: number; y: number; w: number; h: number }): Array<{ x: number; y: number; w: number; h: number }> {
+    const r = 8; // diameter
+    const pad = 16;
+    const cx = bounds.x + bounds.w / 2;
+    const cy = bounds.y + bounds.h / 2;
+    return [
+      { x: cx - r / 2, y: bounds.y - pad - r / 2, w: r, h: r }, // top
+      { x: bounds.x + bounds.w + pad - r / 2, y: cy - r / 2, w: r, h: r }, // right
+      { x: cx - r / 2, y: bounds.y + bounds.h + pad - r / 2, w: r, h: r }, // bottom
+      { x: bounds.x - pad - r / 2, y: cy - r / 2, w: r, h: r } // left
+    ];
+  }
+
+  private renderWithRotation(ctx: CanvasRenderingContext2D, obj: SelectableObject, draw: () => void) {
+    // Minimal rotation support: if object has numeric 'rot' radians, rotate about rect center
+    const o: any = obj.object;
+    const rot = typeof o?.rot === 'number' ? o.rot : 0;
+    if (!rot || !('x' in o && 'y' in o && 'w' in o && 'h' in o)) { draw(); return; }
+    const cx = o.x + o.w / 2;
+    const cy = o.y + o.h / 2;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rot);
+    ctx.translate(-cx, -cy);
+    draw();
+    ctx.restore();
+  }
+
+  private findObjectAtPoint(px: number, py: number, env: EditorEnv): SelectableObject | null {
+    const gs = env.getGlobalState();
+    // Tee
+    {
+      const teeObj: SelectableObject = { type: 'tee', object: { x: gs.ball.x, y: gs.ball.y } } as any;
+      if (this.isPointInObject(px, py, teeObj)) return { type: 'tee', object: gs.ball } as any;
+    }
+    // Cup
+    {
+      const cupObj: SelectableObject = { type: 'cup', object: { x: gs.hole.x, y: gs.hole.y, r: (gs.hole as any).r || 8 } } as any;
+      if (this.isPointInObject(px, py, cupObj)) return cupObj;
+    }
+    // Posts
+    for (let i = 0; i < (gs.posts as any[]).length; i++) {
+      const obj: SelectableObject = { type: 'post', object: (gs.posts as any[])[i], index: i } as any;
+      if (this.isPointInObject(px, py, obj)) return obj;
+    }
+    // Walls
+    for (let i = 0; i < (gs.walls as any[]).length; i++) {
+      const obj: SelectableObject = { type: 'wall', object: (gs.walls as any[])[i], index: i } as any;
+      if (this.isPointInObject(px, py, obj)) return obj;
+    }
+    // Polygon walls
+    for (let i = 0; i < (gs.polyWalls as any[]).length; i++) {
+      const obj: SelectableObject = { type: 'wallsPoly', object: (gs.polyWalls as any[])[i], index: i } as any;
+      if (this.isPointInObject(px, py, obj)) return obj;
+    }
+    // Water rects
+    for (let i = 0; i < (gs.waters as any[]).length; i++) {
+      const obj: SelectableObject = { type: 'water', object: (gs.waters as any[])[i], index: i } as any;
+      if (this.isPointInObject(px, py, obj)) return obj;
+    }
+    // Water polys
+    for (let i = 0; i < (gs.watersPoly as any[]).length; i++) {
+      const obj: SelectableObject = { type: 'waterPoly', object: (gs.watersPoly as any[])[i], index: i } as any;
+      if (this.isPointInObject(px, py, obj)) return obj;
+    }
+    // Sand rects
+    for (let i = 0; i < (gs.sands as any[]).length; i++) {
+      const obj: SelectableObject = { type: 'sand', object: (gs.sands as any[])[i], index: i } as any;
+      if (this.isPointInObject(px, py, obj)) return obj;
+    }
+    // Sand polys
+    for (let i = 0; i < (gs.sandsPoly as any[]).length; i++) {
+      const obj: SelectableObject = { type: 'sandPoly', object: (gs.sandsPoly as any[])[i], index: i } as any;
+      if (this.isPointInObject(px, py, obj)) return obj;
+    }
+    // Bridges
+    for (let i = 0; i < (gs.bridges as any[]).length; i++) {
+      const obj: SelectableObject = { type: 'bridge', object: (gs.bridges as any[])[i], index: i } as any;
+      if (this.isPointInObject(px, py, obj)) return obj;
+    }
+    // Hills
+    for (let i = 0; i < (gs.hills as any[]).length; i++) {
+      const obj: SelectableObject = { type: 'hill', object: (gs.hills as any[])[i], index: i } as any;
+      if (this.isPointInObject(px, py, obj)) return obj;
+    }
+    // Decorations
+    for (let i = 0; i < (gs.decorations as any[]).length; i++) {
+      const obj: SelectableObject = { type: 'decoration', object: (gs.decorations as any[])[i], index: i } as any;
+      if (this.isPointInObject(px, py, obj)) return obj;
+    }
+    return null;
+  }
+}
+
+export const levelEditor: LevelEditorAPI = new LevelEditorImpl();

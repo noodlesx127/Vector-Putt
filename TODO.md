@@ -106,33 +106,52 @@ Notes:
   - [x] Menu UI layering: render menu panel/buttons after fairway/grid so they appear on top; add semi-transparent panel background and border for readability
   - [x] Toolbar refactor: compact horizontal top toolbar (tools row + actions row with Back on right); unify hover/click via `editorUiHotspots`
   - [x] Editor preview: render existing geometry (water, sand, bridges, hills, decorations, walls, polygon walls, posts) using play-mode visuals
+  - [x] Bugfix: Level Editor duplicate shadows during rotation — removed legacy shadow drawing outside rotation transforms for walls/polygon walls/posts; shadows now drawn only within rotation-aware renders
+  - [x] Level Editor filesystem integration — comprehensive filesystem support for level persistence:
+    - [x] Scan and load levels from `levels/` directory alongside localStorage levels
+    - [x] Combined level picker showing [LS]/[FS] source labels and ownership badges
+    - [x] Three save options: LocalStorage, Filesystem (File System Access API/download), User Directory structure
+    - Note: Per policy, LocalStorage Save As is disabled in dev/admin builds; use Filesystem or `User_Levels/<Username>/`. Browser-only builds should use explicit Import/Export instead of LocalStorage persistence.
+    - [x] Schema validation with detailed error reporting for level files
+    - [x] Filesystem cache with invalidation for performance
+    - [x] Support editing existing bundled levels from `levels/*.json`
+    - [x] User directory structure: `User_Levels/Username/levelname.json` for organized user content
+    - [x] Overlay migration complete: replaced browser dialogs with in-game overlays across Editor and Users Admin UI (Confirm, Prompt, List, Toast); keyboard-friendly (Enter/Esc/Arrows)
+      - [x] Rendering integration complete: overlays and toasts render at the end of `draw()` above all UI; `overlayHotspots` rebuilt each frame; overlay mouse events swallowed to prevent click-through; toasts displayed as a top-right stack with auto-expire.
+  - [x] Consistency: define local `COLORS` and `SelectableObject` in `src/editor/levelEditor.ts`; standardize naming to `wallsPoly` in `getObjectBounds()`.
+      - [x] Course/Options/Changelog now render overlays too (added inline `renderGlobalOverlays()` before early returns in `draw()`).
   - [x] Interactive placement: Posts (click); Walls/Bridges/Water/Sand/Hills (click-drag rectangles) with grid snapping, fairway clamping, and minimum drag threshold
   - [x] Drag outline preview while dragging rectangle tools (grid-snapped, clamped to fairway bounds)
   - [x] Editor UI: Menubar with pull-down menus (replaces compact toolbar)
-    - File menu: New, Save, Save As, Level Load, Delete, Back/Exit
-    - Objects menu: Tee, Cup, Post, Wall, WallsPoly, Bridge, Water, WaterPoly, Sand, SandPoly, Hill
-    - Decorations menu: Flowers
-    - Editor Tools menu: Select Tool, Grid -, Grid +, Grid On/Off
-    - Hotspots & rendering: build dropdowns into `editorUiHotspots`; manage open/close state, hover, and click routing; keyboard navigation for menus/items
-    - Layout: top menubar with pulldown panels; render above preview; ensure readability and spacing; maintain current preview layering
-    - Shortcuts: preserved existing shortcuts (G, -, +); mnemonics (Alt+F/O/D/E), arrow keys navigate, Enter selects, Esc closes
-    - Docs: updated `PROGRESS.md` and `CHANGELOG.md`
-    - Tests: hover/click open-close behavior; action dispatch correctness
+  - File menu: New, Save, Save As, Level Load, Delete, Back/Exit
+  - Objects menu: Tee, Cup, Post, Wall, WallsPoly, Bridge, Water, WaterPoly, Sand, SandPoly, Hill
+  - Decorations menu: Flowers
+  - Editor Tools menu: Select Tool, Grid -, Grid +, Grid On/Off
+  - Hotspots & rendering: build dropdowns into `editorUiHotspots`; manage open/close state, hover, and click routing; keyboard navigation for menus/items
+  - Layout: top menubar with pulldown panels; render above preview; ensure readability and spacing; maintain current preview layering
+  - Shortcuts: preserved existing shortcuts (G, -, +); mnemonics (Alt+F/O/D/E), arrow keys navigate, Enter selects, Esc closes
+  - Docs: updated `PROGRESS.md` and `CHANGELOG.md`
+  - Tests: hover/click open-close behavior; action dispatch correctness
+  - [x] Refactor: delegate all Level Editor keyboard handling from `src/main.ts` to `levelEditor.handleKeyDown(editorEnv)`; remove legacy unreachable code in `main.ts` referencing old editor globals.
+  - [ ] Standardize level schema: keep both rectangular and polygon variants (walls/water/sand). Ensure Editor supports full selection/move/delete on both; no migration of existing levels.
   - [ ] Undo/Redo in Level Editor: toolbar buttons and shortcuts (Ctrl+Z/Ctrl+Y); snapshot editor state on placements and actions (Save/Load/New/Delete)
   - [ ] Tool palette: Tee, Cup, Walls, WallsPoly, Posts, Bridges, Water, WaterPoly, Sand, SandPoly, Hill, decorations
  - [ ] Selection tools: select/move/duplicate/delete; vertex edit for polygons; rotate/scale where applicable
-   - Done: select, multi-select, move, delete; scale (resize) for rect items with grid snap and bounds clamp
-   - Pending: duplicate; polygon vertex edit; rotate
- - [ ] Select Tool: move, resize, and rotate items (MS Paint/Photoshop-style); multi-select with bounding outline
-   - Drag inside selection to move; 8 corner/side handles to resize; rotate via corner handles/outer arc; outer bounding outline around selection
-   - Grid snapping and fairway-bounds clamping on move/resize/rotate; min size = 1 grid step; no negative sizes
-   - Applies to rect items (walls/bridges/water/sand/hills); Posts: resize radius; Tee/Cup: move-only; multi-select transforms apply to all selected
-   - Progress: selection + multi-select + move complete; 8-point resize implemented for rectangles; rotation pending
+  - Done: select, multi-select, move, delete; scale (resize) for rect items with grid snap and bounds clamp
+  - Pending: duplicate; polygon vertex edit; rotate
+  - Done (polygons, minimum viable): selection + move + delete for wallsPoly/waterPoly/sandPoly
+    - Implemented: included poly variants in `findObjectAtPoint()` and `getObjectBounds()`; `moveSelectedObjects()` translates polygon `points`; Delete key removes from poly arrays and `editorLevelData`; removed duplicate/incorrect implementations in `src/main.ts`.
+    - Defer: precise point-in-polygon/edge proximity hit-test; rotate/resize for polys; vertex edit mode
+- [ ] Select Tool: move, resize, and rotate items (MS Paint/Photoshop-style); multi-select with bounding outline
+  - Grid snapping and fairway-bounds clamping on move/resize/rotate; min size = 1 grid step; no negative sizes
+  - Applies to rect items (walls/bridges/water/sand/hills); Posts: resize radius; Tee/Cup: move-only; multi-select transforms apply to all selected
+  - Progress: selection + multi-select + move complete; 8-point resize implemented for rectangles; rotation pending
  - [ ] Delete selected item(s) via existing Delete button in the toolbar UI
  - [x] Grid snapping and nudge controls (arrow keys); configurable grid size
  - [x] Main Menu: add "Level Editor" entry to launch editor mode
   - [ ] Course Select: add "User Made Levels" category; list by Level Title — Author; load+play selected
 
+{{ ... }}
   - [ ] Create/select active user; store display name and role (admin/user)
   - [ ] Persist users to local storage or file (JSON); simple migration/versioning plan
 {{ ... }}
@@ -306,6 +325,28 @@ Implementation follow-ups:
 - [ ] Add `docs/TECH_DESIGN.md` covering architecture and data formats
 - [ ] Add `docs/LEVEL_GUIDE.md` for creators
 - [x] Add `docs/PALETTE.md` and consolidate water/sand colors + outlines in `src/main.ts`
+
+## Refactor Plan — Level Editor Module Split
+
+- Phase 1 (minimal risk, single module):
+  - Create `src/editor/levelEditor.ts` and move editor-only code:
+    - State: `editorLevelData`, selection (`selectedObjects`), `editorUiHotspots`, menu open state
+    - Logic: `enterLevelEditor()`, `assembleEditorLevel()`, `saveEditorLevel*()`, `open*Picker()`, `newEditorLevel()`
+    - Input: editor branches of `mousedown`/`mousemove`/`mouseup`, and keyboard handling
+    - Selection helpers: `findObjectAtPoint()`, `getObjectBounds()`, `moveSelectedObjects()`, `clearSelection()`
+    - Rendering: menubar + editor preview routines
+  - Keep shared overlay helpers (`showUiToast`/`showUiConfirm`/etc.) in shared scope to avoid cycles.
+  - In `src/main.ts`, route only when `gameState === 'levelEditor'` via a small API: `enterLevelEditor()`, `handleEditorMouseDown/Move/Up()`, `handleEditorKeyDown()`, `renderLevelEditor()`.
+- Phase 2 (optional split by concern):
+  - `src/editor/types.ts` (editor types like `SelectableObject`)
+  - `src/editor/select.ts` (hit-testing/selection/bounds)
+  - `src/editor/render.ts` (menubar + preview)
+  - `src/editor/persist.ts` (load/save/delete flows)
+- Guardrails:
+  - No behavior changes; only relocation and imports
+  - Avoid circular imports; gameplay stays in `main.ts`, editor depends on shared types/constants
+  - Clear data boundaries: ensure `editorLevelData` updates reflect in preview
+  - Docs updated post-refactor; run type-checks, build, tests; manual smoke (selection/move/delete incl. polys)
 
 ## Stretch (post-MVP)
 - [ ] Moving obstacles, boosters, teleporters

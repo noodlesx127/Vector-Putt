@@ -4,7 +4,7 @@
 
 # Project Progress — Vector Putt
 
- Updated: 2025-08-19 (local) — Next: Option A selected — Course Select "User Made Levels" category; planning and criteria captured below
+ Updated: 2025-08-20 (local) — Next: Option A selected — Course Select "User Made Levels" category; planning and criteria captured below. Overlays now render consistently on Course/Options/Changelog.
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 
@@ -15,6 +15,7 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
   - Permissions: non-owners see disabled Edit/Delete with hint
   - Controls: Up/Down navigate, Enter Play, E Edit, Del Delete, Esc Back
   - No regressions to bundled Course Select
+- [x] Editor: Polygon objects selectable/movable/deletable (`wallsPoly`/`waterPoly`/`sandPoly`)
 - [x] Axis-aligned walls + deterministic reflections (angle in = angle out)
 - [x] Minimal HUD (Hole x/y, Par n, Strokes m); increment strokes on release
 - [x] Level JSON: tee, hole cup, rectangular walls; load at startup
@@ -48,6 +49,9 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
   - [x] Editor selectable from Main Menu (launch editor mode) — placeholder screen with Back
   - [x] Tool palette UI (initial): render tool buttons, hover pointer, click to select (`selectedEditorTool`)
   - [x] Tee & Cup placement: 20px grid snapping and nudge controls (arrow keys); configurable grid size
+  - [x] Refactor: delegated all Level Editor keyboard handling from `src/main.ts` to `levelEditor.handleKeyDown(editorEnv)`; removed legacy unreachable code referencing old globals in `main.ts`.
+  - [ ] Follow-up: run TypeScript check and do a manual smoke test of editor shortcuts, grid +/-/toggle, menu mnemonics, and Delete/nudge behaviors.
+  - [x] Main Menu: add "Level Editor" entry to launch editor mode
   - [x] Multi-level persistence: Save, Save As, Load, New, Delete using `localStorage` key `vp.levels.v1`; track current saved ID for overwrite semantics
   - [x] Preview rendering: fairway panel + outline, grid overlay, Tee/Cup markers
   - [x] Permissions: owner/admin-only overwrite and delete; non-owners are alerted and routed to "Save As"
@@ -60,15 +64,16 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
   - [x] Drag outline preview while dragging rectangle tools (grid-snapped, clamped to fairway bounds)
   - Level Editor UI Selections Audit (2025-08-19 local)
     - Tools working: Tee, Cup, Post, Wall, Bridge, Water, Sand, Hill (rectangles), Select Tool
-    - Tools present but not yet implemented: WallsPoly, WaterPoly, SandPoly (no placement/edit UI)
-    - Actions working: Grid toggle, Grid -/+, Back/Exit
-    - Actions not working: New, Save, Save As, Level Load, Delete (functions called but dialogs blocked/failing)
-    - Architecture issue: Level Editor only uses localStorage, cannot access actual `levels/` directory files
+    - Tools present but not yet implemented: WallsPoly, WaterPoly, SandPoly (no placement/vertex-edit UI)
+    - Actions working: Grid toggle, Grid -/+, Back/Exit, New, Save, Save As, Level Load, Delete — all via in-game overlays (async) with Enter/Esc support
+    - Persistence: Save As targets Filesystem or `User_Levels/<Username>/` only (no LocalStorage per policy)
     - Gaps:
-      - Polygon tools: render-only if present in data; no create/vertex-edit UI
+      - Polygon tools: selection/move/delete supported; still no create/vertex-edit UI
       - Hill direction control: missing; Post radius is fixed
-      - Rotation handles: resize implemented but rotation not yet implemented
-    - Code refs (`src/main.ts`): `saveEditorLevel()`, `saveEditorLevelAs()`, `openLoadPicker()`, `openDeletePicker()`, `newEditorLevel()`, `assembleEditorLevel()`, Level Editor `mousedown`/`mousemove`/`mouseup`
+      - Rotation: implemented for rectangular items with 15° snapping; shadow duplication fixed by removing legacy non-rotated shadows
+      - Diagnosis resolved: Included polygon variants in `findObjectAtPoint()` and `getObjectBounds()`; `moveSelectedObjects()` now translates polygon `points`; Delete key removes from poly arrays and `editorLevelData`; removed duplicate/incorrect implementations.
+      - Consistency: Defined local `COLORS` and `SelectableObject` in `src/editor/levelEditor.ts` and standardized naming to `wallsPoly` in `getObjectBounds()`.
+      - Code refs (`src/main.ts`): `saveEditorLevel()`, `saveEditorLevelAs()`, `openLoadPicker()`, `openDeletePicker()`, `newEditorLevel()`, `assembleEditorLevel()`, Level Editor `mousedown`/`mousemove`/`mouseup`
   - [x] Editor UI: Menubar with pull-down menus (replace compact toolbar)
     - File menu: New, Save, Save As, Level Load, Delete, Back/Exit
     - Objects menu: Tee, Cup, Post, Wall, WallsPoly, Bridge, Water, WaterPoly, Sand, SandPoly, Hill
@@ -103,14 +108,23 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
     - Icons: conventional Undo/Redo arrow icons consistent with common editors
     - Shortcuts: Ctrl+Z (Undo), Ctrl+Y (Redo); consider Shift+Ctrl+Z alternative on some platforms
   - [ ] Course Select: add "User Made Levels" category; list Title — Author; Play; owner/admin Edit/Delete; permissions gating; no regression
-  - [ ] Level Editor file system integration:
-    - Dev mode/Admin: load any level from existing `levels/Courses/Level.json` diretory for editing
-    - Save levels to actual file system instead of localStorage only
-    - Policy: Never use localStorage for level persistence. In non-dev sessions and/or when an admin is editing, only filesystem-backed storage is allowed. For browser-only builds, provide Import/Export, but do not persist levels to localStorage.
-    - Directory structure: `User_Levels/Username/Level.json` for user-created levels
-    - Load existing `levels/*.json` files for editing and re-saving
-    - Schema validation on load/save operations
-    - Current issue: "No saved levels found" because only checking localStorage, not actual level files
+  - [x] Level Editor file system integration:
+    - [x] Load any level from existing `levels/*.json` directory for editing
+    - [x] Save levels to filesystem via File System Access API or download fallback
+    - [x] Combined level listing: shows both localStorage and filesystem levels with [LS]/[FS] labels
+    - [x] Directory structure: `User_Levels/Username/Level.json` option for user-created levels
+    - [x] Load existing `levels/*.json` files for editing and re-saving
+    - [x] Schema validation on load/save operations with detailed error reporting
+    - [x] Fixed "No saved levels found" by scanning both localStorage and filesystem levels
+    - [x] Three save options: LocalStorage, Filesystem (direct), User Directory (User_Levels/Username/)
+    - [x] Filesystem cache with invalidation for performance
+    - [x] Comprehensive level schema validation (canvas, tee, cup, walls, posts, arrays, etc.)
+  - [x] Replace browser dialogs with in-game UI (menus/popups) for a smoother experience
+    - Completed: Level Editor (Save, Save As, Load, New, Delete) and Users Admin UI now use in-game overlays (`showUiToast`, `showUiConfirm`, `showUiPrompt`, `showUiList`), fully async with keyboard (Enter/Esc/Arrows)
+    - Removed LocalStorage option from Save As; only Filesystem and `User_Levels/<Username>/` supported per policy
+    - All previous `alert()/prompt()/confirm()` call sites in `src/main.ts` migrated to overlays
+    - Rendering integration: Overlays and toasts are now drawn at the end of `draw()` so they appear above all UI layers; `overlayHotspots` rebuilt each frame while overlays are active; overlay mouse clicks are swallowed to prevent click-through; toasts render as a top-right stack with auto-expire.
+    - Fix: Added inline `renderGlobalOverlays()` calls in `draw()` for `course`, `options`, and `changelog` states (previously returned early), so overlays render on these screens too.
   - [ ] Tool palette: Tee, Cup, Walls/WallsPoly, Posts, Bridges, Water/WaterPoly, Sand/SandPoly, Hills, decorations (full authoring behaviors)
   - [ ] Metadata editor: Level title and Author (persist in JSON)
   - [ ] Par/Birdie suggestion engine based on path analysis and bank heuristics
@@ -157,6 +171,29 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 ## Decisions (Architecture / Approach)
 - Stack: TypeScript + HTML5 Canvas, Vite, Web Audio API (custom), Vitest (per `TODO.md`)
 - References: Treat the three YouTube videos as canonical for gameplay, level design, look & feel, UI/UX, physics
+ - Level schema: Keep both rectangular and polygon variants for walls/water/sand as first-class. Do not migrate legacy levels. Update the Editor to support selection/move/delete for polygon variants; defer rotate/resize/vertex-edit to a later pass.
+
+## Refactor Plan — Level Editor Module Split
+
+ - Phase 1 (minimal risk, single module):
+   - Create `src/editor/levelEditor.ts` and move editor-only code:
+     - State: `editorLevelData`, selection (`selectedObjects`), `editorUiHotspots`, menu open state
+     - Logic: `enterLevelEditor()`, `assembleEditorLevel()`, `saveEditorLevel*()`, `open*Picker()`, `newEditorLevel()`
+     - Input: editor branches of `mousedown`/`mousemove`/`mouseup`, and keyboard handling
+     - Selection helpers: `findObjectAtPoint()`, `getObjectBounds()`, `moveSelectedObjects()`, `clearSelection()`
+     - Rendering: menubar + editor preview routines
+   - Keep shared overlay helpers (`showUiToast`/`showUiConfirm`/etc.) in shared scope to avoid cycles.
+   - In `src/main.ts`, route only when `gameState === 'levelEditor'` via a small API: `enterLevelEditor()`, `handleEditorMouseDown/Move/Up()`, `handleEditorKeyDown()`, `renderLevelEditor()`.
+ - Phase 2 (optional split by concern):
+   - `src/editor/types.ts` (editor types like `SelectableObject`)
+   - `src/editor/select.ts` (hit-testing/selection/bounds)
+   - `src/editor/render.ts` (menubar + preview)
+   - `src/editor/persist.ts` (load/save/delete flows)
+ - Guardrails:
+   - No behavior changes; only relocation and imports
+   - Avoid circular imports; gameplay stays in `main.ts`, editor depends on shared types/constants
+   - Clear data boundaries: ensure `editorLevelData` updates reflect in preview
+   - Docs updated post-refactor; run type-checks, build, tests; manual smoke (selection/move/delete incl. polys)
 
 ## Done
 - [x] Fix: Resolved TypeScript errors in `src/main.ts` — verified `loadLevel`, `loadLevelByIndex`, `preloadLevelByIndex` implementations near file end; added explicit `unknown` type to a caught error parameter to satisfy strict TS.
@@ -181,6 +218,8 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [x] User System: level ownership metadata (authorId/authorName) added to Level schema; per-user score tracking with best scores shown in HUD.
 
 - [x] Docs: CHANGELOG structure restored (Unreleased on top); version 0.3.23 recorded
+
+- [x] Fix: TypeScript config — removed invalid `"vitest/globals"` type from `tsconfig.json` to clear IDE TS error; tests import Vitest APIs directly. Optionally restore typings later via `"types": ["vitest"]` after installing deps.
 
 ## Risks / Mitigations
 - **Physics feel mismatch** → Add tunable config (friction, restitution, stop-epsilon, power curve)

@@ -1,5 +1,6 @@
 import CHANGELOG_RAW from '../CHANGELOG.md?raw';
 import usersStore from './UsersStore';
+import { levelEditor } from './editor/levelEditor';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -23,9 +24,162 @@ type SavedLevelV1 = { id: string; level: Level };
 type LevelsDocV1 = { version: 1; levels: SavedLevelV1[] };
 const LS_LEVELS_KEY = 'vp.levels.v1';
 
+// Filesystem integration
+type LevelSource = 'localStorage' | 'filesystem';
+type LevelEntry = {
+  id: string;
+  level: Level;
+  source: LevelSource;
+  filename?: string; // for filesystem levels
+};
+
+// Cache for filesystem levels
+let filesystemLevelsCache: LevelEntry[] = [];
+let filesystemCacheValid = false;
+
 function newLevelId(): string {
   return 'lvl_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
 }
+
+// ------------------------------
+// In-Game Modal Overlay System
+// ------------------------------
+type UiOverlayKind = 'none' | 'toast' | 'confirm' | 'prompt' | 'list';
+type UiToast = { id: number; message: string; expiresAt: number };
+type UiListItem = { id: string; label: string; disabled?: boolean };
+type UiOverlayState = {
+  kind: UiOverlayKind;
+  // Shared
+  title?: string;
+  message?: string;
+  // Prompt
+  inputText?: string;
+  inputPlaceholder?: string;
+  // List
+  listItems?: UiListItem[];
+  listIndex?: number;
+  // Resolution
+  resolve?: (value: any) => void;
+  reject?: (reason?: any) => void;
+  cancelable?: boolean;
+};
+
+let uiOverlay: UiOverlayState = { kind: 'none' };
+let uiToasts: UiToast[] = [];
+let toastCounter = 0;
+
+function isOverlayActive(): boolean { return uiOverlay.kind !== 'none'; }
+
+function showUiToast(message: string, durationMs = 2200): void {
+  const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+  uiToasts.push({ id: ++toastCounter, message, expiresAt: now + durationMs });
+}
+
+function showUiConfirm(message: string, title = 'Confirm'): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    uiOverlay = { kind: 'confirm', title, message, resolve, cancelable: true };
+  });
+}
+
+function showUiPrompt(message: string, def = '', title = 'Input'): Promise<string | null> {
+  return new Promise<string | null>((resolve) => {
+    uiOverlay = { kind: 'prompt', title, message, inputText: def, cancelable: true, resolve };
+  });
+}
+
+function showUiList(title: string, items: UiListItem[], startIndex = 0): Promise<UiListItem | null> {
+  console.log('showUiList called with title:', title, 'items:', items.length);
+  return new Promise<UiListItem | null>((resolve) => {
+    const idx = Math.max(0, Math.min(items.length - 1, startIndex));
+    uiOverlay = { kind: 'list', title, listItems: items, listIndex: idx, cancelable: true, resolve };
+    console.log('showUiList set uiOverlay:', JSON.stringify(uiOverlay, (key, value) => key === 'resolve' ? '[Function]' : value));
+    console.log('showUiList set uiOverlay:', uiOverlay);
+  });
+}
+
+// Overlay input handling
+function handleOverlayKey(e: KeyboardEvent) {
+  if (!isOverlayActive()) return;
+  try { e.preventDefault(); } catch {}
+  const k = uiOverlay.kind;
+  if (k === 'confirm') {
+    if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space') { uiOverlay.resolve?.(true); uiOverlay = { kind: 'none' }; return; }
+    if (e.code === 'Escape') { uiOverlay.resolve?.(false); uiOverlay = { kind: 'none' }; return; }
+  } else if (k === 'prompt') {
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') { uiOverlay.resolve?.(uiOverlay.inputText ?? ''); uiOverlay = { kind: 'none' }; return; }
+    if (e.code === 'Escape') { uiOverlay.resolve?.(null); uiOverlay = { kind: 'none' }; return; }
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+      uiOverlay.inputText = (uiOverlay.inputText ?? '') + e.key;
+      return;
+    }
+    if (e.code === 'Backspace') {
+      const t = (uiOverlay.inputText ?? '');
+      uiOverlay.inputText = t.slice(0, Math.max(0, t.length - 1));
+      return;
+    }
+  } else if (k === 'list') {
+    const items = uiOverlay.listItems ?? [];
+    if (e.code === 'ArrowDown') { uiOverlay.listIndex = Math.min(items.length - 1, (uiOverlay.listIndex ?? 0) + 1); return; }
+    if (e.code === 'ArrowUp') { uiOverlay.listIndex = Math.max(0, (uiOverlay.listIndex ?? 0) - 1); return; }
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+      const idx = uiOverlay.listIndex ?? 0;
+      uiOverlay.resolve?.(items[idx] ?? null); uiOverlay = { kind: 'none' }; return;
+    }
+    if (e.code === 'Escape') { uiOverlay.resolve?.(null); uiOverlay = { kind: 'none' }; return; }
+  }
+}
+window.addEventListener('keydown', handleOverlayKey);
+
+type OverlayHotspot = { kind: 'btn' | 'listItem' | 'input'; index?: number; x: number; y: number; w: number; h: number };
+let overlayHotspots: OverlayHotspot[] = [];
+
+function handleOverlayMouseDown(e: MouseEvent) {
+  if (!isOverlayActive()) return;
+  // Swallow clicks when an overlay is active so underlying UI doesn't receive them
+  try { e.preventDefault(); } catch {}
+  try { e.stopPropagation(); } catch {}
+  const p = worldFromEvent(e);
+  for (const hs of overlayHotspots) {
+    if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
+      if (uiOverlay.kind === 'confirm' && hs.kind === 'btn') {
+        const isOk = hs.index === 0; // 0: OK, 1: Cancel
+        uiOverlay.resolve?.(!!isOk);
+        uiOverlay = { kind: 'none' };
+        return;
+      }
+      if (uiOverlay.kind === 'prompt') {
+        if (hs.kind === 'btn') {
+          const isOk = hs.index === 0;
+          uiOverlay.resolve?.(isOk ? (uiOverlay.inputText ?? '') : null);
+          uiOverlay = { kind: 'none' };
+          return;
+        }
+        if (hs.kind === 'input') {
+          // focusing is implicit; typing handled by key handler
+          return;
+        }
+      }
+      if (uiOverlay.kind === 'list') {
+        if (hs.kind === 'listItem' && typeof hs.index === 'number') {
+          const items = uiOverlay.listItems ?? [];
+          const item = items[hs.index];
+          if (item && !item.disabled) {
+            uiOverlay.resolve?.(item);
+            uiOverlay = { kind: 'none' };
+          }
+          return;
+        }
+        if (hs.kind === 'btn') {
+          // Cancel button
+          uiOverlay.resolve?.(null);
+          uiOverlay = { kind: 'none' };
+          return;
+        }
+      }
+    }
+  }
+}
+canvas.addEventListener('mousedown', handleOverlayMouseDown, { capture: true });
 
 function readLevelsDoc(): LevelsDocV1 {
   try {
@@ -47,32 +201,266 @@ function writeLevelsDoc(doc: LevelsDocV1): void {
   try { localStorage.setItem(LS_LEVELS_KEY, JSON.stringify(doc)); } catch {}
 }
 
-function assembleEditorLevel(): Level {
-  const lvl: Level = {
-    canvas: { width: levelCanvas.width, height: levelCanvas.height },
-    course: editorLevelData?.course ?? { index: 1, total: 1, title: (editorLevelData?.course?.title || 'Untitled') },
-    par: editorLevelData?.par ?? 3,
-    tee: { x: Math.round(ball.x), y: Math.round(ball.y) },
-    cup: { x: Math.round(hole.x), y: Math.round(hole.y), r: (hole as any).r ?? 8 },
-    walls: walls ?? [],
-    wallsPoly: polyWalls ?? [],
-    posts: posts ?? [],
-    bridges: bridges ?? [],
-    water: waters ?? [],
-    waterPoly: watersPoly ?? [],
-    sand: sands ?? [],
-    sandPoly: sandsPoly ?? [],
-    hills: hills ?? [],
-    decorations: decorations ?? [],
-    meta: {
-      authorId: editorLevelData?.meta?.authorId,
-      authorName: editorLevelData?.meta?.authorName,
-      created: editorLevelData?.meta?.created,
-      modified: new Date().toISOString(),
+// Filesystem operations
+async function scanFilesystemLevels(): Promise<LevelEntry[]> {
+  try {
+    const levels: LevelEntry[] = [];
+    
+    // Known level files to try loading (fallback for dev mode)
+    const knownLevels = [
+      'level1.json', 'level2.json', 'level3.json', 'level4.json', 
+      'level5.json', 'level6.json', 'level7.json', 'level8.json'
+    ];
+    
+    // First try to scan directory (works in production)
+    try {
+      const response = await fetch('/levels/');
+      if (response.ok) {
+        const html = await response.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const links = doc.querySelectorAll('a[href$=".json"]');
+        
+        if (links.length > 0) {
+          console.log('Using directory listing for filesystem levels');
+          for (const link of links) {
+            const href = link.getAttribute('href');
+            if (!href || href === 'course.json') continue;
+            
+            try {
+              const levelData = await loadFilesystemLevel(href);
+              if (levelData) {
+                const id = `fs_${href.replace('.json', '')}`;
+                levels.push({
+                  id,
+                  level: levelData,
+                  source: 'filesystem',
+                  filename: href
+                });
+              }
+            } catch (error) {
+              console.warn(`Failed to load level ${href}:`, error);
+            }
+          }
+          return levels;
+        }
+      }
+    } catch (error) {
+      console.log('Directory listing failed, trying known level files');
     }
-  } as Level;
-  return lvl;
+    
+    // Fallback: try known level files directly
+    console.log('Using known level files for filesystem scanning');
+    for (const filename of knownLevels) {
+      try {
+        const levelData = await loadFilesystemLevel(filename);
+        if (levelData) {
+          const id = `fs_${filename.replace('.json', '')}`;
+          levels.push({
+            id,
+            level: levelData,
+            source: 'filesystem',
+            filename
+          });
+        }
+      } catch (error) {
+        // Silently continue - level file doesn't exist
+      }
+    }
+    
+    console.log(`Found ${levels.length} filesystem levels`);
+    return levels;
+  } catch (error) {
+    console.warn('Failed to scan filesystem levels:', error);
+    return [];
+  }
 }
+
+async function loadFilesystemLevel(filename: string): Promise<Level | null> {
+  try {
+    const response = await fetch(`/levels/${filename}`);
+    if (!response.ok) return null;
+    
+    const levelData = await response.json() as Level;
+    
+    // Schema validation
+    const validation = validateLevelSchema(levelData);
+    if (!validation.valid) {
+      console.warn(`Invalid level schema in ${filename}:`, validation.errors);
+      return null;
+    }
+    
+    return levelData;
+  } catch (error) {
+    console.warn(`Failed to load filesystem level ${filename}:`, error);
+    return null;
+  }
+}
+
+async function saveFilesystemLevel(level: Level, filename: string, userDirectory?: boolean): Promise<boolean> {
+  try {
+    // Determine save path based on user preference
+    let suggestedPath = filename;
+    if (userDirectory && userProfile.name) {
+      const sanitizedUsername = userProfile.name.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
+      suggestedPath = `User_Levels/${sanitizedUsername}/${filename}`;
+    }
+    
+    // In a real filesystem integration, this would write to the actual filesystem
+    // For now, we'll use the File System Access API if available, or fall back to download
+    
+    if ('showSaveFilePicker' in window) {
+      // Use File System Access API
+      const fileHandle = await (window as any).showSaveFilePicker({
+        suggestedName: filename,
+        types: [{
+          description: 'Level files',
+          accept: { 'application/json': ['.json'] }
+        }]
+      });
+      
+      const writable = await fileHandle.createWritable();
+      await writable.write(JSON.stringify(level, null, 2));
+      await writable.close();
+      
+      console.log(`Level saved via File System Access API: ${filename}`);
+      return true;
+    } else {
+      // Fall back to download with suggested directory structure in filename
+      const downloadFilename = userDirectory ? suggestedPath.replace(/\//g, '_') : filename;
+      const blob = new Blob([JSON.stringify(level, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = downloadFilename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      console.log(`Level downloaded as: ${downloadFilename}`);
+      return true;
+    }
+  } catch (error) {
+    console.warn(`Failed to save filesystem level ${filename}:`, error);
+    return false;
+  }
+}
+
+// Combined level operations
+async function getAllLevels(): Promise<LevelEntry[]> {
+  const allLevels: LevelEntry[] = [];
+  
+  // Get localStorage levels
+  const doc = readLevelsDoc();
+  for (const saved of doc.levels) {
+    allLevels.push({
+      id: saved.id,
+      level: saved.level,
+      source: 'localStorage'
+    });
+  }
+  
+  // Get filesystem levels (cached)
+  if (!filesystemCacheValid) {
+    filesystemLevelsCache = await scanFilesystemLevels();
+    filesystemCacheValid = true;
+  }
+  
+  allLevels.push(...filesystemLevelsCache);
+  
+  return allLevels;
+}
+
+function invalidateFilesystemCache(): void {
+  filesystemCacheValid = false;
+}
+
+// Schema validation
+function validateLevelSchema(data: any): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  
+  if (!data || typeof data !== 'object') {
+    errors.push('Level data must be an object');
+    return { valid: false, errors };
+  }
+  
+  // Required fields
+  if (!data.canvas || typeof data.canvas !== 'object') {
+    errors.push('Missing or invalid canvas field');
+  } else {
+    if (typeof data.canvas.width !== 'number' || data.canvas.width <= 0) {
+      errors.push('Canvas width must be a positive number');
+    }
+    if (typeof data.canvas.height !== 'number' || data.canvas.height <= 0) {
+      errors.push('Canvas height must be a positive number');
+    }
+  }
+  
+  if (!data.tee || typeof data.tee !== 'object') {
+    errors.push('Missing or invalid tee field');
+  } else {
+    if (typeof data.tee.x !== 'number' || typeof data.tee.y !== 'number') {
+      errors.push('Tee position must have numeric x and y coordinates');
+    }
+  }
+  
+  if (!data.cup || typeof data.cup !== 'object') {
+    errors.push('Missing or invalid cup field');
+  } else {
+    if (typeof data.cup.x !== 'number' || typeof data.cup.y !== 'number') {
+      errors.push('Cup position must have numeric x and y coordinates');
+    }
+    if (data.cup.r !== undefined && (typeof data.cup.r !== 'number' || data.cup.r <= 0)) {
+      errors.push('Cup radius must be a positive number');
+    }
+  }
+  
+  // Optional but validated if present
+  if (data.par !== undefined && (typeof data.par !== 'number' || data.par < 1)) {
+    errors.push('Par must be a positive number');
+  }
+  
+  // Validate arrays if present
+  const arrayFields = ['walls', 'wallsPoly', 'posts', 'bridges', 'water', 'waterPoly', 'sand', 'sandPoly', 'hills', 'decorations'];
+  for (const field of arrayFields) {
+    if (data[field] !== undefined && !Array.isArray(data[field])) {
+      errors.push(`${field} must be an array if present`);
+    }
+  }
+  
+  // Validate wall objects
+  if (Array.isArray(data.walls)) {
+    data.walls.forEach((wall: any, i: number) => {
+      if (!wall || typeof wall !== 'object') {
+        errors.push(`Wall ${i} must be an object`);
+      } else {
+        const requiredFields = ['x', 'y', 'w', 'h'];
+        for (const field of requiredFields) {
+          if (typeof wall[field] !== 'number') {
+            errors.push(`Wall ${i} missing or invalid ${field}`);
+          }
+        }
+      }
+    });
+  }
+  
+  // Validate posts
+  if (Array.isArray(data.posts)) {
+    data.posts.forEach((post: any, i: number) => {
+      if (!post || typeof post !== 'object') {
+        errors.push(`Post ${i} must be an object`);
+      } else {
+        if (typeof post.x !== 'number' || typeof post.y !== 'number' || typeof post.r !== 'number') {
+          errors.push(`Post ${i} must have numeric x, y, and r fields`);
+        }
+      }
+    });
+  }
+  
+  return { valid: errors.length === 0, errors };
+}
+
 
 function applyLevelToGlobals(parsed: Level): void {
   // Apply to globals for rendering
@@ -98,147 +486,10 @@ function canModifyLevel(level: Level): boolean {
   return !!(isOwner || isAdmin);
 }
 
-function saveEditorLevel(): void {
-  // Overwrite if we have a saved id and permissions, otherwise Save As
-  if (editorCurrentSavedId) {
-    const doc = readLevelsDoc();
-    const idx = doc.levels.findIndex(l => l.id === editorCurrentSavedId);
-    if (idx >= 0) {
-      const existing = doc.levels[idx].level;
-      if (!canModifyLevel(existing)) {
-        try { alert('You can only overwrite your own levels or if you are an admin. Use Save As to create a copy.'); } catch {}
-        saveEditorLevelAs();
-        return;
-      }
-      // overwrite, preserve created/author, update modified
-      const newLevel = assembleEditorLevel();
-      newLevel.meta = {
-        authorId: existing.meta?.authorId,
-        authorName: existing.meta?.authorName,
-        created: existing.meta?.created || new Date().toISOString(),
-        modified: new Date().toISOString(),
-      };
-      // Keep title
-      if (!newLevel.course) newLevel.course = { index: 1, total: 1 } as any;
-      if (!newLevel.course.title) newLevel.course.title = existing.course?.title || 'Untitled';
-      doc.levels[idx].level = newLevel;
-      writeLevelsDoc(doc);
-      editorLevelData = newLevel;
-      return;
-    }
-  }
-  saveEditorLevelAs();
-}
 
-function saveEditorLevelAs(): void {
-  console.log('saveEditorLevelAs: Starting function');
-  const defaultTitle = editorLevelData?.course?.title || 'Untitled';
-  const title = safePrompt('Enter a title for this level:', defaultTitle).trim();
-  if (!title) {
-    console.log('saveEditorLevelAs: No title provided');
-    return;
-  }
-  console.log('saveEditorLevelAs: Title provided:', title);
-  const doc = readLevelsDoc();
-  const id = newLevelId();
-  const lvl = assembleEditorLevel();
-  // Set title and ownership
-  if (!lvl.course) (lvl as any).course = { index: 1, total: 1 } as any;
-  (lvl.course as any).title = title;
-  const uid = getUserId();
-  lvl.meta = {
-    authorId: uid,
-    authorName: userProfile.name || 'unknown',
-    created: new Date().toISOString(),
-    modified: new Date().toISOString(),
-  };
-  doc.levels.push({ id, level: lvl });
-  writeLevelsDoc(doc);
-  editorCurrentSavedId = id;
-  editorLevelData = lvl;
-}
 
-function openLoadPicker(): void {
-  console.log('openLoadPicker: Starting function');
-  const doc = readLevelsDoc();
-  console.log('openLoadPicker: Found', doc.levels.length, 'levels');
-  if (doc.levels.length === 0) { 
-    console.log('openLoadPicker: No levels, showing alert');
-    try { alert('No saved levels found. Use Save As to create one.'); } catch (e) { console.error('Alert failed:', e); }
-    return;
-  }
-  const lines = doc.levels.map((e, i) => {
-    const lvl = e.level;
-    const t = lvl.course?.title || 'Untitled';
-    const a = lvl.meta?.authorName || 'unknown';
-    const badge = (lvl.meta?.authorId === getUserId()) ? ' (you)' : (userProfile.role === 'admin' ? ' (admin can edit)' : '');
-    return `${i+1}. ${t} — ${a}${badge}`;
-  }).join('\n');
-  const answer = safePrompt(`Load which level?\n${lines}\n\nEnter number:`, '1').trim();
-  const n = parseInt(answer, 10);
-  if (!n || n < 1 || n > doc.levels.length) return;
-  const chosen = doc.levels[n-1];
-  const lvl = chosen.level;
-  editorLevelData = lvl;
-  editorCurrentSavedId = chosen.id;
-  applyLevelToGlobals(lvl);
-}
 
-function openDeletePicker(): void {
-  console.log('openDeletePicker: Starting function');
-  const doc = readLevelsDoc();
-  console.log('openDeletePicker: Found', doc.levels.length, 'levels');
-  if (doc.levels.length === 0) { 
-    console.log('openDeletePicker: No levels, showing alert');
-    try { alert('No saved levels to delete.'); } catch (e) { console.error('Alert failed:', e); }
-    return;
-  }
-  const lines = doc.levels.map((e, i) => {
-    const lvl = e.level; const t = lvl.course?.title || 'Untitled'; const a = lvl.meta?.authorName || 'unknown';
-    return `${i+1}. ${t} — ${a}`;
-  }).join('\n');
-  const answer = safePrompt(`Delete which level?\n${lines}\n\nEnter number:`, '').trim();
-  const n = parseInt(answer, 10);
-  if (!n || n < 1 || n > doc.levels.length) return;
-  const idx = n-1; const entry = doc.levels[idx];
-  if (!canModifyLevel(entry.level)) { try { alert('You can only delete your own levels or if you are an admin.'); } catch {} return; }
-  const ok = safeConfirm(`Really delete "${entry.level.course?.title || 'Untitled'}"? This cannot be undone.`);
-  if (!ok) return;
-  doc.levels.splice(idx, 1);
-  writeLevelsDoc(doc);
-  if (editorCurrentSavedId === entry.id) editorCurrentSavedId = null;
-}
 
-function newEditorLevel(): void {
-  console.log('newEditorLevel: Starting function');
-  const proceed = safeConfirm('Start a new level? Unsaved changes will be lost.');
-  if (!proceed) {
-    console.log('newEditorLevel: User cancelled or confirm failed');
-    return;
-  }
-  console.log('newEditorLevel: Creating new level');
-  editorCurrentSavedId = null;
-  // Build a minimal default level (reuse logic from enterLevelEditor)
-  const defaultCupR = hole.r || 8;
-  editorLevelData = {
-    canvas: { width: WIDTH, height: HEIGHT },
-    course: { index: 1, total: 1, title: 'Untitled' },
-    par: 3,
-    tee: { x: COURSE_MARGIN + 60, y: Math.floor(HEIGHT / 2) },
-    cup: { x: WIDTH - COURSE_MARGIN - 60, y: Math.floor(HEIGHT / 2), r: defaultCupR },
-    walls: [],
-    wallsPoly: [],
-    posts: [],
-    bridges: [],
-    water: [],
-    waterPoly: [],
-    sand: [],
-    sandPoly: [],
-    hills: [],
-    decorations: []
-  } as Level;
-  applyLevelToGlobals(editorLevelData);
-}
 
 function migrateSingleSlotIfNeeded(): void {
   try {
@@ -263,211 +514,15 @@ function migrateSingleSlotIfNeeded(): void {
   } catch {}
 }
 
-function safePrompt(message: string, def: string): string {
-  try {
-    console.log('Attempting prompt:', message);
-    const v = prompt(message, def);
-    console.log('Prompt result:', v);
-    return typeof v === 'string' ? v : '';
-  } catch (e) {
-    console.error('Prompt failed:', e);
-    return def || '';
-  }
-}
-function safeConfirm(message: string): boolean {
-  try {
-    console.log('Attempting confirm:', message);
-    const result = !!confirm(message);
-    console.log('Confirm result:', result);
-    return result;
-  } catch (e) {
-    console.error('Confirm failed:', e);
-    return false; // Changed from true to false for safety
-  }
-}
-
 // Users Admin UI hotspots (rebuilt every frame while in users screen)
 type UsersHotspot = { kind: 'back' | 'addUser' | 'addAdmin' | 'export' | 'import' | 'promote' | 'demote' | 'enable' | 'disable' | 'remove'; x: number; y: number; w: number; h: number; id?: string };
 let usersUiHotspots: UsersHotspot[] = [];
 
-// Level Editor UI hotspots and state
-type EditorTool = 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'sand' | 'sandPoly' | 'hill';
-type EditorAction = 'save' | 'saveAs' | 'load' | 'new' | 'delete' | 'gridToggle' | 'gridMinus' | 'gridPlus' | 'back';
-type EditorMenuId = 'file' | 'objects' | 'decorations' | 'tools';
-type EditorMenuItem = 
-  | { kind: 'tool'; tool: EditorTool }
-  | { kind: 'action'; action: EditorAction }
-  | { kind: 'decoration'; decoration: string };
-type EditorHotspot =
-  | { kind: 'tool'; tool: EditorTool; x: number; y: number; w: number; h: number }
-  | { kind: 'action'; action: EditorAction; x: number; y: number; w: number; h: number }
-  | { kind: 'menu'; menu: EditorMenuId; x: number; y: number; w: number; h: number }
-  | { kind: 'menuItem'; menu: EditorMenuId; item: EditorMenuItem; x: number; y: number; w: number; h: number };
-let editorUiHotspots: EditorHotspot[] = [];
-let selectedEditorTool: EditorTool = 'select';
-let editorShowGrid = true;
-let editorGridSize = 20; // px
-let editorLevelData: Level | null = null; // working level for the editor
-let editorCurrentSavedId: string | null = null; // current saved entry id when editing
-let openEditorMenu: EditorMenuId | null = null; // current open dropdown in menubar
 
-// Menubar keyboard focus state: which item is highlighted in the open dropdown
-let editorMenuActiveItemIndex: number = 0;
 
-// Define menu structures
-const EDITOR_MENUS: Record<EditorMenuId, { title: string; items: Array<{ label: string; item: EditorMenuItem; separator?: boolean }> }> = {
-  file: {
-    title: 'File',
-    items: [
-      { label: 'New', item: { kind: 'action', action: 'new' } },
-      { label: 'Save', item: { kind: 'action', action: 'save' } },
-      { label: 'Save As', item: { kind: 'action', action: 'saveAs' } },
-      { label: 'Level Load', item: { kind: 'action', action: 'load' } },
-      { label: 'Delete', item: { kind: 'action', action: 'delete' } },
-      { label: 'Back/Exit', item: { kind: 'action', action: 'back' }, separator: true }
-    ]
-  },
-  objects: {
-    title: 'Objects',
-    items: [
-      { label: 'Tee', item: { kind: 'tool', tool: 'tee' } },
-      { label: 'Cup', item: { kind: 'tool', tool: 'cup' } },
-      { label: 'Post', item: { kind: 'tool', tool: 'post' }, separator: true },
-      { label: 'Wall', item: { kind: 'tool', tool: 'wall' } },
-      { label: 'WallsPoly', item: { kind: 'tool', tool: 'wallsPoly' } },
-      { label: 'Bridge', item: { kind: 'tool', tool: 'bridge' }, separator: true },
-      { label: 'Water', item: { kind: 'tool', tool: 'water' } },
-      { label: 'WaterPoly', item: { kind: 'tool', tool: 'waterPoly' } },
-      { label: 'Sand', item: { kind: 'tool', tool: 'sand' } },
-      { label: 'SandPoly', item: { kind: 'tool', tool: 'sandPoly' } },
-      { label: 'Hill', item: { kind: 'tool', tool: 'hill' } }
-    ]
-  },
-  decorations: {
-    title: 'Decorations',
-    items: [
-      { label: 'Flowers', item: { kind: 'decoration', decoration: 'flowers' } }
-    ]
-  },
-  tools: {
-    title: 'Editor Tools',
-    items: [
-      { label: 'Select Tool', item: { kind: 'tool', tool: 'select' } },
-      { label: editorShowGrid ? 'Grid On' : 'Grid Off', item: { kind: 'action', action: 'gridToggle' }, separator: true },
-      { label: `Grid - (${editorGridSize}px)`, item: { kind: 'action', action: 'gridMinus' } },
-      { label: `Grid + (${editorGridSize}px)`, item: { kind: 'action', action: 'gridPlus' } }
-    ]
-  }
-};
 
-// Level Editor drag state for rectangle placements
-let isEditorDragging = false;
-let editorDragTool: EditorTool | null = null;
-let editorDragStart = { x: 0, y: 0 }; // play coords (snapped & clamped)
-let editorDragCurrent = { x: 0, y: 0 }; // play coords (snapped & clamped)
 
-function enterLevelEditor(): void {
-  // Try to initialize from saved local storage once per session
-  // Run single-slot migration on first use
-  try { migrateSingleSlotIfNeeded(); } catch {}
-  if (editorLevelData === null) {
-    try {
-      const raw = localStorage.getItem('vp.editor.level');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed.tee && parsed.cup) {
-          editorLevelData = parsed as Level;
-        }
-      }
-    } catch {}
-  }
-  if (editorLevelData === null) {
-    // Build a minimal default level
-    const defaultCupR = hole.r || 8;
-    editorLevelData = {
-      canvas: { width: WIDTH, height: HEIGHT },
-      course: { index: 1, total: 1, title: 'Untitled' },
-      par: 3,
-      tee: { x: COURSE_MARGIN + 60, y: Math.floor(HEIGHT / 2) },
-      cup: { x: WIDTH - COURSE_MARGIN - 60, y: Math.floor(HEIGHT / 2), r: defaultCupR },
-      walls: [],
-      wallsPoly: [],
-      posts: [],
-      bridges: [],
-      water: [],
-      waterPoly: [],
-      sand: [],
-      sandPoly: [],
-      hills: [],
-      decorations: []
-    } as Level;
-  }
-  // Apply editor data to rendering globals
-  levelCanvas = {
-    width: editorLevelData.canvas?.width ?? WIDTH,
-    height: editorLevelData.canvas?.height ?? HEIGHT
-  };
-  walls = editorLevelData.walls ?? [];
-  sands = editorLevelData.sand ?? [];
-  sandsPoly = editorLevelData.sandPoly ?? [];
-  waters = editorLevelData.water ?? [];
-  watersPoly = editorLevelData.waterPoly ?? [];
-  decorations = editorLevelData.decorations ?? [];
-  hills = editorLevelData.hills ?? [];
-  bridges = editorLevelData.bridges ?? [];
-  posts = editorLevelData.posts ?? [];
-  polyWalls = editorLevelData.wallsPoly ?? [];
-  // Use tee/cup as ball/hole preview locations
-  ball.x = editorLevelData.tee.x; ball.y = editorLevelData.tee.y; ball.vx = 0; ball.vy = 0; ball.moving = false;
-  hole.x = editorLevelData.cup.x; hole.y = editorLevelData.cup.y; (hole as any).r = editorLevelData.cup.r;
-}
 
-function saveEditorLevelToLocal(): void {
-  // Assemble a Level object from current editor state and save to localStorage
-  const lvl: Level = {
-    canvas: { width: levelCanvas.width, height: levelCanvas.height },
-    course: editorLevelData?.course ?? { index: 1, total: 1, title: 'Untitled' },
-    par: editorLevelData?.par ?? 3,
-    tee: { x: Math.round(ball.x), y: Math.round(ball.y) },
-    cup: { x: Math.round(hole.x), y: Math.round(hole.y), r: (hole as any).r ?? 8 },
-    walls: walls ?? [],
-    wallsPoly: polyWalls ?? [],
-    posts: posts ?? [],
-    bridges: bridges ?? [],
-    water: waters ?? [],
-    waterPoly: watersPoly ?? [],
-    sand: sands ?? [],
-    sandPoly: sandsPoly ?? [],
-    hills: hills ?? [],
-    decorations: decorations ?? []
-  } as Level;
-  try { localStorage.setItem('vp.editor.level', JSON.stringify(lvl)); } catch {}
-  editorLevelData = lvl;
-}
-
-function loadEditorLevelFromLocal(): void {
-  try {
-    const raw = localStorage.getItem('vp.editor.level');
-    if (!raw) return;
-    const parsed = JSON.parse(raw) as Level;
-    if (!parsed || !parsed.tee || !parsed.cup) return;
-    editorLevelData = parsed;
-    // Apply to globals for rendering
-    levelCanvas = { width: parsed.canvas?.width ?? WIDTH, height: parsed.canvas?.height ?? HEIGHT };
-    walls = parsed.walls ?? [];
-    sands = parsed.sand ?? [];
-    sandsPoly = parsed.sandPoly ?? [];
-    waters = parsed.water ?? [];
-    watersPoly = parsed.waterPoly ?? [];
-    decorations = parsed.decorations ?? [];
-    hills = parsed.hills ?? [];
-    bridges = parsed.bridges ?? [];
-    posts = parsed.posts ?? [];
-    polyWalls = parsed.wallsPoly ?? [];
-    ball.x = parsed.tee.x; ball.y = parsed.tee.y; ball.vx = 0; ball.vy = 0; ball.moving = false;
-    hole.x = parsed.cup.x; hole.y = parsed.cup.y; (hole as any).r = parsed.cup.r;
-  } catch {}
-}
 
 function clampToFairway(x: number, y: number): { x: number; y: number } {
   const fairX = COURSE_MARGIN;
@@ -720,37 +775,43 @@ let hills: Slope[] = [];
 // Logical level canvas size from level JSON; defaults to actual canvas size
 let levelCanvas = { width: WIDTH, height: HEIGHT };
 
-// Selection system for Level Editor
-type SelectableObject = 
-  | { type: 'tee'; object: { x: number; y: number } }
-  | { type: 'cup'; object: { x: number; y: number; r: number } }
-  | { type: 'wall'; object: Wall; index: number }
-  | { type: 'post'; object: Circle; index: number }
-  | { type: 'decoration'; object: Decoration; index: number }
-  | { type: 'water'; object: Rect; index: number }
-  | { type: 'sand'; object: Rect; index: number }
-  | { type: 'bridge'; object: Rect; index: number }
-  | { type: 'hill'; object: Slope; index: number };
+  // Selection system for Level Editor
+  type SelectableObject = 
+    | { type: 'tee'; object: { x: number; y: number } }
+    | { type: 'cup'; object: { x: number; y: number; r: number } }
+    | { type: 'wall'; object: Wall; index: number }
+    | { type: 'wallsPoly'; object: Poly; index: number }
+    | { type: 'post'; object: Circle; index: number }
+    | { type: 'decoration'; object: Decoration; index: number }
+    | { type: 'water'; object: Rect; index: number }
+    | { type: 'waterPoly'; object: Poly; index: number }
+    | { type: 'sand'; object: Rect; index: number }
+    | { type: 'sandPoly'; object: Poly; index: number }
+    | { type: 'bridge'; object: Rect; index: number }
+    | { type: 'hill'; object: Slope; index: number };
 
 let selectedObjects: SelectableObject[] = [];
 let selectionBoxStart: { x: number; y: number } | null = null;
 let isSelectionDragging = false;
 let isDragMoving = false;
+// Drag/move state
 let dragMoveStart: { x: number; y: number } | null = null;
 let dragMoveOffset: { x: number; y: number } = { x: 0, y: 0 };
+
+// Resize state
 let isResizing = false;
 let resizeHandle: string | null = null;
 let resizeStartBounds: { x: number; y: number; w: number; h: number } | null = null;
 let resizeStartMouse: { x: number; y: number } | null = null;
 
-// Select Tool rotation state
+// Rotation state
 let isRotating = false;
+let rotationCenter: { x: number; y: number } | null = null;
 let rotationStartAngle = 0;
 let rotationStartMouse: { x: number; y: number } | null = null;
-let rotationCenter: { x: number; y: number } | null = null;
+let rotationBaseAtStart: number | null = null;
+let rotationSensitivity = 0.05; // updated at rotate start as needed
 let currentRotationAngle = 0;
-
-// Object rotation tracking (temporary until schemas support rotation)
 const objectRotations = new Map<string, number>();
 
 // Selection helper functions
@@ -766,8 +827,53 @@ function getObjectBounds(obj: SelectableObject): { x: number; y: number; w: numb
     case 'post':
       return { x: obj.object.x - obj.object.r, y: obj.object.y - obj.object.r, w: obj.object.r * 2, h: obj.object.r * 2 };
     case 'wall':
+      return { x: obj.object.x, y: obj.object.y, w: obj.object.w, h: obj.object.h };
+    case 'wallsPoly': {
+      const pts = obj.object.points;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (let i = 0; i < pts.length; i += 2) {
+        const x = pts[i], y = pts[i + 1];
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+      const w = Math.max(0, maxX - minX);
+      const h = Math.max(0, maxY - minY);
+      return { x: minX, y: minY, w, h };
+    }
     case 'water':
+      return { x: obj.object.x, y: obj.object.y, w: obj.object.w, h: obj.object.h };
+    case 'waterPoly': {
+      const pts = obj.object.points;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (let i = 0; i < pts.length; i += 2) {
+        const x = pts[i], y = pts[i + 1];
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+      const w = Math.max(0, maxX - minX);
+      const h = Math.max(0, maxY - minY);
+      return { x: minX, y: minY, w, h };
+    }
     case 'sand':
+      return { x: obj.object.x, y: obj.object.y, w: obj.object.w, h: obj.object.h };
+    case 'sandPoly': {
+      const pts = obj.object.points;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (let i = 0; i < pts.length; i += 2) {
+        const x = pts[i], y = pts[i + 1];
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+      const w = Math.max(0, maxX - minX);
+      const h = Math.max(0, maxY - minY);
+      return { x: minX, y: minY, w, h };
+    }
     case 'bridge':
       return { x: obj.object.x, y: obj.object.y, w: obj.object.w, h: obj.object.h };
     case 'decoration':
@@ -805,9 +911,21 @@ function findObjectAtPoint(px: number, py: number): SelectableObject | null {
     if (isPointInObject(px, py, obj)) return obj;
   }
   
+  // Check polygon walls
+  for (let i = 0; i < polyWalls.length; i++) {
+    const obj: SelectableObject = { type: 'wallsPoly', object: polyWalls[i], index: i };
+    if (isPointInObject(px, py, obj)) return obj;
+  }
+  
   // Check water
   for (let i = 0; i < waters.length; i++) {
     const obj: SelectableObject = { type: 'water', object: waters[i], index: i };
+    if (isPointInObject(px, py, obj)) return obj;
+  }
+  
+  // Check polygon water
+  for (let i = 0; i < watersPoly.length; i++) {
+    const obj: SelectableObject = { type: 'waterPoly', object: watersPoly[i], index: i };
     if (isPointInObject(px, py, obj)) return obj;
   }
   
@@ -817,74 +935,34 @@ function findObjectAtPoint(px: number, py: number): SelectableObject | null {
     if (isPointInObject(px, py, obj)) return obj;
   }
   
+  // Check polygon sand
+  for (let i = 0; i < sandsPoly.length; i++) {
+    const obj: SelectableObject = { type: 'sandPoly', object: sandsPoly[i], index: i };
+    if (isPointInObject(px, py, obj)) return obj;
+  }
+  
   // Check bridges
   for (let i = 0; i < bridges.length; i++) {
     const obj: SelectableObject = { type: 'bridge', object: bridges[i], index: i };
     if (isPointInObject(px, py, obj)) return obj;
   }
   
-  // Check decorations
-  for (let i = 0; i < decorations.length; i++) {
-    const obj: SelectableObject = { type: 'decoration', object: decorations[i], index: i };
+  // Check hills
+  for (let i = 0; i < hills.length; i++) {
+    const obj: SelectableObject = { type: 'hill', object: hills[i], index: i } as any;
     if (isPointInObject(px, py, obj)) return obj;
   }
   
-  // Check hills
-  for (let i = 0; i < hills.length; i++) {
-    const obj: SelectableObject = { type: 'hill', object: hills[i], index: i };
+  // Check decorations
+  for (let i = 0; i < decorations.length; i++) {
+    const obj: SelectableObject = { type: 'decoration', object: decorations[i], index: i } as any;
     if (isPointInObject(px, py, obj)) return obj;
   }
   
   return null;
 }
 
-function moveSelectedObjects(dx: number, dy: number): void {
-  for (const obj of selectedObjects) {
-    switch (obj.type) {
-      case 'tee':
-        const newTeePos = clampToFairway(ball.x + dx, ball.y + dy);
-        ball.x = newTeePos.x;
-        ball.y = newTeePos.y;
-        if (editorLevelData) {
-          editorLevelData.tee.x = newTeePos.x;
-          editorLevelData.tee.y = newTeePos.y;
-        }
-        break;
-      case 'cup':
-        const newCupPos = clampToFairway(hole.x + dx, hole.y + dy);
-        hole.x = newCupPos.x;
-        hole.y = newCupPos.y;
-        if (editorLevelData) {
-          editorLevelData.cup.x = newCupPos.x;
-          editorLevelData.cup.y = newCupPos.y;
-        }
-        break;
-      case 'post':
-        const newPostPos = clampToFairway(obj.object.x + dx, obj.object.y + dy);
-        obj.object.x = newPostPos.x;
-        obj.object.y = newPostPos.y;
-        break;
-      case 'wall':
-      case 'water':
-      case 'sand':
-      case 'bridge':
-        const newRectPos = clampToFairway(obj.object.x + dx, obj.object.y + dy);
-        obj.object.x = newRectPos.x;
-        obj.object.y = newRectPos.y;
-        break;
-      case 'decoration':
-        const newDecPos = clampToFairway(obj.object.x + dx, obj.object.y + dy);
-        obj.object.x = newDecPos.x;
-        obj.object.y = newDecPos.y;
-        break;
-      case 'hill':
-        const newHillPos = clampToFairway(obj.object.x + dx, obj.object.y + dy);
-        obj.object.x = newHillPos.x;
-        obj.object.y = newHillPos.y;
-        break;
-    }
-  }
-}
+// moveSelectedObjects function moved to levelEditor module
 
 function getResizeHandles(bounds: { x: number; y: number; w: number; h: number }): Array<{ handle: string; x: number; y: number; w: number; h: number; cursor: string }> {
   const handleSize = 8;
@@ -917,8 +995,11 @@ function findResizeHandle(px: number, py: number): string | null {
   if (selectedObjects.length !== 1) return null; // Only resize single selections
   const obj = selectedObjects[0];
   
-  // Only resizable objects (not tee/cup/decoration/post)
-  if (obj.type === 'tee' || obj.type === 'cup' || obj.type === 'decoration' || obj.type === 'post') return null;
+  // Only resizable objects (not tee/cup/decoration/post or polygon objects)
+  if (
+    obj.type === 'tee' || obj.type === 'cup' || obj.type === 'decoration' || obj.type === 'post' ||
+    obj.type === 'wallsPoly' || obj.type === 'waterPoly' || obj.type === 'sandPoly'
+  ) return null;
   
   const bounds = getObjectBounds(obj);
   const handles = getResizeHandles(bounds);
@@ -935,8 +1016,11 @@ function findRotationHandle(px: number, py: number): string | null {
   if (selectedObjects.length !== 1) return null; // Only rotate single selections
   const obj = selectedObjects[0];
   
-  // Only rotatable objects (rectangular objects for now)
-  if (obj.type === 'tee' || obj.type === 'cup' || obj.type === 'decoration' || obj.type === 'post') return null;
+  // Only rotatable objects (rectangular objects for now; polygons excluded)
+  if (
+    obj.type === 'tee' || obj.type === 'cup' || obj.type === 'decoration' || obj.type === 'post' ||
+    obj.type === 'wallsPoly' || obj.type === 'waterPoly' || obj.type === 'sandPoly'
+  ) return null;
   
   const bounds = getObjectBounds(obj);
   const handles = getRotationHandles(bounds);
@@ -983,23 +1067,25 @@ function renderWithRotation(ctx: CanvasRenderingContext2D, obj: SelectableObject
 }
 
 function applyRotation(startAngle: number, currentAngle: number, obj: SelectableObject): void {
-  const angleDiff = currentAngle - startAngle;
+  // Scale the raw angle delta to reduce sensitivity
+  const rawDiff = currentAngle - startAngle;
+  const angleDiff = rawDiff * rotationSensitivity;
   const snapIncrement = Math.PI / 12; // 15-degree snapping
   const snappedAngleDiff = Math.round(angleDiff / snapIncrement) * snapIncrement;
-  
-  // Store rotation for this object
+
+  // Store rotation for this object based on the rotation at drag start
   const objKey = getObjectKey(obj);
-  const baseRotation = objectRotations.get(objKey) || 0;
-  currentRotationAngle = baseRotation + snappedAngleDiff;
+  const baseAtStart = rotationBaseAtStart ?? (objectRotations.get(objKey) || 0);
+  currentRotationAngle = baseAtStart + snappedAngleDiff;
   objectRotations.set(objKey, currentRotationAngle);
-  
+
   // Debug output
-  console.log(`Rotating object ${objKey} by ${(snappedAngleDiff * 180 / Math.PI).toFixed(1)}°`);
+  console.log(`Rotating object ${objKey} to ${(currentRotationAngle * 180 / Math.PI).toFixed(1)}°`);
 }
 
 function applyResize(handle: string, startBounds: { x: number; y: number; w: number; h: number }, dx: number, dy: number): { x: number; y: number; w: number; h: number } {
   let { x, y, w, h } = startBounds;
-  const minSize = editorGridSize; // Minimum size is one grid step
+  const minSize = 20; // Minimum size is one grid step
   
   switch (handle) {
     case 'nw':
@@ -1041,10 +1127,11 @@ function applyResize(handle: string, startBounds: { x: number; y: number; w: num
   }
   
   // Snap to grid
-  x = Math.round(x / editorGridSize) * editorGridSize;
-  y = Math.round(y / editorGridSize) * editorGridSize;
-  w = Math.round(w / editorGridSize) * editorGridSize;
-  h = Math.round(h / editorGridSize) * editorGridSize;
+  const gridSize = 20;
+  x = Math.round(x / gridSize) * gridSize;
+  y = Math.round(y / gridSize) * gridSize;
+  w = Math.round(w / gridSize) * gridSize;
+  h = Math.round(h / gridSize) * gridSize;
   
   // Ensure minimum size after snapping
   w = Math.max(minSize, w);
@@ -1223,8 +1310,6 @@ let lastAdvanceFromSunkMs = 0; // used to swallow trailing click after mousedown
 const CLICK_SWALLOW_MS = 180; // shorten delay for snappier feel
 
 let previousGameState: 'menu' | 'course' | 'options' | 'users' | 'changelog' | 'loading' | 'play' | 'sunk' | 'summary' | 'levelEditor' = 'menu';
-
-// (duplicate block removed)
 
 // Changelog screen state and helpers
 let changelogText: string | null = (typeof CHANGELOG_RAW === 'string' && CHANGELOG_RAW.trim().length > 0) ? CHANGELOG_RAW : null;
@@ -1524,7 +1609,76 @@ canvas.addEventListener('mousedown', (e) => {
     const le = getMainLevelEditorRect();
     if (canStart && p.x >= le.x && p.x <= le.x + le.w && p.y >= le.y && p.y <= le.y + le.h) {
       gameState = 'levelEditor';
-      enterLevelEditor();
+      // Construct EditorEnv and delegate to levelEditor module
+      const editorEnv = {
+        ctx,
+        width: WIDTH,
+        height: HEIGHT,
+        canvasToPlayCoords: (x: number, y: number) => {
+          const pp = canvasToPlayCoords({ x, y });
+          return { x: pp.x, y: pp.y };
+        },
+        worldFromEvent: (ev: MouseEvent) => worldFromEvent(ev),
+        isOverlayActive,
+        renderGlobalOverlays,
+        fairwayRect: () => ({
+          x: COURSE_MARGIN,
+          y: COURSE_MARGIN,
+          w: Math.max(0, Math.min(levelCanvas.width, WIDTH) - COURSE_MARGIN * 2),
+          h: Math.max(0, Math.min(levelCanvas.height, HEIGHT) - COURSE_MARGIN * 2),
+        }),
+        getGridSize: () => 20,
+        setGridSize: (n: number) => { /* delegated to levelEditor */ },
+        getShowGrid: () => false,
+        setShowGrid: (b: boolean) => { /* delegated to levelEditor */ },
+        getGlobalState: () => ({
+          WIDTH,
+          HEIGHT,
+          COURSE_MARGIN,
+          ball,
+          hole,
+          levelCanvas,
+          walls,
+          sands,
+          sandsPoly,
+          waters,
+          watersPoly,
+          decorations,
+          hills,
+          bridges,
+          posts,
+          polyWalls,
+          userProfile
+        }),
+        setGlobalState: (state: any) => {
+          if (state.levelCanvas) levelCanvas = state.levelCanvas;
+          if (state.walls) walls = state.walls;
+          if (state.sands) sands = state.sands;
+          if (state.sandsPoly) sandsPoly = state.sandsPoly;
+          if (state.waters) waters = state.waters;
+          if (state.watersPoly) watersPoly = state.watersPoly;
+          if (state.decorations) decorations = state.decorations;
+          if (state.hills) hills = state.hills;
+          if (state.bridges) bridges = state.bridges;
+          if (state.posts) posts = state.posts;
+          if (state.polyWalls) polyWalls = state.polyWalls;
+          if (state.ball) {
+            ball.x = state.ball.x;
+            ball.y = state.ball.y;
+            ball.vx = state.ball.vx;
+            ball.vy = state.ball.vy;
+            ball.moving = state.ball.moving;
+          }
+          if (state.hole) {
+            hole.x = state.hole.x;
+            hole.y = state.hole.y;
+            if (state.hole.r !== undefined) (hole as any).r = state.hole.r;
+          }
+        },
+        getUserId,
+        migrateSingleSlotIfNeeded
+      };
+      levelEditor.enter(editorEnv);
       return;
     }
     const o = getMainOptionsRect();
@@ -1562,207 +1716,78 @@ canvas.addEventListener('mousedown', (e) => {
       return;
     }
   }
-  // Handle Level Editor menubar interactions
+  // Handle Level Editor interactions - delegate to levelEditor module
   if (gameState === 'levelEditor') {
-    // Check menubar hotspots
-    for (const hs of editorUiHotspots) {
-      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
-        if (hs.kind === 'menu') {
-          // Toggle menu open/close
-          if (openEditorMenu === hs.menu) {
-            openEditorMenu = null;
-          } else {
-            openEditorMenu = hs.menu;
-            editorMenuActiveItemIndex = 0;
-          }
-          return;
-        } else if (hs.kind === 'menuItem') {
-          // Handle menu item selection
-          const item = hs.item;
-          
-          if (item.kind === 'tool') {
-            selectedEditorTool = item.tool;
-          } else if (item.kind === 'action') {
-            if (item.action === 'gridToggle') { editorShowGrid = !editorShowGrid; }
-            else if (item.action === 'gridMinus') {
-              const step = editorGridSize >= 20 ? 10 : 5;
-              editorGridSize = Math.max(5, editorGridSize - step);
-            }
-            else if (item.action === 'gridPlus') {
-              const step = editorGridSize >= 20 ? 10 : 5;
-              editorGridSize = Math.min(80, editorGridSize + step);
-            }
-            else if (item.action === 'save') { saveEditorLevel(); }
-            else if (item.action === 'saveAs') { saveEditorLevelAs(); }
-            else if (item.action === 'load') { openLoadPicker(); }
-            else if (item.action === 'new') { newEditorLevel(); }
-            else if (item.action === 'delete') { openDeletePicker(); }
-            else if (item.action === 'back') { gameState = 'menu'; }
-          } else if (item.kind === 'decoration') {
-            // Handle decoration placement (flowers)
-            selectedEditorTool = 'select'; // Switch to select for decoration placement
-          }
-          
-          // Close menu after selection
-          openEditorMenu = null;
-          return;
-        } else if (hs.kind === 'tool') {
-          selectedEditorTool = hs.tool;
-          return;
-        } else if (hs.kind === 'action') {
-          if (hs.action === 'gridToggle') { editorShowGrid = !editorShowGrid; return; }
-          if (hs.action === 'gridMinus') {
-            const step = editorGridSize >= 20 ? 10 : 5;
-            editorGridSize = Math.max(5, editorGridSize - step);
-            return;
-          }
-          if (hs.action === 'gridPlus') {
-            const step = editorGridSize >= 20 ? 10 : 5;
-            editorGridSize = Math.min(80, editorGridSize + step);
-            return;
-          }
-          if (hs.action === 'save') { saveEditorLevel(); return; }
-          if (hs.action === 'saveAs') { saveEditorLevelAs(); return; }
-          if (hs.action === 'load') { openLoadPicker(); return; }
-          if (hs.action === 'new') { newEditorLevel(); return; }
-          if (hs.action === 'delete') { openDeletePicker(); return; }
-          if (hs.action === 'back') { gameState = 'menu'; return; }
-          return;
+    const editorEnv = {
+      ctx,
+      width: WIDTH,
+      height: HEIGHT,
+      canvasToPlayCoords: (x: number, y: number) => {
+        const pp = canvasToPlayCoords({ x, y });
+        return { x: pp.x, y: pp.y };
+      },
+      worldFromEvent: (ev: MouseEvent) => worldFromEvent(ev),
+      isOverlayActive,
+      renderGlobalOverlays,
+      fairwayRect: () => ({
+        x: COURSE_MARGIN,
+        y: COURSE_MARGIN,
+        w: Math.max(0, Math.min(levelCanvas.width, WIDTH) - COURSE_MARGIN * 2),
+        h: Math.max(0, Math.min(levelCanvas.height, HEIGHT) - COURSE_MARGIN * 2),
+      }),
+      getGridSize: () => 20,
+      setGridSize: () => {},
+      getShowGrid: () => true,
+      setShowGrid: () => {},
+      getGlobalState: () => ({
+        WIDTH,
+        HEIGHT,
+        COURSE_MARGIN,
+        ball,
+        hole,
+        levelCanvas,
+        walls,
+        sands,
+        sandsPoly,
+        waters,
+        watersPoly,
+        decorations,
+        hills,
+        bridges,
+        posts,
+        polyWalls,
+        userProfile
+      }),
+      setGlobalState: (state: any) => {
+        if (state.levelCanvas) levelCanvas = state.levelCanvas;
+        if (state.walls) walls = state.walls;
+        if (state.sands) sands = state.sands;
+        if (state.sandsPoly) sandsPoly = state.sandsPoly;
+        if (state.waters) waters = state.waters;
+        if (state.watersPoly) watersPoly = state.watersPoly;
+        if (state.decorations) decorations = state.decorations;
+        if (state.hills) hills = state.hills;
+        if (state.bridges) bridges = state.bridges;
+        if (state.posts) posts = state.posts;
+        if (state.polyWalls) polyWalls = state.polyWalls;
+        if (state.ball) {
+          ball.x = state.ball.x;
+          ball.y = state.ball.y;
+          ball.vx = state.ball.vx;
+          ball.vy = state.ball.vy;
+          ball.moving = state.ball.moving;
         }
-      }
-    }
-    
-    // Close any open menu if clicking outside
-    if (openEditorMenu) {
-      openEditorMenu = null;
-      return;
-    }
-    // Select Tool logic
-    if (selectedEditorTool === 'select') {
-      const pp = canvasToPlayCoords(p);
-      
-      // Check if clicking on a rotation handle first
-        const rotationHandleHit = findRotationHandle(pp.x, pp.y);
-        if (rotationHandleHit && selectedObjects.length === 1) {
-          // Start rotation operation
-          isRotating = true;
-          const bounds = getObjectBounds(selectedObjects[0]);
-          rotationCenter = { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 };
-          rotationStartAngle = Math.atan2(pp.y - rotationCenter.y, pp.x - rotationCenter.x);
-          rotationStartMouse = { x: pp.x, y: pp.y };
-          console.log('Started rotation:', rotationHandleHit);
-          return;
+        if (state.hole) {
+          hole.x = state.hole.x;
+          hole.y = state.hole.y;
+          if (state.hole.r !== undefined) (hole as any).r = state.hole.r;
         }
-        
-        // Check if clicking on a resize handle
-        const resizeHandleHit = findResizeHandle(pp.x, pp.y);
-        if (resizeHandleHit && selectedObjects.length === 1) {
-          // Start resize operation
-          isResizing = true;
-          resizeHandle = resizeHandleHit;
-          resizeStartBounds = getObjectBounds(selectedObjects[0]);
-          resizeStartMouse = { x: pp.x, y: pp.y };
-          return;
-        }
-      
-      const clickedObject = findObjectAtPoint(pp.x, pp.y);
-      
-      if (clickedObject) {
-        // Check if object is already selected
-        const isAlreadySelected = selectedObjects.some(obj => 
-          obj.type === clickedObject.type && 
-          (obj.type === 'tee' || obj.type === 'cup' || 
-           ('index' in obj && 'index' in clickedObject && obj.index === clickedObject.index))
-        );
-        
-        if (!e.ctrlKey && !e.shiftKey) {
-          // Single selection - clear others unless already selected
-          if (!isAlreadySelected) {
-            clearSelection();
-            selectedObjects.push(clickedObject);
-          }
-        } else if (e.ctrlKey || e.shiftKey) {
-          // Multi-selection
-          if (isAlreadySelected) {
-            // Deselect
-            selectedObjects = selectedObjects.filter(obj => 
-              !(obj.type === clickedObject.type && 
-                (obj.type === 'tee' || obj.type === 'cup' || 
-                 ('index' in obj && 'index' in clickedObject && obj.index === clickedObject.index)))
-            );
-          } else {
-            // Add to selection
-            selectedObjects.push(clickedObject);
-          }
-        }
-        
-        // Start drag move if object is selected
-        if (selectedObjects.length > 0) {
-          isDragMoving = true;
-          dragMoveStart = { x: pp.x, y: pp.y };
-        }
-      } else {
-        // Click on empty area - start selection box or clear selection
-        if (!e.ctrlKey && !e.shiftKey) {
-          clearSelection();
-        }
-        
-        // Start selection box
-        isSelectionDragging = true;
-        selectionBoxStart = { x: pp.x, y: pp.y };
-      }
-      return;
-    }
-    
-    // Placement on canvas (click anywhere not on UI/back)
-    if (selectedEditorTool === 'tee' || selectedEditorTool === 'cup') {
-      const pp = canvasToPlayCoords(p);
-      // snap to grid
-      let sx = Math.round(pp.x / editorGridSize) * editorGridSize;
-      let sy = Math.round(pp.y / editorGridSize) * editorGridSize;
-      const clamped = clampToFairway(sx, sy);
-      sx = clamped.x; sy = clamped.y;
-      if (selectedEditorTool === 'tee') {
-        ball.x = sx; ball.y = sy; ball.vx = 0; ball.vy = 0; ball.moving = false;
-        if (!editorLevelData) editorLevelData = { tee: { x: sx, y: sy }, cup: { x: hole.x, y: hole.y, r: (hole as any).r ?? 8 }, par: 3, course: { index: 1, total: 1 } } as unknown as Level;
-        editorLevelData.tee = { x: sx, y: sy } as any;
-      } else if (selectedEditorTool === 'cup') {
-        hole.x = sx; hole.y = sy;
-        const r = (hole as any).r ?? 8;
-        if (!editorLevelData) editorLevelData = { tee: { x: ball.x, y: ball.y }, cup: { x: sx, y: sy, r }, par: 3, course: { index: 1, total: 1 } } as unknown as Level;
-        editorLevelData.cup = { x: sx, y: sy, r } as any;
-      }
-      return;
-    }
-    // Post placement (single click)
-    if (selectedEditorTool === 'post') {
-      const pp = canvasToPlayCoords(p);
-      let sx = Math.round(pp.x / editorGridSize) * editorGridSize;
-      let sy = Math.round(pp.y / editorGridSize) * editorGridSize;
-      const clamped = clampToFairway(sx, sy);
-      sx = clamped.x; sy = clamped.y;
-      const r = 8;
-      posts.push({ x: sx, y: sy, r });
-      if (editorLevelData) {
-        if (!Array.isArray(editorLevelData.posts)) (editorLevelData as any).posts = [];
-        (editorLevelData.posts as any).push({ x: sx, y: sy, r });
-      }
-      return;
-    }
-    // Rectangle tools: begin drag on mousedown
-    const rectTools: EditorTool[] = ['wall', 'bridge', 'water', 'sand', 'hill'];
-    if (rectTools.includes(selectedEditorTool)) {
-      const pp = canvasToPlayCoords(p);
-      let sx = Math.round(pp.x / editorGridSize) * editorGridSize;
-      let sy = Math.round(pp.y / editorGridSize) * editorGridSize;
-      const clamped = clampToFairway(sx, sy);
-      sx = clamped.x; sy = clamped.y;
-      isEditorDragging = true;
-      editorDragTool = selectedEditorTool;
-      editorDragStart = { x: sx, y: sy };
-      editorDragCurrent = { x: sx, y: sy };
-      return;
-    }
+      },
+      getUserId,
+      migrateSingleSlotIfNeeded
+    };
+    levelEditor.handleMouseDown(e, editorEnv);
+    return;
   }
   // Handle Options Back button
   if (gameState === 'options') {
@@ -1789,30 +1814,41 @@ canvas.addEventListener('mousedown', (e) => {
   if (gameState === 'users') {
     for (const hs of usersUiHotspots) {
       if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
-        if (!usersStoreReady) { try { alert('Users store is not ready yet.'); } catch {} return; }
+        if (!usersStoreReady) { showUiToast('Users store is not ready yet.'); return; }
         try {
           switch (hs.kind) {
             case 'back':
               gameState = previousGameState;
               break;
             case 'addUser': {
-              const name = prompt('Enter new user name');
-              if (name && name.trim()) usersStore.addUser(name.trim(), 'user');
+              (async () => {
+                const name = await showUiPrompt('Enter new user name', '', 'Add User');
+                if (name && name.trim()) usersStore.addUser(name.trim(), 'user');
+              })();
               break;
             }
             case 'addAdmin': {
-              const name = prompt('Enter new admin name');
-              if (name && name.trim()) usersStore.addUser(name.trim(), 'admin');
+              (async () => {
+                const name = await showUiPrompt('Enter new admin name', '', 'Add Admin');
+                if (name && name.trim()) usersStore.addUser(name.trim(), 'admin');
+              })();
               break;
             }
             case 'export': {
-              const json = usersStore.exportToJsonString(true);
-              prompt('Users JSON — copy to clipboard:', json);
+              (async () => {
+                const json = usersStore.exportToJsonString(true);
+                await showUiPrompt('Users JSON — copy:', json, 'Export Users');
+              })();
               break;
             }
             case 'import': {
-              const text = prompt('Paste Users JSON to import');
-              if (text && text.trim()) usersStore.importFromJsonString(text.trim());
+              (async () => {
+                const text = await showUiPrompt('Paste Users JSON to import', '', 'Import Users');
+                if (text && text.trim()) {
+                  try { usersStore.importFromJsonString(text.trim()); showUiToast('Users imported.'); }
+                  catch (e) { showUiToast('Failed to import users.'); }
+                }
+              })();
               break;
             }
             case 'promote':
@@ -1827,13 +1863,16 @@ canvas.addEventListener('mousedown', (e) => {
               break;
             case 'remove':
               if (hs.id) {
-                const ok = confirm('Remove this user? This cannot be undone.');
-                if (ok) usersStore.removeUser(hs.id);
+                const id = hs.id; // capture before async to preserve narrowing
+                (async () => {
+                  const ok = await showUiConfirm('Remove this user? This cannot be undone.');
+                  if (ok) usersStore.removeUser(id);
+                })();
               }
               break;
           }
         } catch (e) {
-          try { alert((e as any)?.message || 'Operation failed'); } catch {}
+          showUiToast((e as any)?.message || 'Operation failed');
         }
         return;
       }
@@ -1904,96 +1943,72 @@ canvas.addEventListener('mousemove', (e) => {
     return;
   }
   if (gameState === 'levelEditor') {
-    // Any menubar/UI element hover?
-    let overUI = false;
-    for (const hs of editorUiHotspots) {
-      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) { overUI = true; break; }
-    }
-    // Update drag current if dragging a rectangle
-    if (isEditorDragging) {
-      const pp = canvasToPlayCoords(p);
-      let sx = Math.round(pp.x / editorGridSize) * editorGridSize;
-      let sy = Math.round(pp.y / editorGridSize) * editorGridSize;
-      const clamped = clampToFairway(sx, sy);
-      editorDragCurrent = { x: clamped.x, y: clamped.y };
-    }
-    
-    // Handle Select Tool dragging
-    if (selectedEditorTool === 'select') {
-      const pp = canvasToPlayCoords(p);
-      
-      if (isRotating && rotationCenter && rotationStartMouse) {
-        // Handle rotation operation
-        const currentAngle = Math.atan2(pp.y - rotationCenter.y, pp.x - rotationCenter.x);
-        const obj = selectedObjects[0];
-        applyRotation(rotationStartAngle, currentAngle, obj);
-      } else if (isResizing && resizeHandle && resizeStartBounds && resizeStartMouse) {
-        // Handle resize operation
-        const dx = pp.x - resizeStartMouse.x;
-        const dy = pp.y - resizeStartMouse.y;
-        const newBounds = applyResize(resizeHandle, resizeStartBounds, dx, dy);
-        
-        // Apply resize to the selected object
-        const obj = selectedObjects[0];
-        if (obj.type === 'wall' || obj.type === 'water' || obj.type === 'sand' || obj.type === 'bridge' || obj.type === 'hill') {
-          obj.object.x = newBounds.x;
-          obj.object.y = newBounds.y;
-          obj.object.w = newBounds.w;
-          obj.object.h = newBounds.h;
-        }
-      } else if (isDragMoving && dragMoveStart) {
-        // Move selected objects
-        const dx = pp.x - dragMoveStart.x;
-        const dy = pp.y - dragMoveStart.y;
-        // Snap to grid
-        const snappedDx = Math.round(dx / editorGridSize) * editorGridSize;
-        const snappedDy = Math.round(dy / editorGridSize) * editorGridSize;
-        dragMoveOffset = { x: snappedDx, y: snappedDy };
-      } else if (isSelectionDragging && selectionBoxStart) {
-        // Update selection box end point
-        dragMoveOffset = { x: pp.x - selectionBoxStart.x, y: pp.y - selectionBoxStart.y };
-      }
-    }
-    const rectTools: EditorTool[] = ['wall', 'bridge', 'water', 'sand', 'hill'];
-    const wantsCrosshair = !overUI && (
-      selectedEditorTool === 'tee' || selectedEditorTool === 'cup' || selectedEditorTool === 'post' || rectTools.includes(selectedEditorTool)
-    );
-    let cursor = 'default';
-    if (overUI) {
-      cursor = 'pointer';
-    } else if (wantsCrosshair) {
-      cursor = 'crosshair';
-    } else if (selectedEditorTool === 'select') {
-      if (isRotating) {
-        cursor = 'crosshair';
-      } else if (isResizing) {
-        // Show resize cursor during resize
-        const handles = getResizeHandles(resizeStartBounds || { x: 0, y: 0, w: 0, h: 0 });
-        const activeHandle = handles.find(h => h.handle === resizeHandle);
-        cursor = activeHandle ? activeHandle.cursor : 'default';
-      } else if (isDragMoving) {
-        cursor = 'move';
-      } else {
-        // Check for rotation handle hover first
-        const pp = canvasToPlayCoords(p);
-        const rotHandle = findRotationHandle(pp.x, pp.y);
-        if (rotHandle && selectedObjects.length === 1) {
-          cursor = 'crosshair';
-        } else {
-          // Check for resize handle hover
-          const handle = findResizeHandle(pp.x, pp.y);
-          if (handle && selectedObjects.length === 1) {
-            const bounds = getObjectBounds(selectedObjects[0]);
-            const handles = getResizeHandles(bounds);
-            const handleInfo = handles.find(h => h.handle === handle);
-            cursor = handleInfo ? handleInfo.cursor : 'default';
-          } else if (selectedObjects.length > 0 && findObjectAtPoint(pp.x, pp.y)) {
-            cursor = 'move';
-          }
-        }
-      }
-    }
-    canvas.style.cursor = cursor;
+    // Delegate to editor for hover/drag logic and derive cursor from editor hotspots
+    const editorEnv = {
+      ctx,
+      width: WIDTH,
+      height: HEIGHT,
+      canvasToPlayCoords: (x: number, y: number) => {
+        const pp = canvasToPlayCoords({ x, y });
+        return { x: pp.x, y: pp.y };
+      },
+      worldFromEvent: (ev: MouseEvent) => worldFromEvent(ev),
+      isOverlayActive,
+      renderGlobalOverlays,
+      fairwayRect: () => ({
+        x: COURSE_MARGIN,
+        y: COURSE_MARGIN,
+        w: Math.max(0, Math.min(levelCanvas.width, WIDTH) - COURSE_MARGIN * 2),
+        h: Math.max(0, Math.min(levelCanvas.height, HEIGHT) - COURSE_MARGIN * 2),
+      }),
+      getGridSize: () => 20,
+      setGridSize: () => {},
+      getShowGrid: () => true,
+      setShowGrid: () => {},
+      getGlobalState: () => ({
+        WIDTH,
+        HEIGHT,
+        COURSE_MARGIN,
+        ball,
+        hole,
+        levelCanvas,
+        walls,
+        sands,
+        sandsPoly,
+        waters,
+        watersPoly,
+        decorations,
+        hills,
+        bridges,
+        posts,
+        polyWalls,
+        userProfile
+      }),
+      setGlobalState: (state: any) => {
+        if (state.levelCanvas) levelCanvas = state.levelCanvas;
+        if (state.walls) walls = state.walls;
+        if (state.sands) sands = state.sands;
+        if (state.sandsPoly) sandsPoly = state.sandsPoly;
+        if (state.waters) waters = state.waters;
+        if (state.watersPoly) watersPoly = state.watersPoly;
+        if (state.decorations) decorations = state.decorations;
+        if (state.hills) hills = state.hills;
+        if (state.bridges) bridges = state.bridges;
+        if (state.posts) posts = state.posts;
+        if (state.polyWalls) polyWalls = state.polyWalls;
+        if (state.ball) { ball.x = state.ball.x; ball.y = state.ball.y; ball.vx = state.ball.vx; ball.vy = state.ball.vy; ball.moving = state.ball.moving; }
+        if (state.hole) { hole.x = state.hole.x; hole.y = state.hole.y; if (state.hole.r !== undefined) (hole as any).r = state.hole.r; }
+      },
+      getUserId,
+      migrateSingleSlotIfNeeded
+    };
+    levelEditor.handleMouseMove(e as MouseEvent, editorEnv);
+    // Cursor: pointer over UI hotspots, crosshair for placement tools, default otherwise
+    const hotspots = levelEditor.getUiHotspots();
+    const overUI = hotspots.some(hs => p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h);
+    const tool = levelEditor.getSelectedTool();
+    const wantsCrosshair = !overUI && (tool === 'tee' || tool === 'cup' || tool === 'post' || tool === 'wall' || tool === 'bridge' || tool === 'water' || tool === 'sand' || tool === 'hill');
+    canvas.style.cursor = overUI ? 'pointer' : (wantsCrosshair ? 'crosshair' : 'default');
     return;
   }
   if (gameState === 'changelog') {
@@ -2066,122 +2081,70 @@ canvas.addEventListener('mousemove', (e) => {
 canvas.addEventListener('mouseup', (e) => {
   if (gameState === 'changelog') {
     isChangelogDragging = false;
-  }
-  if (gameState === 'options') {
-    isOptionsVolumeDragging = false;
+    return;
   }
   if (gameState === 'levelEditor') {
-    // finalize rectangle placement if dragging
-    if (isEditorDragging && editorDragTool) {
-      const x0 = editorDragStart.x;
-      const y0 = editorDragStart.y;
-      const x1 = editorDragCurrent.x;
-      const y1 = editorDragCurrent.y;
-      let rx = Math.min(x0, x1);
-      let ry = Math.min(y0, y1);
-      let rw = Math.abs(x1 - x0);
-      let rh = Math.abs(y1 - y0);
-      // Ignore tiny drags (accidental clicks)
-      if (rw >= editorGridSize || rh >= editorGridSize) {
-        if (editorDragTool === 'wall') {
-          const r = { x: rx, y: ry, w: rw, h: rh };
-          walls.push(r);
-          if (editorLevelData) { if (!Array.isArray(editorLevelData.walls)) (editorLevelData as any).walls = []; (editorLevelData.walls as any).push(r); }
-        } else if (editorDragTool === 'bridge') {
-          const r = { x: rx, y: ry, w: rw, h: rh };
-          bridges.push(r);
-          if (editorLevelData) { if (!Array.isArray(editorLevelData.bridges)) (editorLevelData as any).bridges = []; (editorLevelData.bridges as any).push(r); }
-        } else if (editorDragTool === 'water') {
-          const r = { x: rx, y: ry, w: rw, h: rh };
-          waters.push(r);
-          if (editorLevelData) { if (!Array.isArray(editorLevelData.water)) (editorLevelData as any).water = []; (editorLevelData.water as any).push(r); }
-        } else if (editorDragTool === 'sand') {
-          const r = { x: rx, y: ry, w: rw, h: rh };
-          sands.push(r);
-          if (editorLevelData) { if (!Array.isArray(editorLevelData.sand)) (editorLevelData as any).sand = []; (editorLevelData.sand as any).push(r); }
-        } else if (editorDragTool === 'hill') {
-          const r = { x: rx, y: ry, w: rw, h: rh, dir: 'N' as const };
-          hills.push(r);
-          if (editorLevelData) { if (!Array.isArray(editorLevelData.hills)) (editorLevelData as any).hills = []; (editorLevelData.hills as any).push(r); }
-        }
-      }
-    }
-    // Handle Select Tool mouseup
-    if (selectedEditorTool === 'select') {
-      if (isDragMoving && dragMoveStart && selectedObjects.length > 0) {
-        // Apply the drag movement to selected objects
-        moveSelectedObjects(dragMoveOffset.x, dragMoveOffset.y);
-      } else if (isSelectionDragging && selectionBoxStart) {
-        // Complete selection box - find objects within the box
-        const pp = canvasToPlayCoords(worldFromEvent(e));
-        const boxX1 = Math.min(selectionBoxStart.x, pp.x);
-        const boxY1 = Math.min(selectionBoxStart.y, pp.y);
-        const boxX2 = Math.max(selectionBoxStart.x, pp.x);
-        const boxY2 = Math.max(selectionBoxStart.y, pp.y);
-        
-        // Clear selection if not holding Ctrl/Shift
-        if (!e.ctrlKey && !e.shiftKey) {
-          clearSelection();
-        }
-        
-        // Add objects within selection box
-        const allObjects = [
-          { type: 'tee' as const, object: { x: ball.x, y: ball.y } },
-          { type: 'cup' as const, object: { x: hole.x, y: hole.y, r: (hole as any).r ?? 8 } },
-          ...posts.map((p, i) => ({ type: 'post' as const, object: p, index: i })),
-          ...walls.map((w, i) => ({ type: 'wall' as const, object: w, index: i })),
-          ...waters.map((w, i) => ({ type: 'water' as const, object: w, index: i })),
-          ...sands.map((s, i) => ({ type: 'sand' as const, object: s, index: i })),
-          ...bridges.map((b, i) => ({ type: 'bridge' as const, object: b, index: i })),
-          ...decorations.map((d, i) => ({ type: 'decoration' as const, object: d, index: i })),
-          ...hills.map((h, i) => ({ type: 'hill' as const, object: h, index: i }))
-        ];
-        
-        for (const obj of allObjects) {
-          const bounds = getObjectBounds(obj);
-          const objCenterX = bounds.x + bounds.w / 2;
-          const objCenterY = bounds.y + bounds.h / 2;
-          
-          if (objCenterX >= boxX1 && objCenterX <= boxX2 && objCenterY >= boxY1 && objCenterY <= boxY2) {
-            // Check if not already selected
-            const isAlreadySelected = selectedObjects.some(selected => 
-              selected.type === obj.type && 
-              (selected.type === 'tee' || selected.type === 'cup' || 
-               ('index' in selected && 'index' in obj && selected.index === obj.index))
-            );
-            if (!isAlreadySelected) {
-              selectedObjects.push(obj);
-            }
-          }
-        }
-      }
-      
-      // Finalize rotation on mouseup
-      if (isRotating && selectedObjects.length === 1) {
-        const obj = selectedObjects[0];
-        const objKey = getObjectKey(obj);
-        const finalRotation = objectRotations.get(objKey) || 0;
-        objectRotations.set(objKey, finalRotation);
-      }
-      
-      // Clear drag states
-      isDragMoving = false;
-      isSelectionDragging = false;
-      isResizing = false;
-      isRotating = false;
-      selectionBoxStart = null;
-      resizeHandle = null;
-      resizeStartBounds = null;
-      resizeStartMouse = null;
-      rotationStartMouse = null;
-      rotationCenter = null;
-      currentRotationAngle = 0;
-      dragMoveOffset = { x: 0, y: 0 };
-    }
-    
-    // clear drag state
-    isEditorDragging = false;
-    editorDragTool = null;
+    // Delegate mouseup to levelEditor
+    const editorEnv = {
+      ctx,
+      width: WIDTH,
+      height: HEIGHT,
+      canvasToPlayCoords: (x: number, y: number) => {
+        const pp = canvasToPlayCoords({ x, y });
+        return { x: pp.x, y: pp.y };
+      },
+      worldFromEvent: (ev: MouseEvent) => worldFromEvent(ev),
+      isOverlayActive,
+      renderGlobalOverlays,
+      fairwayRect: () => ({
+        x: COURSE_MARGIN,
+        y: COURSE_MARGIN,
+        w: Math.max(0, Math.min(levelCanvas.width, WIDTH) - COURSE_MARGIN * 2),
+        h: Math.max(0, Math.min(levelCanvas.height, HEIGHT) - COURSE_MARGIN * 2),
+      }),
+      getGridSize: () => 20,
+      setGridSize: () => {},
+      getShowGrid: () => true,
+      setShowGrid: () => {},
+      getGlobalState: () => ({
+        WIDTH,
+        HEIGHT,
+        COURSE_MARGIN,
+        ball,
+        hole,
+        levelCanvas,
+        walls,
+        sands,
+        sandsPoly,
+        waters,
+        watersPoly,
+        decorations,
+        hills,
+        bridges,
+        posts,
+        polyWalls,
+        userProfile
+      }),
+      setGlobalState: (state: any) => {
+        if (state.levelCanvas) levelCanvas = state.levelCanvas;
+        if (state.walls) walls = state.walls;
+        if (state.sands) sands = state.sands;
+        if (state.sandsPoly) sandsPoly = state.sandsPoly;
+        if (state.waters) waters = state.waters;
+        if (state.watersPoly) watersPoly = state.watersPoly;
+        if (state.decorations) decorations = state.decorations;
+        if (state.hills) hills = state.hills;
+        if (state.bridges) bridges = state.bridges;
+        if (state.posts) posts = state.posts;
+        if (state.polyWalls) polyWalls = state.polyWalls;
+        if (state.ball) { ball.x = state.ball.x; ball.y = state.ball.y; ball.vx = state.ball.vx; ball.vy = state.ball.vy; ball.moving = state.ball.moving; }
+        if (state.hole) { hole.x = state.hole.x; hole.y = state.hole.y; if (state.hole.r !== undefined) (hole as any).r = state.hole.r; }
+      },
+      getUserId,
+      migrateSingleSlotIfNeeded
+    };
+    levelEditor.handleMouseUp(e as MouseEvent, editorEnv);
+    return;
   }
   if (!isAiming || paused || gameState !== 'play') return;
   const p = canvasToPlayCoords(worldFromEvent(e));
@@ -2287,182 +2250,69 @@ window.addEventListener('keydown', devLogAnyB);
 window.addEventListener('keyup', devLogAnyB);
 document.addEventListener('keydown', devLogAnyB);
 
-// Level Editor keyboard shortcuts: grid and nudge
+// Level Editor keyboard shortcuts: delegated to levelEditor module
 function handleLevelEditorKeys(e: KeyboardEvent) {
   if (gameState !== 'levelEditor') return;
-  
-  // Menu keyboard handling
-  if (e.altKey) {
-    // Menu mnemonics: Alt+F, Alt+O, Alt+D, Alt+E
-    if (e.key === 'f' || e.key === 'F') {
-      openEditorMenu = openEditorMenu === 'file' ? null : 'file';
-      editorMenuActiveItemIndex = 0;
-      e.preventDefault();
-      return;
-    }
-    if (e.key === 'o' || e.key === 'O') {
-      openEditorMenu = openEditorMenu === 'objects' ? null : 'objects';
-      editorMenuActiveItemIndex = 0;
-      e.preventDefault();
-      return;
-    }
-    if (e.key === 'd' || e.key === 'D') {
-      openEditorMenu = openEditorMenu === 'decorations' ? null : 'decorations';
-      editorMenuActiveItemIndex = 0;
-      e.preventDefault();
-      return;
-    }
-    if (e.key === 'e' || e.key === 'E') {
-      openEditorMenu = openEditorMenu === 'tools' ? null : 'tools';
-      editorMenuActiveItemIndex = 0;
-      e.preventDefault();
-      return;
-    }
-  }
-  
-  // Menu navigation when a menu is open
-  if (openEditorMenu) {
-    const menu = EDITOR_MENUS[openEditorMenu];
-    if (e.key === 'ArrowDown') {
-      editorMenuActiveItemIndex = Math.min(menu.items.length - 1, editorMenuActiveItemIndex + 1);
-      e.preventDefault();
-      return;
-    }
-    if (e.key === 'ArrowUp') {
-      editorMenuActiveItemIndex = Math.max(0, editorMenuActiveItemIndex - 1);
-      e.preventDefault();
-      return;
-    }
-    if (e.key === 'Enter') {
-      // Execute the active menu item
-      const activeItem = menu.items[editorMenuActiveItemIndex];
-      if (activeItem) {
-        const item = activeItem.item;
-        if (item.kind === 'tool') {
-          selectedEditorTool = item.tool;
-        } else if (item.kind === 'action') {
-          if (item.action === 'gridToggle') { editorShowGrid = !editorShowGrid; }
-          else if (item.action === 'gridMinus') {
-            const step = editorGridSize >= 20 ? 10 : 5;
-            editorGridSize = Math.max(5, editorGridSize - step);
-          }
-          else if (item.action === 'gridPlus') {
-            const step = editorGridSize >= 20 ? 10 : 5;
-            editorGridSize = Math.min(80, editorGridSize + step);
-          }
-          else if (item.action === 'save') { saveEditorLevel(); }
-          else if (item.action === 'saveAs') { saveEditorLevelAs(); }
-          else if (item.action === 'load') { openLoadPicker(); }
-          else if (item.action === 'new') { newEditorLevel(); }
-          else if (item.action === 'delete') { openDeletePicker(); }
-          else if (item.action === 'back') { gameState = 'menu'; }
-        } else if (item.kind === 'decoration') {
-          selectedEditorTool = 'select';
-        }
-        openEditorMenu = null;
-      }
-      e.preventDefault();
-      return;
-    }
-    if (e.key === 'Escape') {
-      openEditorMenu = null;
-      e.preventDefault();
-      return;
-    }
-  }
-  
-  // Existing keyboard shortcuts (preserve legacy behavior)
-  if (e.key === 'g' || e.key === 'G') { editorShowGrid = !editorShowGrid; e.preventDefault(); return; }
-  if (e.key === '-' || e.code === 'Minus' || e.key === '_') { editorGridSize = Math.max(5, editorGridSize - (editorGridSize >= 20 ? 10 : 5)); e.preventDefault(); return; }
-  if (e.key === '+' || e.key === '=' || e.code === 'Equal' || e.code === 'NumpadAdd') { editorGridSize = Math.min(80, editorGridSize + (editorGridSize >= 20 ? 10 : 5)); e.preventDefault(); return; }
-  
-  // Delete key to remove selected objects
-  if (e.key === 'Delete' && selectedEditorTool === 'select' && selectedObjects.length > 0) {
-    for (const obj of selectedObjects) {
-      switch (obj.type) {
-        case 'post':
-          posts.splice(obj.index, 1);
-          if (editorLevelData && editorLevelData.posts) {
-            (editorLevelData.posts as any).splice(obj.index, 1);
-          }
-          break;
-        case 'wall':
-          walls.splice(obj.index, 1);
-          if (editorLevelData && editorLevelData.walls) {
-            (editorLevelData.walls as any).splice(obj.index, 1);
-          }
-          break;
-        case 'water':
-          waters.splice(obj.index, 1);
-          if (editorLevelData && editorLevelData.water) {
-            (editorLevelData.water as any).splice(obj.index, 1);
-          }
-          break;
-        case 'sand':
-          sands.splice(obj.index, 1);
-          if (editorLevelData && editorLevelData.sand) {
-            (editorLevelData.sand as any).splice(obj.index, 1);
-          }
-          break;
-        case 'bridge':
-          bridges.splice(obj.index, 1);
-          if (editorLevelData && editorLevelData.bridges) {
-            (editorLevelData.bridges as any).splice(obj.index, 1);
-          }
-          break;
-        case 'decoration':
-          decorations.splice(obj.index, 1);
-          if (editorLevelData && editorLevelData.decorations) {
-            (editorLevelData.decorations as any).splice(obj.index, 1);
-          }
-          break;
-        case 'hill':
-          hills.splice(obj.index, 1);
-          if (editorLevelData && editorLevelData.hills) {
-            (editorLevelData.hills as any).splice(obj.index, 1);
-          }
-          break;
-        // Note: tee and cup cannot be deleted as they are required level elements
-      }
-    }
-    clearSelection();
-    e.preventDefault();
-    return;
-  }
-  
-  // Arrow key nudges for tee/cup/selection (only if no menu is open)
-  if (!openEditorMenu) {
-    let dx = 0, dy = 0;
-    if (e.code === 'ArrowLeft') dx = -editorGridSize;
-    else if (e.code === 'ArrowRight') dx = editorGridSize;
-    else if (e.code === 'ArrowUp') dy = -editorGridSize;
-    else if (e.code === 'ArrowDown') dy = editorGridSize;
-    if (dx === 0 && dy === 0) return;
-    if (selectedEditorTool === 'select' && selectedObjects.length > 0) {
-      // Move all selected objects
-      moveSelectedObjects(dx, dy);
-      e.preventDefault(); return;
-    }
-    if (selectedEditorTool === 'tee') {
-      const clamped = clampToFairway(ball.x + dx, ball.y + dy);
-      ball.x = clamped.x; ball.y = clamped.y;
-      ball.vx = 0; ball.vy = 0; ball.moving = false;
-      if (editorLevelData) {
-        editorLevelData.tee.x = clamped.x;
-        editorLevelData.tee.y = clamped.y;
-      }
-      e.preventDefault(); return;
-    }
-    if (selectedEditorTool === 'cup') {
-      const clamped = clampToFairway(hole.x + dx, hole.y + dy);
-      hole.x = clamped.x; hole.y = clamped.y;
-      if (editorLevelData) {
-        editorLevelData.cup.x = clamped.x;
-        editorLevelData.cup.y = clamped.y;
-      }
-      e.preventDefault(); return;
-    }
-  }
+  // Delegate keys to levelEditor
+  const editorEnv = {
+    ctx,
+    width: WIDTH,
+    height: HEIGHT,
+    canvasToPlayCoords: (x: number, y: number) => {
+      const pp = canvasToPlayCoords({ x, y });
+      return { x: pp.x, y: pp.y };
+    },
+    worldFromEvent: (ev: MouseEvent) => worldFromEvent(ev),
+    isOverlayActive,
+    renderGlobalOverlays,
+    fairwayRect: () => ({
+      x: COURSE_MARGIN,
+      y: COURSE_MARGIN,
+      w: Math.max(0, Math.min(levelCanvas.width, WIDTH) - COURSE_MARGIN * 2),
+      h: Math.max(0, Math.min(levelCanvas.height, HEIGHT) - COURSE_MARGIN * 2),
+    }),
+    getGridSize: () => 20,
+    setGridSize: () => {},
+    getShowGrid: () => true,
+    setShowGrid: () => {},
+    getGlobalState: () => ({
+      WIDTH,
+      HEIGHT,
+      COURSE_MARGIN,
+      ball,
+      hole,
+      levelCanvas,
+      walls,
+      sands,
+      sandsPoly,
+      waters,
+      watersPoly,
+      decorations,
+      hills,
+      bridges,
+      posts,
+      polyWalls,
+      userProfile
+    }),
+    setGlobalState: (state: any) => {
+      if (state.levelCanvas) levelCanvas = state.levelCanvas;
+      if (state.walls) walls = state.walls;
+      if (state.sands) sands = state.sands;
+      if (state.sandsPoly) sandsPoly = state.sandsPoly;
+      if (state.waters) waters = state.waters;
+      if (state.watersPoly) watersPoly = state.watersPoly;
+      if (state.decorations) decorations = state.decorations;
+      if (state.hills) hills = state.hills;
+      if (state.bridges) bridges = state.bridges;
+      if (state.posts) posts = state.posts;
+      if (state.polyWalls) polyWalls = state.polyWalls;
+      if (state.ball) { ball.x = state.ball.x; ball.y = state.ball.y; ball.vx = state.ball.vx; ball.vy = state.ball.vy; ball.moving = state.ball.moving; }
+      if (state.hole) { hole.x = state.hole.x; hole.y = state.hole.y; if (state.hole.r !== undefined) (hole as any).r = state.hole.r; }
+    },
+    getUserId,
+    migrateSingleSlotIfNeeded
+  };
+  levelEditor.handleKeyDown(e, editorEnv);
 }
 window.addEventListener('keydown', handleLevelEditorKeys);
 
@@ -2969,6 +2819,8 @@ function drawDebugPreview() {
 }
 
 function draw() {
+  // Debug log occasionally to avoid flooding console
+  if (Math.random() < 0.01) console.log('draw() called, overlay state:', { active: isOverlayActive(), kind: uiOverlay.kind });
   // clear
   // background table felt
   ctx.fillStyle = COLORS.table;
@@ -3166,512 +3018,71 @@ function draw() {
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.font = '12px system-ui, sans-serif';
     ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
+    renderGlobalOverlays();
     return;
   }
   // Level Editor screen
   if (gameState === 'levelEditor') {
-    // Update dynamic menu labels
-    // tools.items indices:
-    // 0 = Select Tool (static label)
-    // 1 = Grid toggle, 2 = Grid -, 3 = Grid +
-    EDITOR_MENUS.tools.items[1].label = editorShowGrid ? 'Grid On' : 'Grid Off';
-    EDITOR_MENUS.tools.items[2].label = `Grid - (${editorGridSize}px)`;
-    EDITOR_MENUS.tools.items[3].label = `Grid + (${editorGridSize}px)`;
-    
-    // Build menubar hotspots (rebuilt each frame)
-    editorUiHotspots = [];
-
-    // Canvas preview: fairway + grid + tee/cup markers
-    ctx.fillStyle = COLORS.fairway;
-    ctx.fillRect(fairX, fairY, fairW, fairH);
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = COLORS.fairwayLine;
-    ctx.strokeRect(fairX + 1, fairY + 1, Math.max(0, fairW - 2), Math.max(0, fairH - 2));
-    if (editorShowGrid && editorGridSize > 0) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(fairX, fairY, fairW, fairH);
-      ctx.clip();
-      ctx.strokeStyle = 'rgba(255,255,255,0.10)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      for (let x = fairX; x <= fairX + fairW; x += editorGridSize) {
-        ctx.moveTo(Math.round(x) + 0.5, fairY);
-        ctx.lineTo(Math.round(x) + 0.5, fairY + fairH);
-      }
-      for (let y = fairY; y <= fairY + fairH; y += editorGridSize) {
-        ctx.moveTo(fairX, Math.round(y) + 0.5);
-        ctx.lineTo(fairX + fairW, Math.round(y) + 0.5);
-      }
-      ctx.stroke();
-      ctx.restore();
-    }
-    // Existing geometry preview (terrain before walls)
-    // Water (rectangles)
-    for (let i = 0; i < waters.length; i++) {
-      const r = waters[i];
-      const obj: SelectableObject = { type: 'water', object: r, index: i };
-      renderWithRotation(ctx, obj, () => {
-        ctx.fillStyle = COLORS.waterFill;
-        ctx.fillRect(r.x, r.y, r.w, r.h);
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = COLORS.waterStroke;
-        ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
-      });
-    }
-    // Water (polygons)
-    if (watersPoly.length > 0) {
-      ctx.fillStyle = COLORS.waterFill;
-      for (const wp of watersPoly) {
-        const pts = wp.points;
-        if (!pts || pts.length < 6) continue;
-        ctx.beginPath();
-        ctx.moveTo(pts[0], pts[1]);
-        for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
-        ctx.closePath();
-        ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = COLORS.waterStroke;
-        ctx.stroke();
-      }
-    }
-    // Sand (rectangles)
-    for (let i = 0; i < sands.length; i++) {
-      const r = sands[i];
-      const obj: SelectableObject = { type: 'sand', object: r, index: i };
-      renderWithRotation(ctx, obj, () => {
-        ctx.fillStyle = COLORS.sandFill;
-        ctx.fillRect(r.x, r.y, r.w, r.h);
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = COLORS.sandStroke;
-        ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
-      });
-    }
-    // Sand (polygons)
-    if (sandsPoly.length > 0) {
-      ctx.fillStyle = COLORS.sandFill;
-      for (const sp of sandsPoly) {
-        const pts = sp.points;
-        if (!pts || pts.length < 6) continue;
-        ctx.beginPath();
-        ctx.moveTo(pts[0], pts[1]);
-        for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
-        ctx.closePath();
-        ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = COLORS.sandStroke;
-        ctx.stroke();
-      }
-    }
-    // Bridges
-    for (let i = 0; i < bridges.length; i++) {
-      const r = bridges[i];
-      const obj: SelectableObject = { type: 'bridge', object: r, index: i };
-      renderWithRotation(ctx, obj, () => {
-        ctx.fillStyle = COLORS.fairway;
-        ctx.fillRect(r.x, r.y, r.w, r.h);
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = COLORS.fairwayLine;
-        ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
-      });
-    }
-    // Hills
-    for (let i = 0; i < hills.length; i++) {
-      const h = hills[i];
-      const obj: SelectableObject = { type: 'hill', object: h, index: i };
-      renderWithRotation(ctx, obj, () => {
-        const slopeDir = h.dir || 'S';
-        let grad: CanvasGradient;
-        if (slopeDir === 'N') grad = ctx.createLinearGradient(h.x, h.y + h.h, h.x, h.y);
-        else if (slopeDir === 'S') grad = ctx.createLinearGradient(h.x, h.y, h.x, h.y + h.h);
-        else if (slopeDir === 'W') grad = ctx.createLinearGradient(h.x + h.w, h.y, h.x, h.y);
-        else /* E */ grad = ctx.createLinearGradient(h.x, h.y, h.x + h.w, h.y);
-        grad.addColorStop(0, 'rgba(255,255,255,0.10)');
-        grad.addColorStop(1, 'rgba(0,0,0,0.10)');
-        ctx.fillStyle = grad;
-        ctx.fillRect(h.x, h.y, h.w, h.h);
-      });
-    }
-    // Decorations (clip to fairway)
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(fairX, fairY, fairW, fairH);
-    ctx.clip();
-    for (const d of decorations) {
-      if (d.kind === 'flowers') {
-        const step = 16;
-        for (let y = d.y; y < d.y + d.h; y += step) {
-          for (let x = d.x; x < d.x + d.w; x += step) {
-            ctx.save();
-            ctx.translate(x + 8, y + 8);
-            ctx.fillStyle = '#ffffff';
-            for (let i = 0; i < 4; i++) {
-              const ang = (i * Math.PI) / 2;
-              ctx.beginPath();
-              ctx.arc(Math.cos(ang) * 5, Math.sin(ang) * 5, 3, 0, Math.PI * 2);
-              ctx.fill();
-            }
-            ctx.fillStyle = '#d11e2a';
-            ctx.beginPath();
-            ctx.arc(0, 0, 2, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-          }
-        }
-      }
-    }
-    ctx.restore();
-    // Walls (rectangles)
-    for (let i = 0; i < walls.length; i++) {
-      const w = walls[i];
-      const obj: SelectableObject = { type: 'wall', object: w, index: i };
-      renderWithRotation(ctx, obj, () => {
-        ctx.fillStyle = 'rgba(0,0,0,0.25)';
-        ctx.fillRect(w.x + 2, w.y + 2, w.w, w.h);
-        ctx.fillStyle = COLORS.wallFill;
-        ctx.fillRect(w.x, w.y, w.w, w.h);
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = COLORS.wallStroke;
-        ctx.strokeRect(w.x + 1, w.y + 1, w.w - 2, w.h - 2);
-        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-        ctx.beginPath();
-        ctx.moveTo(w.x + 1, w.y + 1);
-        ctx.lineTo(w.x + w.w - 1, w.y + 1);
-        ctx.moveTo(w.x + 1, w.y + 1);
-        ctx.lineTo(w.x + 1, w.y + w.h - 1);
-        ctx.stroke();
-      });
-    }  
-    // Polygon walls
-    ctx.lineWidth = 2;
-    for (const poly of polyWalls) {
-      const pts = poly.points;
-      if (!pts || pts.length < 6) continue;
-      ctx.fillStyle = 'rgba(0,0,0,0.25)';
-      ctx.beginPath();
-      ctx.moveTo(pts[0] + 2, pts[1] + 2);
-      for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i] + 2, pts[i + 1] + 2);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = COLORS.wallFill;
-      ctx.beginPath();
-      ctx.moveTo(pts[0], pts[1]);
-      for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = COLORS.wallStroke;
-      ctx.stroke();
-    }
-    // Posts
-    for (const p of posts) {
-      ctx.fillStyle = 'rgba(0,0,0,0.25)';
-      ctx.beginPath(); ctx.arc(p.x + 2, p.y + 2, p.r, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = COLORS.wallFill;
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = COLORS.wallStroke; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.r - 1, 0, Math.PI * 2); ctx.stroke();
-    }
-    // Tee marker (ball position)
-    {
-      const r = 6;
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.arc(ball.x, ball.y, r, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = 'rgba(0,0,0,0.18)';
-      ctx.beginPath(); ctx.ellipse(ball.x + 2, ball.y + 3, r * 0.9, r * 0.6, 0, 0, Math.PI * 2); ctx.fill();
-    }
-    // Cup marker (hole)
-    {
-      const r = (hole as any).r ?? 8;
-      ctx.fillStyle = COLORS.holeFill;
-      ctx.beginPath(); ctx.arc(hole.x, hole.y, r, 0, Math.PI*2); ctx.fill();
-      ctx.lineWidth = 2; ctx.strokeStyle = COLORS.holeRim; ctx.stroke();
-      ctx.fillStyle = COLORS.wallFill;
-      const stickW = 3, stickH = 24;
-      ctx.fillRect(hole.x - stickW/2, hole.y - stickH - r, stickW, stickH);
-    }
-
-    // Drag outline preview (rectangle tools)
-    if (isEditorDragging && editorDragTool && (
-      editorDragTool === 'wall' || editorDragTool === 'bridge' || editorDragTool === 'water' || editorDragTool === 'sand' || editorDragTool === 'hill'
-    )) {
-      const x0 = editorDragStart.x;
-      const y0 = editorDragStart.y;
-      const x1 = editorDragCurrent.x;
-      const y1 = editorDragCurrent.y;
-      const rx = Math.min(x0, x1);
-      const ry = Math.min(y0, y1);
-      const rw = Math.abs(x1 - x0);
-      const rh = Math.abs(y1 - y0);
-      if (rw > 0 || rh > 0) {
-        ctx.save();
-        // Clip to fairway to respect clamping visuals
-        ctx.beginPath(); ctx.rect(fairX, fairY, fairW, fairH); ctx.clip();
-        // Subtle translucent fill to preview area; color hint by tool
-        const tool = editorDragTool;
-        if (tool === 'water') {
-          ctx.globalAlpha = 0.35; ctx.fillStyle = COLORS.waterFill; ctx.fillRect(rx, ry, rw, rh); ctx.globalAlpha = 1;
-        } else if (tool === 'sand') {
-          ctx.globalAlpha = 0.35; ctx.fillStyle = COLORS.sandFill; ctx.fillRect(rx, ry, rw, rh); ctx.globalAlpha = 1;
-        } else if (tool === 'bridge') {
-          ctx.globalAlpha = 0.20; ctx.fillStyle = COLORS.fairway; ctx.fillRect(rx, ry, rw, rh); ctx.globalAlpha = 1;
-        } else if (tool === 'wall') {
-          ctx.globalAlpha = 0.18; ctx.fillStyle = '#ffffff'; ctx.fillRect(rx, ry, rw, rh); ctx.globalAlpha = 1;
-        } else /* hill */ {
-          ctx.globalAlpha = 0.18; ctx.fillStyle = '#ffffff'; ctx.fillRect(rx, ry, rw, rh); ctx.globalAlpha = 1;
-        }
-        // Dashed outline border for clarity
-        ctx.setLineDash([6, 4]);
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = '#ffffff';
-        ctx.strokeRect(rx + 0.5, ry + 0.5, Math.max(0, rw - 1), Math.max(0, rh - 1));
-        ctx.setLineDash([]);
-        ctx.restore();
-      }
-    }
-
-    // Selection Tool visuals
-    if (selectedEditorTool === 'select') {
-      // Draw selection outlines for selected objects
-      ctx.save();
-      ctx.setLineDash([4, 4]);
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = '#00aaff';
-      
-      for (const obj of selectedObjects) {
-        const bounds = getObjectBounds(obj);
-        // Draw selection outline with movement offset if dragging
-        const offsetX = isDragMoving ? dragMoveOffset.x : 0;
-        const offsetY = isDragMoving ? dragMoveOffset.y : 0;
-        const displayBounds = { 
-          x: bounds.x + offsetX, 
-          y: bounds.y + offsetY, 
-          w: bounds.w, 
-          h: bounds.h 
-        };
-        
-        // If resizing, show the updated bounds instead
-        if (isResizing && resizeStartBounds && resizeStartMouse && selectedObjects.length === 1 && selectedObjects[0] === obj) {
-          // Use the real-time resized bounds for visual feedback
-          displayBounds.x = obj.object.x;
-          displayBounds.y = obj.object.y;
-          if ('w' in obj.object && 'h' in obj.object) {
-            displayBounds.w = obj.object.w;
-            displayBounds.h = obj.object.h;
-          }
-        }
-        
-        ctx.strokeRect(displayBounds.x, displayBounds.y, displayBounds.w, displayBounds.h);
-        
-        // Draw resize handles for single selection of resizable objects
-        if (selectedObjects.length === 1 && obj === selectedObjects[0] && 
-            (obj.type === 'wall' || obj.type === 'water' || obj.type === 'sand' || obj.type === 'bridge' || obj.type === 'hill')) {
-          const handles = getResizeHandles(displayBounds);
-          ctx.setLineDash([]);
-          
-          for (const handle of handles) {
-            // Handle background
-            ctx.fillStyle = '#00aaff';
-            ctx.fillRect(handle.x, handle.y, handle.w, handle.h);
-            
-            // Handle border
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(handle.x, handle.y, handle.w, handle.h);
-          }
-          
-          // Draw rotation handles
-          const rotHandles = getRotationHandles(displayBounds);
-          for (const rotHandle of rotHandles) {
-            // Rotation handle background (circular)
-            ctx.fillStyle = '#ff6600';
-            ctx.beginPath();
-            ctx.arc(rotHandle.x + rotHandle.w / 2, rotHandle.y + rotHandle.h / 2, rotHandle.w / 2, 0, Math.PI * 2);
-            ctx.fill();
-            
-            // Rotation handle border
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.arc(rotHandle.x + rotHandle.w / 2, rotHandle.y + rotHandle.h / 2, rotHandle.w / 2, 0, Math.PI * 2);
-            ctx.stroke();
-          }
-          
-          ctx.setLineDash([4, 4]);
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = '#00aaff';
-        } else {
-          // For multi-selection or non-resizable objects, just show corner indicators
-          const handleSize = 6;
-          ctx.setLineDash([]);
-          ctx.fillStyle = '#00aaff';
-          const corners = [
-            { x: displayBounds.x - handleSize/2, y: displayBounds.y - handleSize/2 },
-            { x: displayBounds.x + displayBounds.w - handleSize/2, y: displayBounds.y - handleSize/2 },
-            { x: displayBounds.x - handleSize/2, y: displayBounds.y + displayBounds.h - handleSize/2 },
-            { x: displayBounds.x + displayBounds.w - handleSize/2, y: displayBounds.y + displayBounds.h - handleSize/2 }
-          ];
-          for (const corner of corners) {
-            ctx.fillRect(corner.x, corner.y, handleSize, handleSize);
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(corner.x, corner.y, handleSize, handleSize);
-          }
-          ctx.setLineDash([4, 4]);
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = '#00aaff';
-        }
-      }
-      
-      // Draw selection box if dragging
-      if (isSelectionDragging && selectionBoxStart) {
-        const boxX = Math.min(selectionBoxStart.x, selectionBoxStart.x + dragMoveOffset.x);
-        const boxY = Math.min(selectionBoxStart.y, selectionBoxStart.y + dragMoveOffset.y);
-        const boxW = Math.abs(dragMoveOffset.x);
-        const boxH = Math.abs(dragMoveOffset.y);
-        
-        // Selection box background
-        ctx.globalAlpha = 0.1;
-        ctx.fillStyle = '#00aaff';
-        ctx.fillRect(boxX, boxY, boxW, boxH);
-        ctx.globalAlpha = 1;
-        
-        // Selection box outline
-        ctx.setLineDash([2, 2]);
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = '#00aaff';
-        ctx.strokeRect(boxX, boxY, boxW, boxH);
-      }
-      
-      ctx.restore();
-    }
-
-    // Menubar (drawn last over preview)
-    {
-      const menubarX = 0;
-      const menubarY = 0;
-      const menubarW = WIDTH;
-      const menubarH = 28;
-      
-      // Menubar background
-      ctx.fillStyle = 'rgba(0,0,0,0.4)';
-      ctx.fillRect(menubarX, menubarY, menubarW, menubarH);
-      ctx.strokeStyle = '#cfd2cf';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(menubarX, menubarY, menubarW, menubarH - 1);
-      
-      // Menu headers
-      ctx.font = '14px system-ui, sans-serif';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      
-      const menuIds: EditorMenuId[] = ['file', 'objects', 'decorations', 'tools'];
-      let x = 8;
-      const y = menubarH / 2;
-      
-      for (const menuId of menuIds) {
-        const menu = EDITOR_MENUS[menuId];
-        const textW = ctx.measureText(menu.title).width;
-        const menuW = textW + 16;
-        
-        const isOpen = openEditorMenu === menuId;
-        ctx.fillStyle = isOpen ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.10)';
-        ctx.fillRect(x, 2, menuW, menubarH - 4);
-        
-        if (isOpen) {
-          ctx.strokeStyle = '#ffffff';
-          ctx.strokeRect(x, 2, menuW, menubarH - 4);
-        }
-        
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText(menu.title, x + 8, y);
-        
-        editorUiHotspots.push({ kind: 'menu', menu: menuId, x, y: 0, w: menuW, h: menubarH });
-        x += menuW;
-      }
-      
-      // Dropdown menus
-      if (openEditorMenu) {
-        const menu = EDITOR_MENUS[openEditorMenu];
-        
-        // Find the header position for this menu
-        let headerX = 8;
-        for (const menuId of menuIds) {
-          if (menuId === openEditorMenu) break;
-          const m = EDITOR_MENUS[menuId];
-          const textW = ctx.measureText(m.title).width;
-          headerX += textW + 16;
-        }
-        
-        // Calculate dropdown dimensions
-        let maxWidth = 0;
-        for (const item of menu.items) {
-          const w = ctx.measureText(item.label).width;
-          if (w > maxWidth) maxWidth = w;
-        }
-        const dropdownW = Math.max(120, maxWidth + 24);
-        const itemH = 22;
-        const dropdownH = menu.items.length * itemH + 4;
-        const dropdownX = headerX;
-        const dropdownY = menubarH;
-        
-        // Dropdown background
-        ctx.fillStyle = 'rgba(0,0,0,0.45)';
-        ctx.fillRect(dropdownX, dropdownY, dropdownW, dropdownH);
-        ctx.strokeStyle = '#cfd2cf';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(dropdownX, dropdownY, dropdownW, dropdownH);
-        
-        // Menu items
-        let itemY = dropdownY + 2;
-        for (let i = 0; i < menu.items.length; i++) {
-          const menuItem = menu.items[i];
-          const isActive = i === editorMenuActiveItemIndex;
-          const isSelected = (() => {
-            if (menuItem.item.kind === 'tool') return selectedEditorTool === menuItem.item.tool;
-            return false;
-          })();
-          
-          // Item background
-          if (isActive || isSelected) {
-            ctx.fillStyle = isSelected ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.15)';
-            ctx.fillRect(dropdownX + 1, itemY, dropdownW - 2, itemH);
-          }
-          
-          // Separator line
-          if (menuItem.separator && i > 0) {
-            ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(dropdownX + 6, itemY - 1);
-            ctx.lineTo(dropdownX + dropdownW - 6, itemY - 1);
-            ctx.stroke();
-          }
-          
-          // Item text
-          ctx.fillStyle = '#ffffff';
-          ctx.fillText(menuItem.label, dropdownX + 8, itemY + itemH / 2);
-          
-          // Add hotspot for menu item
-          editorUiHotspots.push({
-            kind: 'menuItem',
-            menu: openEditorMenu,
-            item: menuItem.item,
-            x: dropdownX,
-            y: itemY,
-            w: dropdownW,
-            h: itemH
-          });
-          
-          itemY += itemH;
-        }
-      }
-
-      // Version bottom-left
-      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-      ctx.font = '12px system-ui, sans-serif';
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
-    }
+    const editorEnv = {
+      ctx,
+      width: WIDTH,
+      height: HEIGHT,
+      canvasToPlayCoords: (x: number, y: number) => {
+        const pp = canvasToPlayCoords({ x, y });
+        return { x: pp.x, y: pp.y };
+      },
+      worldFromEvent: (ev: MouseEvent) => worldFromEvent(ev),
+      isOverlayActive,
+      renderGlobalOverlays,
+      fairwayRect: () => ({
+        x: COURSE_MARGIN,
+        y: COURSE_MARGIN,
+        w: Math.max(0, Math.min(levelCanvas.width, WIDTH) - COURSE_MARGIN * 2),
+        h: Math.max(0, Math.min(levelCanvas.height, HEIGHT) - COURSE_MARGIN * 2),
+      }),
+      getGridSize: () => 20,
+      setGridSize: () => {},
+      getShowGrid: () => true,
+      setShowGrid: () => {},
+      getGlobalState: () => ({
+        WIDTH,
+        HEIGHT,
+        COURSE_MARGIN,
+        ball,
+        hole,
+        levelCanvas,
+        walls,
+        sands,
+        sandsPoly,
+        waters,
+        watersPoly,
+        decorations,
+        hills,
+        bridges,
+        posts,
+        polyWalls,
+        userProfile
+      }),
+      setGlobalState: (state: any) => {
+        if (state.levelCanvas) levelCanvas = state.levelCanvas;
+        if (state.walls) walls = state.walls;
+        if (state.sands) sands = state.sands;
+        if (state.sandsPoly) sandsPoly = state.sandsPoly;
+        if (state.waters) waters = state.waters;
+        if (state.watersPoly) watersPoly = state.watersPoly;
+        if (state.decorations) decorations = state.decorations;
+        if (state.hills) hills = state.hills;
+        if (state.bridges) bridges = state.bridges;
+        if (state.posts) posts = state.posts;
+        if (state.polyWalls) polyWalls = state.polyWalls;
+        if (state.ball) { ball.x = state.ball.x; ball.y = state.ball.y; ball.vx = state.ball.vx; ball.vy = state.ball.vy; ball.moving = state.ball.moving; }
+        if (state.hole) { hole.x = state.hole.x; hole.y = state.hole.y; if (state.hole.r !== undefined) (hole as any).r = state.hole.r; }
+      },
+      getUserId,
+      migrateSingleSlotIfNeeded
+    };
+    levelEditor.render(editorEnv);
+    renderGlobalOverlays();
     return;
   }
   // Users admin screen
@@ -3744,17 +3155,7 @@ function draw() {
 
     // Back button
     const back = getCourseBackRect();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = '#cfd2cf';
-    ctx.fillStyle = 'rgba(255,255,255,0.10)';
-    ctx.fillRect(back.x, back.y, back.w, back.h);
-    ctx.strokeRect(back.x, back.y, back.w, back.h);
-    ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '16px system-ui, sans-serif';
-    ctx.fillText('Back', back.x + back.w/2, back.y + back.h/2 + 0.5);
-    usersUiHotspots.push({ kind: 'back', x: back.x, y: back.y, w: back.w, h: back.h });
-    // Version
-    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.font = '12px system-ui, sans-serif';
-    ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
+    renderGlobalOverlays();
     return;
   }
   // Course Select screen
@@ -3790,6 +3191,7 @@ function draw() {
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.font = '12px system-ui, sans-serif';
     ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
+    renderGlobalOverlays();
     return;
   }
   // Loading overlay (coarse)
@@ -3800,6 +3202,7 @@ function draw() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.font = '20px system-ui, sans-serif';
     ctx.fillText('Loading…', WIDTH/2, HEIGHT/2);
+    renderGlobalOverlays();
     return;
   }
   // Options screen: show controls and Back button
@@ -3882,6 +3285,7 @@ function draw() {
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.font = '12px system-ui, sans-serif';
     ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
+    renderGlobalOverlays();
     return;
   }
   // Changelog screen
@@ -3949,6 +3353,7 @@ function draw() {
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.font = '12px system-ui, sans-serif';
     ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
+    renderGlobalOverlays();
     return;
   }
   // translate to center the whole level content horizontally
@@ -4101,11 +3506,8 @@ function draw() {
   // Remove clip so subsequent layers (walls, HUD) are not clipped out
   ctx.restore();
 
-  // walls (beveled look: shadow + face + highlight)
+  // walls (beveled look: face + highlight) — shadow drawn in editor within rotation; omitted here to avoid duplicates
   for (const w of walls) {
-    // drop shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.fillRect(w.x + 2, w.y + 2, w.w, w.h);
     // face
     ctx.fillStyle = COLORS.wallFill;
     ctx.fillRect(w.x, w.y, w.w, w.h);
@@ -4123,18 +3525,11 @@ function draw() {
     ctx.stroke();
   }
 
-  // polygon walls (render simple beveled stroke)
+  // polygon walls (render simple beveled stroke; shadow omitted here to avoid duplicates)
   ctx.lineWidth = 2;
   for (const poly of polyWalls) {
     const pts = poly.points;
     if (!pts || pts.length < 6) continue;
-    // shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.beginPath();
-    ctx.moveTo(pts[0] + 2, pts[1] + 2);
-    for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i] + 2, pts[i + 1] + 2);
-    ctx.closePath();
-    ctx.fill();
     // face
     ctx.fillStyle = COLORS.wallFill;
     ctx.beginPath();
@@ -4147,11 +3542,8 @@ function draw() {
     ctx.stroke();
   }
 
-  // round posts (pillars)
+  // round posts (pillars) — shadow omitted here to avoid duplicates
   for (const p of posts) {
-    // shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.beginPath(); ctx.arc(p.x + 2, p.y + 2, p.r, 0, Math.PI * 2); ctx.fill();
     // face
     ctx.fillStyle = COLORS.wallFill;
     ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
@@ -4436,7 +3828,194 @@ function draw() {
     ctx.textAlign = 'start';
     ctx.textBaseline = 'top';
   }
+  
+  // Global UI: Toasts and Modal Overlays (render last so they sit on top)
+  renderGlobalOverlays();
 }
+
+// Extracted: render toasts and modal overlays on top of everything
+function renderGlobalOverlays(): void {
+  // Draw toasts (top-right stack) and cull expired
+  {
+    const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    uiToasts = uiToasts.filter(t => t.expiresAt > now);
+    let ty = 12;
+    for (const t of uiToasts) {
+      const padX = 12, padY = 8, boxH = 24;
+      ctx.font = '14px system-ui, sans-serif';
+      const textW = Math.min(WIDTH - 40, ctx.measureText(t.message).width);
+      const boxW = Math.min(WIDTH - 40, Math.max(140, textW + padX * 2));
+      const x = WIDTH - boxW - 12;
+      const y = ty;
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(x, y, boxW, boxH);
+      ctx.strokeStyle = '#cfd2cf';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, boxW - 1, boxH - 1);
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(t.message, x + padX, y + boxH / 2 + 0.5);
+      ty += boxH + 8;
+    }
+  }
+
+  // Modal overlays (confirm, prompt, list)
+  console.log('Overlay check in draw():', { isActive: isOverlayActive(), kind: uiOverlay.kind });
+  if (isOverlayActive() && uiOverlay.kind !== 'toast') {
+    console.log('Rendering overlay:', uiOverlay);
+    overlayHotspots = [];
+    // dim background
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    // panel metrics
+    const panelW = Math.min(640, WIDTH - 80);
+    const pad = 16;
+    let panelH = 160;
+    const hasTitle = !!uiOverlay.title;
+    const titleH = hasTitle ? 28 : 0;
+    if (uiOverlay.kind === 'prompt') panelH = 200;
+    if (uiOverlay.kind === 'list') {
+      const items = uiOverlay.listItems ?? [];
+      const visible = Math.min(items.length, 10);
+      panelH = 100 + visible * 28 + 56; // title+list+buttons
+      panelH = Math.min(panelH, HEIGHT - 120);
+    }
+    const px = Math.floor(WIDTH / 2 - panelW / 2);
+    const py = Math.floor(HEIGHT / 2 - panelH / 2);
+    // panel background
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(px, py, panelW, panelH);
+    ctx.strokeStyle = '#cfd2cf';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(px + 0.5, py + 0.5, panelW - 1, panelH - 1);
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    let cy = py + pad;
+    // title
+    if (hasTitle) {
+      ctx.font = '18px system-ui, sans-serif';
+      ctx.fillText(uiOverlay.title!, px + pad, cy);
+      cy += titleH;
+    }
+    // message (simple line-break support)
+    if (uiOverlay.message) {
+      ctx.font = '14px system-ui, sans-serif';
+      const lines = String(uiOverlay.message).split('\n');
+      for (const ln of lines) { ctx.fillText(ln, px + pad, cy); cy += 20; }
+      cy += 6;
+    }
+    // kind-specific content
+    if (uiOverlay.kind === 'confirm') {
+      // Buttons: OK (index 0) and Cancel (index 1)
+      const bw = 110, bh = 30, gap = 12;
+      const by = py + panelH - pad - bh;
+      const okx = px + panelW - pad - bw * 2 - gap;
+      const cx = px + panelW - pad - bw;
+      // OK
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillRect(okx, by, bw, bh);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(okx, by, bw, bh);
+      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '15px system-ui, sans-serif';
+      ctx.fillText('OK', okx + bw / 2, by + bh / 2 + 0.5);
+      overlayHotspots.push({ kind: 'btn', index: 0, x: okx, y: by, w: bw, h: bh });
+      // Cancel
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillRect(cx, by, bw, bh);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(cx, by, bw, bh);
+      ctx.fillStyle = '#ffffff'; ctx.font = '15px system-ui, sans-serif';
+      ctx.fillText('Cancel', cx + bw / 2, by + bh / 2 + 0.5);
+      overlayHotspots.push({ kind: 'btn', index: 1, x: cx, y: by, w: bw, h: bh });
+    } else if (uiOverlay.kind === 'prompt') {
+      // Input field
+      const ih = 28;
+      const iw = panelW - pad * 2;
+      const ix = px + pad;
+      const iy = cy;
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(ix, iy, iw, ih);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(ix + 0.5, iy + 0.5, iw - 1, ih - 1);
+      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.font = '14px system-ui, sans-serif';
+      const txt = uiOverlay.inputText ?? '';
+      ctx.fillText(txt, ix + 8, iy + ih / 2 + 0.5);
+      overlayHotspots.push({ kind: 'input', x: ix, y: iy, w: iw, h: ih });
+      // Buttons
+      const bw = 110, bh = 30, gap = 12;
+      const by = py + panelH - pad - bh;
+      const okx = px + panelW - pad - bw * 2 - gap;
+      const cx = px + panelW - pad - bw;
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillRect(okx, by, bw, bh);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(okx, by, bw, bh);
+      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '15px system-ui, sans-serif';
+      ctx.fillText('OK', okx + bw / 2, by + bh / 2 + 0.5);
+      overlayHotspots.push({ kind: 'btn', index: 0, x: okx, y: by, w: bw, h: bh });
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillRect(cx, by, bw, bh);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(cx, by, bw, bh);
+      ctx.fillStyle = '#ffffff'; ctx.font = '15px system-ui, sans-serif';
+      ctx.fillText('Cancel', cx + bw / 2, by + bh / 2 + 0.5);
+      overlayHotspots.push({ kind: 'btn', index: 1, x: cx, y: by, w: bw, h: bh });
+    } else if (uiOverlay.kind === 'list') {
+      // List items
+      const items = uiOverlay.listItems ?? [];
+      const rowH = 28;
+      const maxRows = Math.min(10, Math.floor((panelH - (cy - py) - 80) / rowH));
+      const visible = Math.min(items.length, maxRows);
+      ctx.font = '14px system-ui, sans-serif';
+      for (let i = 0; i < visible; i++) {
+        const item = items[i];
+        const iy = cy + i * rowH;
+        const ix = px + pad;
+        const iw = panelW - pad * 2;
+        const selected = (uiOverlay.listIndex ?? 0) === i;
+        ctx.fillStyle = selected ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.25)';
+        ctx.fillRect(ix, iy, iw, rowH - 2);
+        ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(ix + 0.5, iy + 0.5, iw - 1, rowH - 2 - 1);
+        ctx.fillStyle = item.disabled ? '#a0a0a0' : '#ffffff';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText(item.label, ix + 8, iy + (rowH - 2) / 2 + 0.5);
+        overlayHotspots.push({ kind: 'listItem', index: i, x: ix, y: iy, w: iw, h: rowH - 2 });
+      }
+      // Cancel button
+      const bw = 120, bh = 30;
+      const by = py + panelH - pad - bh;
+      const bx = px + panelW - pad - bw;
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(bx, by, bw, bh);
+      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '15px system-ui, sans-serif';
+      ctx.fillText('Cancel', bx + bw / 2, by + bh / 2 + 0.5);
+      overlayHotspots.push({ kind: 'btn', x: bx, y: by, w: bw, h: bh });
+    }
+  }
+}
+
+// Test function to diagnose overlay rendering
+function testOverlay() {
+  console.log('testOverlay: Setting test overlay');
+  uiOverlay = {
+    kind: 'confirm',
+    title: 'Test Overlay',
+    message: 'This is a test overlay to diagnose rendering issues',
+    cancelable: true,
+    resolve: (result) => {
+      console.log('Test overlay resolved with:', result);
+      uiOverlay = { kind: 'none' };
+    }
+  };
+  console.log('testOverlay: Set uiOverlay to:', JSON.stringify(uiOverlay, (key, value) => key === 'resolve' ? '[Function]' : value));
+}
+
+// Add test key handler
+window.addEventListener('keydown', (e) => {
+  // Press 'T' to test overlay rendering
+  if (e.code === 'KeyT' && !isOverlayActive()) {
+    console.log('T key pressed, showing test overlay');
+    testOverlay();
+  }
+});
 
 function loop(t: number) {
   const dt = Math.min(1, (t - lastTime) / 1000); // clamp dt to avoid jumps

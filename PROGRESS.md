@@ -45,10 +45,11 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
   - [x] Water splash: multi-ring ripple visual
   - [x] Score visuals: color-coded sunk banner and summary deltas
 
-- [ ] Level Editor & Browser
-  - [x] Editor selectable from Main Menu (launch editor mode) — placeholder screen with Back
-  - [x] Tool palette UI (initial): render tool buttons, hover pointer, click to select (`selectedEditorTool`)
-  - [x] Tee & Cup placement: 20px grid snapping and nudge controls (arrow keys); configurable grid size
+- [ ]### Level Editor & Browser
+- [x] **Level Editor UI**: Menubar with File/Objects/Editor Tools menus (2025-01-10)
+- [x] **Level Editor Tool Palette**: Initial tool palette UI (render buttons, hover cursor, click-to-select) (2025-01-10)
+- [x] **Level Editor Select Tool**: Moved Select tool from Objects to Editor Tools and renamed to 'Select Tool' (2025-01-10)
+- [x] **Level Editor Migration**: Completed migration of all editor code from main.ts to modular levelEditor.ts structure (2025-01-10); configurable grid size
   - [x] Refactor: delegated all Level Editor keyboard handling from `src/main.ts` to `levelEditor.handleKeyDown(editorEnv)`; removed legacy unreachable code referencing old globals in `main.ts`.
   - [ ] Follow-up: run TypeScript check and do a manual smoke test of editor shortcuts, grid +/-/toggle, menu mnemonics, and Delete/nudge behaviors.
   - [x] Main Menu: add "Level Editor" entry to launch editor mode

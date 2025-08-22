@@ -1094,32 +1094,176 @@ class LevelEditorImpl implements LevelEditorAPI {
   }
 
   handleKeyDown(e: KeyboardEvent, env: EditorEnv): void {
-    void e; void env;
+    if (env.isOverlayActive()) return;
+    
+    // Delete key - remove selected objects
+    if (e.code === 'Delete' || e.code === 'Backspace') {
+      if (this.selectedObjects.length > 0) {
+        const gs = env.getGlobalState();
+        for (const obj of this.selectedObjects) {
+          if (obj.type === 'wall') {
+            const idx = obj.index;
+            if (idx >= 0 && idx < gs.walls.length) gs.walls.splice(idx, 1);
+          } else if (obj.type === 'post') {
+            const idx = obj.index;
+            if (idx >= 0 && idx < gs.posts.length) gs.posts.splice(idx, 1);
+          } else if (obj.type === 'water') {
+            const idx = obj.index;
+            if (idx >= 0 && idx < gs.waters.length) gs.waters.splice(idx, 1);
+          } else if (obj.type === 'sand') {
+            const idx = obj.index;
+            if (idx >= 0 && idx < gs.sands.length) gs.sands.splice(idx, 1);
+          } else if (obj.type === 'bridge') {
+            const idx = obj.index;
+            if (idx >= 0 && idx < gs.bridges.length) gs.bridges.splice(idx, 1);
+          } else if (obj.type === 'hill') {
+            const idx = obj.index;
+            if (idx >= 0 && idx < gs.hills.length) gs.hills.splice(idx, 1);
+          } else if (obj.type === 'decoration') {
+            const idx = obj.index;
+            if (idx >= 0 && idx < gs.decorations.length) gs.decorations.splice(idx, 1);
+          } else if (obj.type === 'wallsPoly') {
+            const idx = obj.index;
+            if (idx >= 0 && idx < gs.polyWalls.length) gs.polyWalls.splice(idx, 1);
+          } else if (obj.type === 'waterPoly') {
+            const idx = obj.index;
+            if (idx >= 0 && idx < gs.watersPoly.length) gs.watersPoly.splice(idx, 1);
+          } else if (obj.type === 'sandPoly') {
+            const idx = obj.index;
+            if (idx >= 0 && idx < gs.sandsPoly.length) gs.sandsPoly.splice(idx, 1);
+          }
+        }
+        this.selectedObjects = [];
+        this.syncEditorDataFromGlobals(env);
+      }
+      return;
+    }
+
+    // Grid controls
+    if (e.code === 'KeyG') {
+      try { env.setShowGrid(!env.getShowGrid()); } catch {}
+      return;
+    }
+    if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
+      try { const g = Math.max(2, env.getGridSize() - 2); env.setGridSize(g); } catch {}
+      return;
+    }
+    if (e.code === 'Equal' || e.code === 'NumpadAdd') {
+      try { const g = Math.min(128, env.getGridSize() + 2); env.setGridSize(g); } catch {}
+      return;
+    }
+
+    // Tool shortcuts
+    if (e.code === 'KeyS' && !e.ctrlKey) { this.selectedTool = 'select'; return; }
+    if (e.code === 'KeyT') { this.selectedTool = 'tee'; return; }
+    if (e.code === 'KeyC') { this.selectedTool = 'cup'; return; }
+    if (e.code === 'KeyW') { this.selectedTool = 'wall'; return; }
+    if (e.code === 'KeyP') { this.selectedTool = 'post'; return; }
+    if (e.code === 'KeyB') { this.selectedTool = 'bridge'; return; }
+    if (e.code === 'KeyH') { this.selectedTool = 'hill'; return; }
+
+    // Save shortcuts
+    if (e.ctrlKey && e.code === 'KeyS') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        void this.saveAs();
+      } else {
+        void this.save();
+      }
+      return;
+    }
+
+    // Load shortcut
+    if (e.ctrlKey && e.code === 'KeyO') {
+      e.preventDefault();
+      void this.openLoadPicker();
+      return;
+    }
+
+    // New level shortcut
+    if (e.ctrlKey && e.code === 'KeyN') {
+      e.preventDefault();
+      void this.newLevel();
+      return;
+    }
   }
 
   async newLevel(): Promise<void> {
-    // Will call into real implementation after migration
+    const gs = this.getDefaultGlobalState();
+    this.editorLevelData = {
+      canvas: { width: gs.WIDTH, height: gs.HEIGHT },
+      course: { index: 1, total: 1, title: 'Untitled' },
+      par: 3,
+      tee: { x: gs.COURSE_MARGIN + 60, y: Math.floor(gs.HEIGHT / 2) },
+      cup: { x: gs.WIDTH - gs.COURSE_MARGIN - 60, y: Math.floor(gs.HEIGHT / 2), r: 8 },
+      walls: [],
+      wallsPoly: [],
+      posts: [],
+      bridges: [],
+      water: [],
+      waterPoly: [],
+      sand: [],
+      sandPoly: [],
+      hills: [],
+      decorations: []
+    };
+    this.editorCurrentSavedId = null;
+    this.selectedObjects = [];
   }
 
   async openLoadPicker(): Promise<void> {
-    // Will call into real implementation after migration
+    // Implementation would show level picker UI
+    console.log('Load picker not yet implemented');
   }
 
   async openDeletePicker(): Promise<void> {
-    // Will call into real implementation after migration
+    // Implementation would show delete confirmation UI
+    console.log('Delete picker not yet implemented');
   }
 
   async save(): Promise<void> {
-    // Will call into real implementation after migration
+    if (this.editorLevelData) {
+      try {
+        localStorage.setItem('vp.editor.level', JSON.stringify(this.editorLevelData));
+        console.log('Level saved to localStorage');
+      } catch (error) {
+        console.error('Failed to save level:', error);
+      }
+    }
   }
 
   async saveAs(): Promise<void> {
-    // Will call into real implementation after migration
+    // For now, same as save - would show save dialog in full implementation
+    await this.save();
   }
 
   getSelectedTool(): EditorTool { return this.selectedTool; }
   setSelectedTool(t: EditorTool): void { this.selectedTool = t; }
   getUiHotspots(): EditorHotspot[] { return this.uiHotspots; }
+
+  // --- Helper methods ---
+  private getDefaultGlobalState() {
+    return {
+      WIDTH: 960,
+      HEIGHT: 600,
+      COURSE_MARGIN: 40
+    };
+  }
+
+  private syncEditorDataFromGlobals(env: EditorEnv): void {
+    if (!this.editorLevelData) return;
+    const gs = env.getGlobalState();
+    this.editorLevelData.walls = [...gs.walls];
+    this.editorLevelData.wallsPoly = [...gs.polyWalls];
+    this.editorLevelData.posts = [...gs.posts];
+    this.editorLevelData.bridges = [...gs.bridges];
+    this.editorLevelData.water = [...gs.waters];
+    this.editorLevelData.waterPoly = [...gs.watersPoly];
+    this.editorLevelData.sand = [...gs.sands];
+    this.editorLevelData.sandPoly = [...gs.sandsPoly];
+    this.editorLevelData.hills = [...gs.hills];
+    this.editorLevelData.decorations = [...gs.decorations];
+  }
 
   // --- Helpers migrated/replicated from main.ts ---
   private getObjectBounds(obj: SelectableObject): { x: number; y: number; w: number; h: number } {

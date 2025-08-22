@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+ - **Level Editor Migration Completed**: Successfully migrated all level editor code from `src/main.ts` to modular `src/editor/levelEditor.ts` structure
+   - Moved editor state management, input handling, rendering, and persistence to dedicated module
+   - Updated `main.ts` to use levelEditor module API through EditorEnv interface
+   - Removed duplicate/legacy editor code from main.ts while preserving integration layer
+   - Fixed console log spam and verified tool palette functionality
+   - Verified TypeScript compilation and tested editor functionality
  - UX: Replaced all browser-native dialogs (alert/prompt/confirm) with in-game overlay modals
    - Level Editor: Save, Save As, Load, New, Delete now use `showUiToast`/`showUiConfirm`/`showUiPrompt`/`showUiList` (async, non-blocking, keyboard-friendly)
    - Users Admin UI: add/remove/promote/demote/import/export actions now use overlays; errors reported via toasts

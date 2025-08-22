@@ -51,7 +51,7 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [x] **Level Editor Select Tool**: Moved Select tool from Objects to Editor Tools and renamed to 'Select Tool' (2025-01-10)
 - [x] **Level Editor Migration**: Completed migration of all editor code from main.ts to modular levelEditor.ts structure (2025-01-10); configurable grid size
   - [x] Refactor: delegated all Level Editor keyboard handling from `src/main.ts` to `levelEditor.handleKeyDown(editorEnv)`; removed legacy unreachable code referencing old globals in `main.ts`.
-  - [ ] Follow-up: run TypeScript check and do a manual smoke test of editor shortcuts, grid +/-/toggle, menu mnemonics, and Delete/nudge behaviors.
+  - [x] Follow-up: run TypeScript check and do a manual smoke test of editor shortcuts, grid +/-/toggle, menu mnemonics, and Delete/nudge behaviors. (2025-08-22)
   - [x] Main Menu: add "Level Editor" entry to launch editor mode
   - [x] Multi-level persistence: Save, Save As, Load, New, Delete using `localStorage` key `vp.levels.v1`; track current saved ID for overwrite semantics
   - [x] Preview rendering: fairway panel + outline, grid overlay, Tee/Cup markers
@@ -68,9 +68,10 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
     - Tools present but not yet implemented: WallsPoly, WaterPoly, SandPoly (no placement/vertex-edit UI)
     - Actions working: Grid toggle, Grid -/+, Back/Exit, New, Save, Save As, Level Load, Delete — all via in-game overlays (async) with Enter/Esc support
     - Persistence: Save As targets Filesystem or `User_Levels/<Username>/` only (no LocalStorage per policy)
-    - Gaps:
-      - Polygon tools: selection/move/delete supported; still no create/vertex-edit UI
-      - Hill direction control: missing; Post radius is fixed
+      - Gaps:
+        - [x] Polygon tools: implemented create/vertex-edit UI with click-to-add-vertex, Enter/Escape to finish/cancel, click-near-start to close (2025-08-22)
+        - [x] Hill direction control: implemented direction picker UI with N/S/E/W arrows (2025-08-22)
+        - [x] Post radius control: implemented radius picker UI with 6/8/10/12/16/20 options (2025-08-22)
       - Rotation: implemented for rectangular items with 15° snapping; shadow duplication fixed by removing legacy non-rotated shadows
       - Diagnosis resolved: Included polygon variants in `findObjectAtPoint()` and `getObjectBounds()`; `moveSelectedObjects()` now translates polygon `points`; Delete key removes from poly arrays and `editorLevelData`; removed duplicate/incorrect implementations.
       - Consistency: Defined local `COLORS` and `SelectableObject` in `src/editor/levelEditor.ts` and standardized naming to `wallsPoly` in `getObjectBounds()`.

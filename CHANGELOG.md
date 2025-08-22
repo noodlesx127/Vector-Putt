@@ -4,7 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
- - **Level Editor Migration Completed**: Successfully migrated all level editor code from `src/main.ts` to modular `src/editor/levelEditor.ts` structure
+### Added
+- **Level Editor Polygon Tools**: Implemented WallsPoly, WaterPoly, SandPoly with click-to-add-vertex placement, Enter/Escape to finish/cancel, click-near-start to close
+- **Level Editor Hill Direction Control**: Interactive picker UI with N/S/E/W directional arrows for hill placement
+- **Level Editor Post Radius Control**: Interactive picker UI with radius options (6, 8, 10, 12, 16, 20) for post placement
+- **Level Editor Point Placement**: Tee, Cup, and Post tools with proper click placement and grid snapping
+
+### Changed
+- **Level Editor Migration Completed**: Successfully migrated all level editor code from `src/main.ts` to modular `src/editor/levelEditor.ts` structure
    - Moved editor state management, input handling, rendering, and persistence to dedicated module
    - Updated `main.ts` to use levelEditor module API through EditorEnv interface
    - Removed duplicate/legacy editor code from main.ts while preserving integration layer

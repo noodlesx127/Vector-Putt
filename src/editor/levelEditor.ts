@@ -217,12 +217,46 @@ class LevelEditorImpl implements LevelEditorAPI {
   private isSelectionDragging: boolean = false;
   private selectionBoxStart: { x: number; y: number } | null = null;
   private isRotating: boolean = false;
+
+  // Polygon creation state
+  private polygonInProgress: { tool: EditorTool; points: number[] } | null = null;
+  
+  // Hill direction control state
+  private hillDirectionPicker: { x: number; y: number; visible: boolean; selectedDir: string } | null = null;
+  
+  // Post radius control state
+  private postRadiusPicker: { x: number; y: number; visible: boolean; selectedRadius: number; postIndex: number } | null = null;
   private rotationCenter: { x: number; y: number } | null = null;
   private rotationStartAngle: number = 0;
   private rotationStartMouse: { x: number; y: number } | null = null;
   private rotationSensitivity: number = 0.05;
   private resizeHandleIndex: number | null = null;
   private dragMoveStart: { x: number; y: number } | null = null;
+
+  // Helper method to finish polygon creation
+  private finishPolygon(env: EditorEnv): void {
+    if (!this.polygonInProgress || this.polygonInProgress.points.length < 6) {
+      this.polygonInProgress = null;
+      return;
+    }
+
+    const poly = { points: [...this.polygonInProgress.points] };
+    const gs = env.getGlobalState();
+
+    if (this.polygonInProgress.tool === 'wallsPoly') {
+      gs.polyWalls.push(poly);
+      if (this.editorLevelData) this.editorLevelData.wallsPoly.push(poly);
+    } else if (this.polygonInProgress.tool === 'waterPoly') {
+      gs.watersPoly.push(poly);
+      if (this.editorLevelData) this.editorLevelData.waterPoly.push(poly);
+    } else if (this.polygonInProgress.tool === 'sandPoly') {
+      gs.sandsPoly.push(poly);
+      if (this.editorLevelData) this.editorLevelData.sandPoly.push(poly);
+    }
+
+    env.setGlobalState(gs);
+    this.polygonInProgress = null;
+  }
 
   // Menu definitions
   private readonly EDITOR_MENUS: Record<EditorMenuId, { title: string; items: Array<{ label: string; item: EditorMenuItem; separator?: boolean }> }> = {
@@ -608,6 +642,144 @@ class LevelEditorImpl implements LevelEditorAPI {
       }
     }
 
+    // Post radius picker
+    if (this.postRadiusPicker && this.postRadiusPicker.visible) {
+      const picker = this.postRadiusPicker;
+      const size = 100;
+      const x = picker.x - size / 2;
+      const y = picker.y - size / 2;
+      
+      // Background
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      ctx.fillRect(x, y, size, size);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, size, size);
+      
+      // Radius options
+      const radii = [6, 8, 10, 12, 16, 20];
+      const cols = 3;
+      const cellW = size / cols;
+      const cellH = size / 2;
+      
+      ctx.font = '14px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      
+      for (let i = 0; i < radii.length; i++) {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const cellX = x + col * cellW;
+        const cellY = y + row * cellH;
+        
+        ctx.fillStyle = picker.selectedRadius === radii[i] ? '#00ff00' : '#ffffff';
+        ctx.fillText(radii[i].toString(), cellX + cellW/2, cellY + cellH/2);
+      }
+      
+      // Instructions
+      ctx.font = '12px Arial';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('Click radius', picker.x, picker.y + size/2 + 15);
+    }
+
+    // Hill direction picker
+    if (this.hillDirectionPicker && this.hillDirectionPicker.visible) {
+      const picker = this.hillDirectionPicker;
+      const size = 80;
+      const x = picker.x - size / 2;
+      const y = picker.y - size / 2;
+      
+      // Background
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      ctx.fillRect(x, y, size, size);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, size, size);
+      
+      // Direction arrows
+      const dirs = [
+        { dir: 'N', x: x + size/2, y: y + 10, label: '↑' },
+        { dir: 'S', x: x + size/2, y: y + size - 20, label: '↓' },
+        { dir: 'W', x: x + 10, y: y + size/2, label: '←' },
+        { dir: 'E', x: x + size - 20, y: y + size/2, label: '→' }
+      ];
+      
+      ctx.font = '20px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      
+      for (const d of dirs) {
+        ctx.fillStyle = picker.selectedDir === d.dir ? '#00ff00' : '#ffffff';
+        ctx.fillText(d.label, d.x, d.y);
+      }
+      
+      // Instructions
+      ctx.font = '12px Arial';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('Click direction', picker.x, picker.y + size/2 + 15);
+    }
+
+    // Polygon in progress preview
+    if (this.polygonInProgress && this.polygonInProgress.points.length >= 2) {
+      const pts = this.polygonInProgress.points;
+      const tool = this.polygonInProgress.tool;
+      
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(fairX, fairY, fairW, fairH);
+      ctx.clip();
+      
+      // Draw polygon outline
+      ctx.beginPath();
+      ctx.moveTo(pts[0], pts[1]);
+      for (let i = 2; i < pts.length; i += 2) {
+        ctx.lineTo(pts[i], pts[i + 1]);
+      }
+      // Close the polygon if we have enough points
+      if (pts.length >= 6) {
+        ctx.closePath();
+      }
+      
+      // Fill based on tool type
+      if (tool === 'waterPoly') {
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = COLORS.waterFill;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = COLORS.waterStroke;
+      } else if (tool === 'sandPoly') {
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = COLORS.sandFill;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = COLORS.sandStroke;
+      } else if (tool === 'wallsPoly') {
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = COLORS.wallFill;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = COLORS.wallStroke;
+      }
+      
+      ctx.setLineDash([6, 4]);
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      
+      // Draw vertices as small circles
+      ctx.fillStyle = '#ffffff';
+      for (let i = 0; i < pts.length; i += 2) {
+        ctx.beginPath();
+        ctx.arc(pts[i], pts[i + 1], 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+      
+      ctx.restore();
+    }
+
     // Selection tool visuals
     if (this.selectedTool === 'select') {
       ctx.save();
@@ -779,7 +951,87 @@ class LevelEditorImpl implements LevelEditorAPI {
     if (env.isOverlayActive()) return;
     const p = env.worldFromEvent(e);
 
-    // 1) UI hotspots (menus)
+    // 1) Handle post radius picker first
+    if (this.postRadiusPicker && this.postRadiusPicker.visible) {
+      const picker = this.postRadiusPicker;
+      const size = 100;
+      const x = picker.x - size / 2;
+      const y = picker.y - size / 2;
+      
+      // Check if clicking on radius options
+      const radii = [6, 8, 10, 12, 16, 20];
+      const cols = 3;
+      const cellW = size / cols;
+      const cellH = size / 2;
+      
+      for (let i = 0; i < radii.length; i++) {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const cellX = x + col * cellW;
+        const cellY = y + row * cellH;
+        
+        if (p.x >= cellX && p.x <= cellX + cellW && p.y >= cellY && p.y <= cellY + cellH) {
+          // Update the post's radius
+          const gs = env.getGlobalState();
+          if (picker.postIndex >= 0 && picker.postIndex < gs.posts.length) {
+            (gs.posts[picker.postIndex] as any).r = radii[i];
+            if (this.editorLevelData && picker.postIndex < this.editorLevelData.posts.length) {
+              this.editorLevelData.posts[picker.postIndex].r = radii[i];
+            }
+            env.setGlobalState(gs);
+          }
+          this.postRadiusPicker = null;
+          return;
+        }
+      }
+      
+      // Click outside picker closes it
+      if (!(p.x >= x && p.x <= x + size && p.y >= y && p.y <= y + size)) {
+        this.postRadiusPicker = null;
+        return;
+      }
+    }
+
+    // 2) Handle hill direction picker
+    if (this.hillDirectionPicker && this.hillDirectionPicker.visible) {
+      const picker = this.hillDirectionPicker;
+      const size = 80;
+      const x = picker.x - size / 2;
+      const y = picker.y - size / 2;
+      
+      // Check if clicking on direction arrows
+      const dirs = [
+        { dir: 'N', x: x + size/2, y: y + 10, w: 20, h: 20 },
+        { dir: 'S', x: x + size/2, y: y + size - 20, w: 20, h: 20 },
+        { dir: 'W', x: x + 10, y: y + size/2, w: 20, h: 20 },
+        { dir: 'E', x: x + size - 20, y: y + size/2, w: 20, h: 20 }
+      ];
+      
+      for (const d of dirs) {
+        if (p.x >= d.x - d.w/2 && p.x <= d.x + d.w/2 && p.y >= d.y - d.h/2 && p.y <= d.y + d.h/2) {
+          // Update the most recently created hill's direction
+          const gs = env.getGlobalState();
+          if (gs.hills.length > 0) {
+            const lastHill = gs.hills[gs.hills.length - 1] as any;
+            lastHill.dir = d.dir;
+            if (this.editorLevelData && this.editorLevelData.hills.length > 0) {
+              this.editorLevelData.hills[this.editorLevelData.hills.length - 1].dir = d.dir;
+            }
+            env.setGlobalState(gs);
+          }
+          this.hillDirectionPicker = null;
+          return;
+        }
+      }
+      
+      // Click outside picker closes it
+      if (!(p.x >= x && p.x <= x + size && p.y >= y && p.y <= y + size)) {
+        this.hillDirectionPicker = null;
+        return;
+      }
+    }
+
+    // 2) UI hotspots (menus)
     for (const hs of this.uiHotspots) {
       if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
         if (hs.kind === 'menu') {
@@ -840,7 +1092,59 @@ class LevelEditorImpl implements LevelEditorAPI {
         this.editorDragCurrent = { x: px, y: py };
         return;
       }
-      // Poly tools (wallsPoly/waterPoly/sandPoly) are not implemented yet here.
+      // Poly tools: click to start polygon, subsequent clicks add vertices, double-click or Enter to finish
+      if (this.selectedTool === 'wallsPoly' || this.selectedTool === 'waterPoly' || this.selectedTool === 'sandPoly') {
+        if (!this.polygonInProgress) {
+          // Start new polygon
+          this.polygonInProgress = { tool: this.selectedTool, points: [px, py] };
+          return;
+        } else {
+          // Check if clicking near the starting point to close polygon
+          const startX = this.polygonInProgress.points[0];
+          const startY = this.polygonInProgress.points[1];
+          const distToStart = Math.sqrt((px - startX) ** 2 + (py - startY) ** 2);
+          
+          if (distToStart < 15 && this.polygonInProgress.points.length >= 6) {
+            // Close polygon by clicking near start
+            this.finishPolygon(env);
+            return;
+          } else {
+            // Add vertex to current polygon
+            this.polygonInProgress.points.push(px, py);
+            return;
+          }
+        }
+      }
+      
+      // Point placement for tee/cup/post
+      if (inFairway && (this.selectedTool === 'tee' || this.selectedTool === 'cup' || this.selectedTool === 'post')) {
+        const gs = env.getGlobalState();
+        
+        if (this.selectedTool === 'tee') {
+          gs.ball.x = px; gs.ball.y = py;
+          if (this.editorLevelData) { this.editorLevelData.tee.x = px; this.editorLevelData.tee.y = py; }
+        } else if (this.selectedTool === 'cup') {
+          gs.hole.x = px; gs.hole.y = py;
+          if (this.editorLevelData) { this.editorLevelData.cup.x = px; this.editorLevelData.cup.y = py; }
+        } else if (this.selectedTool === 'post') {
+          const defaultRadius = 12;
+          const post = { x: px, y: py, r: defaultRadius };
+          gs.posts.push(post);
+          if (this.editorLevelData) this.editorLevelData.posts.push(post);
+          
+          // Show radius picker for the new post
+          this.postRadiusPicker = { 
+            x: px, 
+            y: py, 
+            visible: true, 
+            selectedRadius: defaultRadius,
+            postIndex: gs.posts.length - 1
+          };
+        }
+        
+        env.setGlobalState(gs);
+        return;
+      }
     }
 
     // 3) Selection tool interactions
@@ -993,7 +1297,17 @@ class LevelEditorImpl implements LevelEditorAPI {
         else if (this.editorDragTool === 'bridge') (gs.bridges as any[]).push(rect);
         else if (this.editorDragTool === 'water') (gs.waters as any[]).push(rect);
         else if (this.editorDragTool === 'sand') (gs.sands as any[]).push(rect);
-        else if (this.editorDragTool === 'hill') (gs.hills as any[]).push({ ...rect, dir: 'S' });
+        else if (this.editorDragTool === 'hill') {
+          const hill = { ...rect, dir: 'S' };
+          (gs.hills as any[]).push(hill);
+          // Show direction picker for the new hill
+          this.hillDirectionPicker = { 
+            x: rect.x + rect.w / 2, 
+            y: rect.y + rect.h / 2, 
+            visible: true, 
+            selectedDir: 'S' 
+          };
+        }
       }
       this.isEditorDragging = false; this.editorDragTool = null;
       return;
@@ -1095,6 +1409,19 @@ class LevelEditorImpl implements LevelEditorAPI {
 
   handleKeyDown(e: KeyboardEvent, env: EditorEnv): void {
     if (env.isOverlayActive()) return;
+    
+    // Enter/Escape for polygon completion/cancellation
+    if (this.polygonInProgress) {
+      if (e.code === 'Enter') {
+        this.finishPolygon(env);
+        e.preventDefault();
+        return;
+      } else if (e.code === 'Escape') {
+        this.polygonInProgress = null;
+        e.preventDefault();
+        return;
+      }
+    }
     
     // Delete key - remove selected objects
     if (e.code === 'Delete' || e.code === 'Backspace') {

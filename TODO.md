@@ -99,6 +99,15 @@ Notes:
   - [x] Tool palette UI (initial): render tool buttons, hover pointer, click to select (`selectedEditorTool`)
   - [x] Tee & Cup placement (editor): 20px grid snapping, clamped to fairway bounds, updates editor level data
   - [x] Editor persistence (multi-level): Save, Save As, Load, New, Delete using `localStorage` key `vp.levels.v1`; track current saved ID for overwrite semantics
+  - [ ] Replace temporary prompt-based Save/Save As/Load with in-game overlay dialogs (List/Prompt) for naming and selection
+  - [x] Migrate persistence off localStorage to filesystem per policy (`User_Levels/<Username>/*.json`) and provide Import/Export for browser-only builds
+    - [x] File System Access API implementation for direct file read/write
+    - [x] User_Levels/<Username>/ directory structure with automatic creation
+    - [x] Export functionality (download JSON) for browser-only builds
+    - [x] Import level from file upload when no saved levels found
+    - [x] Load bundled levels from levels/ directory for editing
+    - [x] Combined level picker with source labels [bundled], [user], [localStorage]
+    - [x] Level validation and automatic metadata (author, lastModified) on save/export
   - [x] Permissions (editor): owner/admin-only overwrite and delete; non-owners are prompted and routed to "Save As"
   - [x] Migration: on first editor entry, migrate legacy single-slot `vp.editor.level` into `vp.levels.v1` with ownership/timestamps
   - [x] CRUD UI wiring: action buttons live in `editorUiHotspots`; handled in Level Editor `mousedown`; hotspots rebuilt each frame

@@ -53,7 +53,7 @@ export type EditorTool =
   | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'sand' | 'sandPoly' | 'hill';
 
 export type EditorAction =
-  | 'save' | 'saveAs' | 'load' | 'new' | 'delete' | 'gridToggle' | 'gridMinus' | 'gridPlus' | 'back';
+  | 'save' | 'saveAs' | 'load' | 'export' | 'new' | 'delete' | 'test' | 'gridToggle' | 'gridMinus' | 'gridPlus' | 'back';
 
 export type EditorMenuId = 'file' | 'objects' | 'decorations' | 'tools';
 
@@ -123,6 +123,9 @@ export interface EditorEnv {
   renderGlobalOverlays(): void;
   isOverlayActive?(): boolean;
   migrateSingleSlotIfNeeded?(): void;
+  exitToMenu(): void;
+  getUserId(): string;
+  testLevel?(levelData: any): Promise<void>;
 }
 
 export interface LevelEditor {
@@ -144,6 +147,7 @@ export interface LevelEditor {
   openDeletePicker(): Promise<void>;
   save(): Promise<void>;
   saveAs(): Promise<void>;
+  testLevel(): Promise<void>;
 
   // State exposure (minimal, for main UI integration)
   getSelectedTool(): EditorTool;
@@ -197,6 +201,8 @@ class LevelEditorImpl implements LevelEditor {
   // Cache selection bounds per frame
   private selectionBoundsCache: { x: number; y: number; w: number; h: number } | null = null;
   private groupResizeOriginals: Array<{ obj: SelectableObject; snap: any }> | null = null;
+  private groupRotateOriginals: Array<{ obj: SelectableObject; snap: any }> | null = null;
+  private groupRotationStartAngle: number = 0;
   private resizeHandleIndex: number | null = null;
   private dragMoveStart: { x: number; y: number } | null = null;
 
@@ -234,6 +240,8 @@ class LevelEditorImpl implements LevelEditor {
         { label: 'Save', item: { kind: 'action', action: 'save' } },
         { label: 'Save As', item: { kind: 'action', action: 'saveAs' } },
         { label: 'Level Load', item: { kind: 'action', action: 'load' } },
+        { label: 'Export', item: { kind: 'action', action: 'export' } },
+        { label: 'Test Level', item: { kind: 'action', action: 'test' }, separator: true },
         { label: 'Delete', item: { kind: 'action', action: 'delete' } },
         { label: 'Back/Exit', item: { kind: 'action', action: 'back' }, separator: true }
       ]
@@ -746,6 +754,9 @@ class LevelEditorImpl implements LevelEditor {
       ctx.restore();
     }
 
+    // Update selection bounds cache for group selections each frame
+    this.selectionBoundsCache = (this.selectedObjects.length > 1) ? this.getSelectionBounds() : null;
+
     // Selection tool visuals
     if (this.selectedTool === 'select') {
       ctx.save();
@@ -756,32 +767,38 @@ class LevelEditorImpl implements LevelEditor {
       // --- Group selection bounding box ---
       if (this.selectedObjects.length > 1 && this.selectionBoundsCache) {
         const selB = this.selectionBoundsCache;
+        const dx = this.isDragMoving ? this.dragMoveOffset.x : 0;
+        const dy = this.isDragMoving ? this.dragMoveOffset.y : 0;
+        const drawB = { x: selB.x + dx, y: selB.y + dy, w: selB.w, h: selB.h };
+        const hasPoly = this.selectedObjects.some(o => o.type === 'wallsPoly' || o.type === 'waterPoly' || o.type === 'sandPoly');
         // Outline
         ctx.setLineDash([6, 4]);
         ctx.lineWidth = 2;
         ctx.strokeStyle = '#ffaa00';
-        ctx.strokeRect(selB.x, selB.y, selB.w, selB.h);
+        ctx.strokeRect(drawB.x, drawB.y, drawB.w, drawB.h);
         ctx.setLineDash([]);
-        // Handles (reuse helpers)
-        const handles = this.getResizeHandles(selB);
-        ctx.fillStyle = '#ffaa00';
-        for (const h of handles) {
-          ctx.fillRect(h.x, h.y, h.w, h.h);
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(h.x, h.y, h.w, h.h);
-        }
-        const rotHandles = this.getRotationHandles(selB);
-        ctx.fillStyle = '#ff6600';
-        for (const rh of rotHandles) {
-          ctx.beginPath();
-          ctx.arc(rh.x + rh.w / 2, rh.y + rh.h / 2, rh.w / 2, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.arc(rh.x + rh.w / 2, rh.y + rh.h / 2, rh.w / 2, 0, Math.PI * 2);
-          ctx.stroke();
+        // Handles (reuse helpers) - only if no polygon in selection
+        if (!hasPoly) {
+          const handles = this.getResizeHandles(drawB);
+          ctx.fillStyle = '#ffaa00';
+          for (const h of handles) {
+            ctx.fillRect(h.x, h.y, h.w, h.h);
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(h.x, h.y, h.w, h.h);
+          }
+          const rotHandles = this.getRotationHandles(drawB);
+          ctx.fillStyle = '#ff6600';
+          for (const rh of rotHandles) {
+            ctx.beginPath();
+            ctx.arc(rh.x + rh.w / 2, rh.y + rh.h / 2, rh.w / 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(rh.x + rh.w / 2, rh.y + rh.h / 2, rh.w / 2, 0, Math.PI * 2);
+            ctx.stroke();
+          }
         }
       }
 
@@ -1060,10 +1077,21 @@ class LevelEditorImpl implements LevelEditor {
               void this.saveAs();
             } else if (item.action === 'load') {
               void this.openLoadPicker();
+            } else if (item.action === 'export') {
+              void this.exportLevel();
+            } else if (item.action === 'test') {
+              void this.testLevel();
             } else if (item.action === 'delete') {
               void this.openDeletePicker();
             } else if (item.action === 'back') {
-              // Main will handle state switch via keyboard/menu elsewhere
+              (async () => {
+                const ok = await env.showConfirm('Exit Level Editor and return to Main Menu? Unsaved changes will be lost.', 'Exit Editor');
+                if (ok) {
+                  // Clear any open menus before leaving
+                  this.openEditorMenu = null;
+                  env.exitToMenu();
+                }
+              })();
             }
             this.openEditorMenu = null;
             return;
@@ -1147,43 +1175,69 @@ class LevelEditorImpl implements LevelEditor {
     }
 
     // 3) Selection tool interactions
-    // Group resize handles when multiple selection
+    // Group rotation handles when multiple selection (only if no polys selected)
     if (this.selectedTool === 'select' && this.selectedObjects.length > 1) {
       const selBounds = this.getSelectionBounds();
-      // Rotation handles (not yet implemented for group)
-      const handles = this.getResizeHandles(selBounds);
-      for (let i = 0; i < handles.length; i++) {
-        const h = handles[i];
-        if (p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h) {
-          this.isGroupResizing = true;
-          this.resizeHandleIndex = i;
-          this.resizeStartBounds = { ...selBounds };
-          this.resizeStartMouse = { x: px, y: py };
-          // Snapshot originals for proportional scaling
-          this.groupResizeOriginals = this.selectedObjects.map(o => ({ obj: o, snap: JSON.parse(JSON.stringify(o.object)) }));
-          return;
+      const hasPoly = this.selectedObjects.some(o => o.type === 'wallsPoly' || o.type === 'waterPoly' || o.type === 'sandPoly');
+      if (!hasPoly) {
+        const rotHandles = this.getRotationHandles(selBounds);
+        for (const rh of rotHandles) {
+          if (p.x >= rh.x && p.x <= rh.x + rh.w && p.y >= rh.y && p.y <= rh.y + rh.h) {
+            // Begin group rotation
+            this.isRotating = true;
+            const cx = selBounds.x + selBounds.w / 2, cy = selBounds.y + selBounds.h / 2;
+            this.rotationCenter = { x: cx, y: cy };
+            this.rotationStartMouse = { x: px, y: py };
+            this.groupRotationStartAngle = Math.atan2(py - cy, px - cx);
+            // Snapshot originals for rotation
+            this.groupRotateOriginals = this.selectedObjects.map(o => ({ obj: o, snap: JSON.parse(JSON.stringify(o.object)) }));
+            return;
+          }
+        }
+      }
+    }
+
+    // Group resize handles when multiple selection (disable if polys present)
+    if (this.selectedTool === 'select' && this.selectedObjects.length > 1) {
+      const selBounds = this.getSelectionBounds();
+      const hasPoly = this.selectedObjects.some(o => o.type === 'wallsPoly' || o.type === 'waterPoly' || o.type === 'sandPoly');
+      if (!hasPoly) {
+        const handles = this.getResizeHandles(selBounds);
+        for (let i = 0; i < handles.length; i++) {
+          const h = handles[i];
+          if (p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h) {
+            this.isGroupResizing = true;
+            this.resizeHandleIndex = i;
+            this.resizeStartBounds = { ...selBounds };
+            this.resizeStartMouse = { x: px, y: py };
+            // Snapshot originals for proportional scaling
+            this.groupResizeOriginals = this.selectedObjects.map(o => ({ obj: o, snap: JSON.parse(JSON.stringify(o.object)) }));
+            return;
+          }
         }
       }
     }
 
     // Check rotation/resize handles first when single selection
-    // Check rotation/resize handles first when single selection
     if (this.selectedTool === 'select' && this.selectedObjects.length === 1) {
       const obj = this.selectedObjects[0];
       const bounds = this.getObjectBounds(obj);
-      const rotHandles = this.getRotationHandles(bounds);
-      for (const rh of rotHandles) {
-        if (p.x >= rh.x && p.x <= rh.x + rh.w && p.y >= rh.y && p.y <= rh.y + rh.h) {
-          // Begin rotation
-          this.isRotating = true;
-          const cx = bounds.x + bounds.w / 2, cy = bounds.y + bounds.h / 2;
-          this.rotationCenter = { x: cx, y: cy };
-          this.rotationStartMouse = { x: px, y: py };
-          const o: any = obj.object;
-          const baseRot = typeof o?.rot === 'number' ? o.rot : 0;
-          const angNow = Math.atan2(py - cy, px - cx);
-          this.rotationStartAngle = baseRot - angNow;
-          return;
+      // Allow rotation only for rect-like objects (not polygons/posts/tee/cup)
+      if (obj.type === 'wall' || obj.type === 'water' || obj.type === 'sand' || obj.type === 'bridge' || obj.type === 'hill' || obj.type === 'decoration') {
+        const rotHandles = this.getRotationHandles(bounds);
+        for (const rh of rotHandles) {
+          if (p.x >= rh.x && p.x <= rh.x + rh.w && p.y >= rh.y && p.y <= rh.y + rh.h) {
+            // Begin rotation
+            this.isRotating = true;
+            const cx = bounds.x + bounds.w / 2, cy = bounds.y + bounds.h / 2;
+            this.rotationCenter = { x: cx, y: cy };
+            this.rotationStartMouse = { x: px, y: py };
+            const o: any = obj.object;
+            const baseRot = typeof o?.rot === 'number' ? o.rot : 0;
+            const angNow = Math.atan2(py - cy, px - cx);
+            this.rotationStartAngle = baseRot - angNow;
+            return;
+          }
         }
       }
       const handles = this.getResizeHandles(bounds);
@@ -1243,6 +1297,52 @@ class LevelEditorImpl implements LevelEditor {
       return;
     }
 
+    // --- Group rotation ---
+    if (this.isRotating && this.selectedObjects.length > 1 && this.rotationCenter && this.groupRotateOriginals) {
+      const angNow = Math.atan2(py - this.rotationCenter.y, px - this.rotationCenter.x);
+      let delta = angNow - this.groupRotationStartAngle;
+      if (e.shiftKey) {
+        const step = Math.PI / 12; // 15° snap
+        delta = Math.round(delta / step) * step;
+      }
+      const cx = this.rotationCenter.x;
+      const cy = this.rotationCenter.y;
+      const cosA = Math.cos(delta);
+      const sinA = Math.sin(delta);
+      const rotatePoint = (x: number, y: number) => {
+        const dx = x - cx; const dy = y - cy;
+        return { x: cx + dx * cosA - dy * sinA, y: cy + dx * sinA + dy * cosA };
+      };
+      for (const rec of this.groupRotateOriginals) {
+        const o: any = rec.snap;
+        const tgt: any = rec.obj.object as any;
+        const t = rec.obj.type as SelectableObject['type'];
+        if (t === 'wallsPoly' || t === 'waterPoly' || t === 'sandPoly') {
+          continue; // polygons are translate-only
+        }
+        if (t === 'wall' || t === 'water' || t === 'sand' || t === 'bridge' || t === 'hill' || t === 'decoration') {
+          // rotate rect center around group center, apply added rotation
+          const ox = o.x ?? 0, oy = o.y ?? 0, ow = o.w ?? 0, oh = o.h ?? 0;
+          const ocx = ox + ow / 2, ocy = oy + oh / 2;
+          const p2 = rotatePoint(ocx, ocy);
+          tgt.x = p2.x - ow / 2; tgt.y = p2.y - oh / 2;
+          const baseRot = typeof o?.rot === 'number' ? o.rot : 0;
+          tgt.rot = baseRot + delta;
+          if ('w' in tgt) tgt.w = ow;
+          if ('h' in tgt) tgt.h = oh;
+        } else if (t === 'post') {
+          const p2 = rotatePoint(o.x, o.y);
+          tgt.x = p2.x; tgt.y = p2.y;
+          // radius unchanged
+        } else if (t === 'tee' || t === 'cup') {
+          const p2 = rotatePoint(o.x, o.y);
+          tgt.x = p2.x; tgt.y = p2.y;
+        }
+      }
+      return;
+    }
+
+    // --- Single-object rotation ---
     if (this.isRotating && this.selectedObjects.length === 1 && this.rotationCenter) {
       const obj = this.selectedObjects[0];
       const angNow = Math.atan2(py - this.rotationCenter.y, px - this.rotationCenter.x);
@@ -1381,6 +1481,8 @@ class LevelEditorImpl implements LevelEditor {
       this.isRotating = false;
       this.rotationCenter = null;
       this.rotationStartMouse = null;
+      this.groupRotateOriginals = null;
+      this.groupRotationStartAngle = 0;
       return;
     }
 
@@ -1555,12 +1657,19 @@ class LevelEditorImpl implements LevelEditor {
 
     // Tool shortcuts
     if (e.code === 'KeyS' && !e.ctrlKey) { this.selectedTool = 'select'; return; }
-    if (e.code === 'KeyT') { this.selectedTool = 'tee'; return; }
+    if (e.code === 'KeyT' && !e.ctrlKey) { this.selectedTool = 'tee'; return; }
     if (e.code === 'KeyC') { this.selectedTool = 'cup'; return; }
     if (e.code === 'KeyW') { this.selectedTool = 'wall'; return; }
     if (e.code === 'KeyP') { this.selectedTool = 'post'; return; }
     if (e.code === 'KeyB') { this.selectedTool = 'bridge'; return; }
     if (e.code === 'KeyH') { this.selectedTool = 'hill'; return; }
+
+    // Test Level shortcut
+    if (e.ctrlKey && e.code === 'KeyT') {
+      e.preventDefault();
+      void this.testLevel();
+      return;
+    }
 
     // Save shortcuts
     if (e.ctrlKey && e.code === 'KeyS') {
@@ -1584,6 +1693,16 @@ class LevelEditorImpl implements LevelEditor {
     if (e.ctrlKey && e.code === 'KeyN') {
       e.preventDefault();
       void this.newLevel();
+      return;
+    }
+
+    // Escape: offer to exit editor when no overlays/menus are active
+    if (e.key === 'Escape' && !(env.isOverlayActive?.() ?? false) && !this.openEditorMenu) {
+      (async () => {
+        const ok = await env.showConfirm('Exit Level Editor and return to Main Menu? Unsaved changes will be lost.', 'Exit Editor');
+        if (ok) env.exitToMenu();
+      })();
+      try { e.preventDefault(); } catch {}
       return;
     }
   }
@@ -1644,45 +1763,72 @@ class LevelEditorImpl implements LevelEditor {
     }
 
     try {
-      // Get all saved levels from localStorage
-      const savedLevels: Array<{key: string, data: any, title: string}> = [];
+      const { loadLevelsFromFilesystem, importLevelFromFile } = await import('./filesystem');
+      const username = this.env.getGlobalState().userProfile?.name || 'DefaultUser';
+      
+      // Load from filesystem and localStorage fallback
+      const filesystemLevels = await loadLevelsFromFilesystem({ 
+        username, 
+        useUserDirectory: true 
+      });
+      
+      // Also check localStorage for backward compatibility
+      const localStorageLevels: Array<{name: string, data: any, source: string}> = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key?.startsWith('vp.editor.')) {
           try {
             const data = JSON.parse(localStorage.getItem(key) || '{}');
-            if (data.course?.title) {
-              savedLevels.push({ key, data, title: data.course.title });
-            }
+            const title = (data.course?.title || key.replace('vp.editor.', '')) as string;
+            localStorageLevels.push({ name: title, data, source: 'localStorage' });
           } catch (e) {
             console.warn('Failed to parse saved level:', key);
           }
         }
       }
-
-      if (savedLevels.length === 0) {
-        this.env.showToast('No saved levels found');
+      
+      const allLevels = [...filesystemLevels, ...localStorageLevels];
+      
+      if (allLevels.length === 0) {
+        // Offer to import a level
+        const importLevel = await this.env.showConfirm('No saved levels found. Import a level file?', 'Import Level');
+        if (importLevel) {
+          const imported = await importLevelFromFile();
+          if (imported) {
+            this.editorLevelData = imported;
+            this.editorCurrentSavedId = null;
+            this.selectedObjects = [];
+            this.loadEditorLevelIntoGlobals(this.env!);
+            this.env.showToast('Level imported successfully');
+          }
+        }
         return;
       }
 
-      // For now, just load the first saved level
-      // TODO: Show proper level picker UI
-      const levelToLoad = savedLevels[0];
-      
+      // Simple prompt-based picker until overlay picker UI is implemented
+      const list = allLevels
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((s, i) => `${i + 1}. ${s.name} [${s.source}]`)
+        .join('\n');
+      const resp = window.prompt(`Load which level?\n${list}\n\nEnter number:`, '1');
+      const idx = resp ? (parseInt(resp, 10) - 1) : -1;
+      if (!(idx >= 0 && idx < allLevels.length)) return;
+      const levelToLoad = allLevels.sort((a, b) => a.name.localeCompare(b.name))[idx];
+
       // Confirm if there are unsaved changes
       if (this.editorLevelData) {
-        const confirmed = await this.env.showConfirm(`Load "${levelToLoad.title}"? Unsaved changes will be lost.`, 'Load Level');
+        const confirmed = await this.env.showConfirm(`Load "${levelToLoad.name}"? Unsaved changes will be lost.`, 'Load Level');
         if (!confirmed) return;
       }
 
       this.editorLevelData = levelToLoad.data;
-      this.editorCurrentSavedId = levelToLoad.key.replace('vp.editor.', '');
+      this.editorCurrentSavedId = levelToLoad.source === 'localStorage' ? levelToLoad.name : null;
       this.selectedObjects = [];
-      
+
       // Update global state
       this.loadEditorLevelIntoGlobals(this.env!);
-      this.env.showToast(`Loaded: ${levelToLoad.title}`);
-      
+      this.env.showToast(`Loaded: ${levelToLoad.name}`);
+
     } catch (error) {
       console.error('Failed to load level:', error);
       this.env.showToast('Failed to load level');
@@ -1741,20 +1887,52 @@ class LevelEditorImpl implements LevelEditor {
     this.syncEditorDataFromGlobals(this.env!);
     
     try {
-      // For now, use localStorage as placeholder until file system integration
-      // TODO: Replace with proper file system persistence per project policy
-      const levelKey = this.editorCurrentSavedId || `level_${Date.now()}`;
-      localStorage.setItem(`vp.editor.${levelKey}`, JSON.stringify(this.editorLevelData));
+      // Determine/save title; prompt if missing
+      const currentTitle = this.editorLevelData.course?.title || '';
+      let title = currentTitle;
+      if (!title) {
+        const input = window.prompt('Enter level name:', 'Untitled');
+        if (!input) { this.env?.showToast('Save cancelled'); return; }
+        title = input.trim();
+        if (!this.editorLevelData.course) this.editorLevelData.course = { index: 1, total: 1, title } as any;
+        else this.editorLevelData.course.title = title;
+      }
+
+      // Add metadata
+      const username = this.env!.getGlobalState().userProfile?.name || 'DefaultUser';
+      if (!this.editorLevelData.meta) this.editorLevelData.meta = {};
+      this.editorLevelData.meta.authorName = username;
+      this.editorLevelData.meta.authorId = username;
+      this.editorLevelData.meta.lastModified = Date.now();
+
+      const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `level-${Date.now()}`;
+      const filename = this.editorCurrentSavedId || slug;
       
+      // Try filesystem save first
+      const { saveLevelToFilesystem, isFileSystemAccessSupported } = await import('./filesystem');
+      
+      let saved = false;
+      if (isFileSystemAccessSupported()) {
+        // Save to User_Levels/<username>/ directory
+        saved = await saveLevelToFilesystem(this.editorLevelData, filename, {
+          username,
+          useUserDirectory: true
+        });
+      }
+      
+      if (!saved) {
+        // Fallback to localStorage for now (will be removed in browser-only builds)
+        localStorage.setItem(`vp.editor.${filename}`, JSON.stringify(this.editorLevelData));
+        console.warn('Using localStorage fallback - filesystem save failed');
+      }
+
       if (!this.editorCurrentSavedId) {
-        this.editorCurrentSavedId = levelKey;
+        this.editorCurrentSavedId = filename;
       }
-      
+
       // Show success feedback
-      if (this.env) {
-        this.env.showToast('Level saved successfully');
-      }
-      console.log('Level saved:', levelKey);
+      this.env?.showToast(`Saved: ${title}`);
+      console.log('Level saved:', filename, saved ? '(filesystem)' : '(localStorage)');
     } catch (error) {
       console.error('Failed to save level:', error);
       if (this.env) {
@@ -1773,19 +1951,103 @@ class LevelEditorImpl implements LevelEditor {
     // Sync current editor state
     this.syncEditorDataFromGlobals(this.env!);
     
+    // Ask for a new name
+    const input = window.prompt('Save As - enter new level name:', this.editorLevelData.course?.title || 'Untitled Copy');
+    if (!input) { this.env?.showToast('Save As cancelled'); return; }
+    const title = input.trim();
+    if (!this.editorLevelData.course) this.editorLevelData.course = { index: 1, total: 1, title } as any;
+    else this.editorLevelData.course.title = title;
+
     // Force new save ID to create a copy
     const oldId = this.editorCurrentSavedId;
     this.editorCurrentSavedId = null;
-    
+
     try {
       await this.save();
-      if (this.env) {
-        this.env.showToast('Level saved as new copy');
-      }
+      this.env?.showToast(`Saved As: ${title}`);
     } catch (error) {
       // Restore old ID on failure
       this.editorCurrentSavedId = oldId;
       throw error;
+    }
+  }
+
+  async exportLevel(): Promise<void> {
+    if (!this.editorLevelData) {
+      this.env?.showToast('No level data to export');
+      return;
+    }
+
+    // Sync current editor state
+    this.syncEditorDataFromGlobals(this.env!);
+
+    try {
+      const { saveLevelAsDownload } = await import('./filesystem');
+      const title = this.editorLevelData.course?.title || 'Untitled';
+      const filename = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'level';
+      
+      // Add metadata
+      const username = this.env!.getGlobalState().userProfile?.name || 'DefaultUser';
+      if (!this.editorLevelData.meta) this.editorLevelData.meta = {};
+      this.editorLevelData.meta.authorName = username;
+      this.editorLevelData.meta.authorId = username;
+      this.editorLevelData.meta.lastModified = Date.now();
+
+      const success = saveLevelAsDownload(this.editorLevelData, filename);
+      if (success) {
+        this.env?.showToast(`Exported: ${title}.json`);
+      } else {
+        this.env?.showToast('Export failed');
+      }
+    } catch (error) {
+      console.error('Failed to export level:', error);
+      this.env?.showToast('Export failed');
+    }
+  }
+
+  async testLevel(): Promise<void> {
+    if (!this.editorLevelData) {
+      this.env?.showToast('No level data to test');
+      return;
+    }
+
+    // Validate that we have required elements
+    if (!this.editorLevelData.tee || !this.editorLevelData.cup) {
+      this.env?.showToast('Level needs both a tee and cup to test');
+      return;
+    }
+
+    try {
+      // Sync current editor state to level data
+      this.syncEditorDataFromGlobals(this.env!);
+
+      // Create a temporary level object for testing
+      const testLevelData = {
+        ...this.editorLevelData,
+        course: {
+          ...this.editorLevelData.course,
+          title: this.editorLevelData.course?.title || 'Test Level',
+          index: 1,
+          total: 1
+        },
+        par: this.editorLevelData.par || 3
+      };
+
+      // Store the test level in a temporary cache entry and switch to play mode
+      const tempPath = `test-level-${Date.now()}`;
+      
+      // Use the environment's test level functionality if available
+      if (this.env && typeof (this.env as any).testLevel === 'function') {
+        await (this.env as any).testLevel(testLevelData);
+      } else {
+        // Fallback: show message that test functionality needs to be implemented in main
+        this.env?.showToast('Test Level functionality needs main.ts integration');
+        console.log('Test level data prepared:', testLevelData);
+      }
+
+    } catch (error) {
+      console.error('Failed to test level:', error);
+      this.env?.showToast('Failed to test level');
     }
   }
 

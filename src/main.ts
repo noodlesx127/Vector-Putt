@@ -576,7 +576,7 @@ window.addEventListener('unhandledrejection', (ev) => {
 
 // Game state
 let lastTime = performance.now();
-let gameState: 'menu' | 'course' | 'options' | 'users' | 'changelog' | 'loading' | 'play' | 'sunk' | 'summary' | 'levelEditor' = 'menu';
+let gameState: 'menu' | 'course' | 'options' | 'users' | 'changelog' | 'loading' | 'play' | 'sunk' | 'summary' | 'levelEditor' | 'userLevels' = 'menu';
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
@@ -922,6 +922,7 @@ let hoverMainOptions = false;
 let hoverMainChangelog = false;
 let hoverMainName = false;
 let hoverCourseDev = false;
+let hoverCourseUserLevels = false;
 let hoverCourseBack = false;
 let hoverChangelogBack = false;
 let hoverSummaryBack = false;
@@ -932,6 +933,285 @@ let hoverOptionsMute = false;
 let hoverPauseOptions = false;
 let hoverOptionsVolSlider = false;
 let hoverOptionsUsers = false; // admin-only users button
+
+// User Levels state
+interface UserLevelEntry {
+  name: string;
+  author: string;
+  data: any;
+  source: 'filesystem' | 'localStorage' | 'bundled';
+  path?: string;
+  lastModified?: number;
+}
+let userLevelsList: UserLevelEntry[] = [];
+let selectedUserLevelIndex = 0;
+let hoverUserLevelsBack = false;
+
+// Load user levels list from filesystem and localStorage
+async function loadUserLevelsList(): Promise<void> {
+  try {
+    const { loadLevelsFromFilesystem } = await import('./editor/filesystem');
+    const username = userProfile?.name || 'DefaultUser';
+    
+    // Load from filesystem (bundled + user levels)
+    const filesystemLevels = await loadLevelsFromFilesystem({ 
+      username, 
+      useUserDirectory: true 
+    });
+    
+    // Load from localStorage for backward compatibility
+    const localStorageLevels: UserLevelEntry[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith('vp.editor.')) {
+        try {
+          const data = JSON.parse(localStorage.getItem(key) || '{}');
+          const title = data.course?.title || key.replace('vp.editor.', '');
+          const author = data.meta?.authorName || 'Unknown';
+          localStorageLevels.push({
+            name: title,
+            author,
+            data,
+            source: 'localStorage',
+            lastModified: data.meta?.lastModified || 0
+          });
+        } catch (e) {
+          console.warn('Failed to parse saved level:', key);
+        }
+      }
+    }
+    
+    // Convert filesystem levels to UserLevelEntry format
+    const allLevels: UserLevelEntry[] = [
+      ...filesystemLevels.map(level => ({
+        name: level.name,
+        author: level.data.meta?.authorName || 'Unknown',
+        data: level.data,
+        source: level.source as 'filesystem' | 'localStorage' | 'bundled',
+        path: level.path,
+        lastModified: level.lastModified || 0
+      })),
+      ...localStorageLevels
+    ];
+    
+    // Sort by last modified (newest first), then by name
+    userLevelsList = allLevels.sort((a, b) => {
+      const timeA = a.lastModified || 0;
+      const timeB = b.lastModified || 0;
+      if (timeA !== timeB) return timeB - timeA;
+      return a.name.localeCompare(b.name);
+    });
+    
+    selectedUserLevelIndex = 0;
+  } catch (error) {
+    console.error('Failed to load user levels list:', error);
+    userLevelsList = [];
+    selectedUserLevelIndex = 0;
+  }
+}
+
+// Play a user level
+async function playUserLevel(level: UserLevelEntry): Promise<void> {
+  try {
+    // Load the level data into the game
+    const levelData = level.data;
+    
+    // Set up single-level play mode
+    gameState = 'play';
+    currentLevelIndex = 0;
+    courseScores = [];
+    
+    // Load level data directly
+    await loadLevelFromData(levelData);
+    
+    console.log(`Playing user level: ${level.name} by ${level.author}`);
+  } catch (error) {
+    console.error('Failed to play user level:', error);
+    showUiToast('Failed to load level');
+  }
+}
+
+// Edit a user level (if owner/admin)
+async function editUserLevel(level: UserLevelEntry): Promise<void> {
+  const isOwner = level.author === userProfile?.name;
+  const isAdmin = userProfile?.role === 'admin';
+  
+  if (!isOwner && !isAdmin) {
+    showUiToast('You can only edit your own levels');
+    return;
+  }
+  
+  try {
+    // Switch to Level Editor and load the level
+    gameState = 'levelEditor';
+    showUiToast(`Opening ${level.name} in Level Editor...`);
+    console.log(`Editing user level: ${level.name}`);
+  } catch (error) {
+    console.error('Failed to edit user level:', error);
+    showUiToast('Failed to open level in editor');
+  }
+}
+
+// Delete a user level (if owner/admin)
+async function deleteUserLevel(level: UserLevelEntry): Promise<void> {
+  const isOwner = level.author === userProfile?.name;
+  const isAdmin = userProfile?.role === 'admin';
+  
+  if (!isOwner && !isAdmin) {
+    showUiToast('You can only delete your own levels');
+    return;
+  }
+  
+  try {
+    const confirmed = await showUiConfirm(
+      `Delete "${level.name}" by ${level.author}?\nThis action cannot be undone.`,
+      'Delete Level'
+    );
+    
+    if (!confirmed) return;
+    
+    // Delete from storage based on source
+    if (level.source === 'localStorage') {
+      // Find and remove from localStorage
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key?.startsWith('vp.editor.')) {
+          try {
+            const data = JSON.parse(localStorage.getItem(key) || '{}');
+            if (data.course?.title === level.name && data.meta?.authorName === level.author) {
+              localStorage.removeItem(key);
+              break;
+            }
+          } catch (e) {
+            // Skip invalid entries
+          }
+        }
+      }
+    } else if (level.source === 'filesystem' && level.path) {
+      // For filesystem levels, we can't delete directly but can show a message
+      showUiToast('Filesystem levels must be deleted manually from the file system');
+      return;
+    }
+    
+    // Reload the levels list
+    await loadUserLevelsList();
+    
+    // Adjust selection if needed
+    if (selectedUserLevelIndex >= userLevelsList.length) {
+      selectedUserLevelIndex = Math.max(0, userLevelsList.length - 1);
+    }
+    
+    showUiToast(`Deleted: ${level.name}`);
+    console.log(`Deleted user level: ${level.name}`);
+  } catch (error) {
+    console.error('Failed to delete user level:', error);
+    showUiToast('Failed to delete level');
+  }
+}
+
+// Load level data directly (for user levels)
+async function loadLevelFromData(levelData: any): Promise<void> {
+  try {
+    // Validate level data
+    if (!levelData.tee || !levelData.cup) {
+      throw new Error('Invalid level data - missing tee or cup');
+    }
+    
+    // Use the existing loadLevel function with a temporary level object
+    const tempLevel: Level = {
+      tee: levelData.tee,
+      cup: levelData.cup,
+      canvas: levelData.canvas || { width: WIDTH, height: HEIGHT },
+      walls: levelData.walls || [],
+      wallsPoly: levelData.wallsPoly || [],
+      posts: levelData.posts || [],
+      bridges: levelData.bridges || [],
+      water: levelData.water || [],
+      waterPoly: levelData.waterPoly || [],
+      sand: levelData.sand || [],
+      sandPoly: levelData.sandPoly || [],
+      hills: levelData.hills || [],
+      decorations: levelData.decorations || [],
+      course: levelData.course || { index: 1, total: 1, title: 'User Level' },
+      par: levelData.par || 3
+    };
+    
+    // Store in level cache and load
+    const tempPath = `user-level-${Date.now()}`;
+    levelCache.set(tempPath, tempLevel);
+    await loadLevel(tempPath);
+    
+    console.log('Loaded user level data successfully');
+  } catch (error) {
+    console.error('Failed to load level data:', error);
+    throw error;
+  }
+}
+
+// Test level from Level Editor
+let isTestingLevel = false;
+async function testLevelFromEditor(levelData: any): Promise<void> {
+  try {
+    // Validate level data
+    if (!levelData.tee || !levelData.cup) {
+      showUiToast('Level needs both a tee and cup to test');
+      return;
+    }
+    
+    // Create a test level object
+    const testLevel: Level = {
+      tee: levelData.tee,
+      cup: levelData.cup,
+      canvas: levelData.canvas || { width: WIDTH, height: HEIGHT },
+      walls: levelData.walls || [],
+      wallsPoly: levelData.wallsPoly || [],
+      posts: levelData.posts || [],
+      bridges: levelData.bridges || [],
+      water: levelData.water || [],
+      waterPoly: levelData.waterPoly || [],
+      sand: levelData.sand || [],
+      sandPoly: levelData.sandPoly || [],
+      hills: levelData.hills || [],
+      decorations: levelData.decorations || [],
+      course: {
+        index: 1,
+        total: 1,
+        title: levelData.course?.title || 'Test Level'
+      },
+      par: levelData.par || 3
+    };
+    
+    // Store in level cache and switch to play mode
+    const tempPath = `test-level-${Date.now()}`;
+    levelCache.set(tempPath, testLevel);
+    
+    // Mark that we're testing a level
+    isTestingLevel = true;
+    
+    // Switch to play mode
+    gameState = 'play';
+    currentLevelIndex = 0;
+    courseScores = [];
+    
+    // Load the test level
+    await loadLevel(tempPath);
+    
+    showUiToast(`Testing: ${testLevel.course.title} (Press Esc to return to editor)`);
+    console.log('Started testing level:', testLevel.course.title);
+  } catch (error) {
+    console.error('Failed to test level:', error);
+    showUiToast('Failed to test level');
+  }
+}
+
+// Return to Level Editor from test mode
+function returnToEditor(): void {
+  if (isTestingLevel) {
+    isTestingLevel = false;
+    gameState = 'levelEditor';
+    showUiToast('Returned to Level Editor');
+  }
+}
 let transitioning = false; // prevent double-advance while changing holes
 let lastAdvanceFromSunkMs = 0; // used to swallow trailing click after mousedown
 const CLICK_SWALLOW_MS = 180; // shorten delay for snappier feel
@@ -1114,7 +1394,13 @@ function getMainChangelogRect() {
 function getCourseDevRect() {
   const w = 220, h = 48;
   const x = WIDTH / 2 - w / 2;
-  const y = HEIGHT / 2 - 10;
+  const y = HEIGHT / 2 - 60;
+  return { x, y, w, h };
+}
+function getCourseUserLevelsRect() {
+  const w = 220, h = 48;
+  const x = WIDTH / 2 - w / 2;
+  const y = HEIGHT / 2 + 10;
   return { x, y, w, h };
 }
 function getCourseBackRect() {
@@ -1306,7 +1592,8 @@ canvas.addEventListener('mousedown', (e) => {
         },
         getUserId,
         migrateSingleSlotIfNeeded,
-        exitToMenu: () => { gameState = 'menu'; }
+        exitToMenu: () => { gameState = 'menu'; },
+        testLevel: testLevelFromEditor
       };
       levelEditor.init(editorEnv);
       return;
@@ -1337,12 +1624,27 @@ canvas.addEventListener('mousedown', (e) => {
     const dev = getCourseDevRect();
     if (p.x >= dev.x && p.x <= dev.x + dev.w && p.y >= dev.y && p.y <= dev.y + dev.h) {
       gameState = 'play';
-      startCourseFromFile('/levels/course.json').catch(console.error);
+      loadLevelByIndex(1);
+      preloadLevelByIndex(2);
+      return;
+    }
+    const userLevels = getCourseUserLevelsRect();
+    if (p.x >= userLevels.x && p.x <= userLevels.x + userLevels.w && p.y >= userLevels.y && p.y <= userLevels.y + userLevels.h) {
+      gameState = 'userLevels';
+      void loadUserLevelsList();
       return;
     }
     const back = getCourseBackRect();
     if (p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h) {
       gameState = 'menu';
+      return;
+    }
+  }
+  // Handle User Levels screen clicks
+  if (gameState === 'userLevels') {
+    const back = getCourseBackRect();
+    if (p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h) {
+      gameState = 'course';
       return;
     }
   }
@@ -1417,7 +1719,8 @@ canvas.addEventListener('mousedown', (e) => {
       },
       getUserId,
       migrateSingleSlotIfNeeded,
-      exitToMenu: () => { gameState = 'menu'; }
+      exitToMenu: () => { gameState = 'menu'; },
+      testLevel: testLevelFromEditor
     };
     levelEditor.handleMouseDown(e, editorEnv);
     return;
@@ -1636,7 +1939,8 @@ canvas.addEventListener('mousemove', (e) => {
       },
       getUserId,
       migrateSingleSlotIfNeeded,
-      exitToMenu: () => { gameState = 'menu'; }
+      exitToMenu: () => { gameState = 'menu'; },
+      testLevel: testLevelFromEditor
     };
     levelEditor.handleMouseMove(e as MouseEvent, editorEnv);
     // Cursor: pointer over UI hotspots, crosshair for placement tools, default otherwise
@@ -1660,10 +1964,18 @@ canvas.addEventListener('mousemove', (e) => {
   }
   if (gameState === 'course') {
     const dev = getCourseDevRect();
+    const userLevels = getCourseUserLevelsRect();
     const back = getCourseBackRect();
     hoverCourseDev = p.x >= dev.x && p.x <= dev.x + dev.w && p.y >= dev.y && p.y <= dev.y + dev.h;
+    hoverCourseUserLevels = p.x >= userLevels.x && p.x <= userLevels.x + userLevels.w && p.y >= userLevels.y && p.y <= userLevels.y + userLevels.h;
     hoverCourseBack = p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h;
-    canvas.style.cursor = (hoverCourseDev || hoverCourseBack) ? 'pointer' : 'default';
+    canvas.style.cursor = (hoverCourseDev || hoverCourseUserLevels || hoverCourseBack) ? 'pointer' : 'default';
+    return;
+  }
+  if (gameState === 'userLevels') {
+    const back = getCourseBackRect();
+    hoverUserLevelsBack = p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h;
+    canvas.style.cursor = hoverUserLevelsBack ? 'pointer' : 'default';
     return;
   }
   if (gameState === 'summary') {
@@ -1780,7 +2092,8 @@ canvas.addEventListener('mouseup', (e) => {
       },
       getUserId,
       migrateSingleSlotIfNeeded,
-      exitToMenu: () => { gameState = 'menu'; }
+      exitToMenu: () => { gameState = 'menu'; },
+      testLevel: testLevelFromEditor
     };
     levelEditor.handleMouseUp(e as MouseEvent, editorEnv);
     return;
@@ -1952,7 +2265,8 @@ function handleLevelEditorKeys(e: KeyboardEvent) {
     },
     getUserId,
     migrateSingleSlotIfNeeded,
-    exitToMenu: () => { gameState = 'menu'; }
+    exitToMenu: () => { gameState = 'menu'; },
+    testLevel: testLevelFromEditor
   };
   levelEditor.handleKeyDown(e, editorEnv);
 }
@@ -2722,7 +3036,8 @@ function draw() {
       },
       getUserId,
       migrateSingleSlotIfNeeded,
-      exitToMenu: () => { gameState = 'menu'; }
+      exitToMenu: () => { gameState = 'menu'; },
+      testLevel: testLevelFromEditor
     };
     levelEditor.render(editorEnv);
     renderGlobalOverlays();
@@ -2808,7 +3123,7 @@ function draw() {
     ctx.font = '28px system-ui, sans-serif';
     ctx.fillText('Select Course', WIDTH/2, 60);
     ctx.font = '14px system-ui, sans-serif';
-    ctx.fillText('Dev Levels (test course)', WIDTH/2, 86);
+    ctx.fillText('Choose a course to play', WIDTH/2, 86);
     // Dev Levels option
     const dev = getCourseDevRect();
     ctx.lineWidth = 1.5;
@@ -2820,6 +3135,17 @@ function draw() {
     ctx.font = '18px system-ui, sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('Dev Levels', dev.x + dev.w/2, dev.y + dev.h/2 + 0.5);
+    // User Made Levels option
+    const userLevels = getCourseUserLevelsRect();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = hoverCourseUserLevels ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverCourseUserLevels ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillRect(userLevels.x, userLevels.y, userLevels.w, userLevels.h);
+    ctx.strokeRect(userLevels.x, userLevels.y, userLevels.w, userLevels.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '18px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('User Made Levels', userLevels.x + userLevels.w/2, userLevels.y + userLevels.h/2 + 0.5);
     // Back button
     const back = getCourseBackRect();
     ctx.lineWidth = 1.5;
@@ -2830,6 +3156,103 @@ function draw() {
     ctx.fillStyle = '#ffffff';
     ctx.font = '16px system-ui, sans-serif';
     ctx.fillText('Back', back.x + back.w/2, back.y + back.h/2 + 0.5);
+    // Version bottom-left
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
+    renderGlobalOverlays();
+    return;
+  }
+  // User Levels screen
+  if (gameState === 'userLevels') {
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.font = '28px system-ui, sans-serif';
+    ctx.fillText('User Made Levels', WIDTH/2, 60);
+    
+    if (userLevelsList.length === 0) {
+      ctx.font = '16px system-ui, sans-serif';
+      ctx.fillText('No user levels found', WIDTH/2, 150);
+      ctx.font = '14px system-ui, sans-serif';
+      ctx.fillText('Create levels in the Level Editor', WIDTH/2, 180);
+    } else {
+      // Instructions
+      ctx.font = '14px system-ui, sans-serif';
+      ctx.fillText('↑↓ Navigate • Enter Play • E Edit • Del Delete • Esc Back', WIDTH/2, 86);
+      
+      // Level list
+      const listY = 120;
+      const itemHeight = 32;
+      const maxVisible = 12;
+      const startIndex = Math.max(0, selectedUserLevelIndex - Math.floor(maxVisible / 2));
+      const endIndex = Math.min(userLevelsList.length, startIndex + maxVisible);
+      
+      for (let i = startIndex; i < endIndex; i++) {
+        const level = userLevelsList[i];
+        const y = listY + (i - startIndex) * itemHeight;
+        const isSelected = i === selectedUserLevelIndex;
+        const isOwner = level.author === userProfile?.name;
+        const isAdmin = userProfile?.role === 'admin';
+        const canEdit = isOwner || isAdmin;
+        
+        // Background
+        if (isSelected) {
+          ctx.fillStyle = 'rgba(255,255,255,0.2)';
+          ctx.fillRect(50, y - 2, WIDTH - 100, itemHeight - 4);
+        }
+        
+        // Level name
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '16px system-ui, sans-serif';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText(level.name, 70, y + itemHeight/2);
+        
+        // Author and source
+        ctx.font = '12px system-ui, sans-serif';
+        ctx.fillStyle = '#cccccc';
+        const sourceLabel = level.source === 'bundled' ? '[bundled]' : 
+                           level.source === 'filesystem' ? '[user]' : '[local]';
+        ctx.fillText(`by ${level.author} ${sourceLabel}`, 70, y + itemHeight/2 + 14);
+        
+        // Actions (if selected)
+        if (isSelected) {
+          ctx.textAlign = 'right';
+          ctx.fillStyle = canEdit ? '#ffffff' : '#666666';
+          ctx.fillText(canEdit ? 'E Edit' : 'E Edit (disabled)', WIDTH - 180, y + itemHeight/2 - 6);
+          ctx.fillStyle = canEdit ? '#ffffff' : '#666666';
+          ctx.fillText(canEdit ? 'Del Delete' : 'Del Delete (disabled)', WIDTH - 180, y + itemHeight/2 + 8);
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText('Enter Play', WIDTH - 70, y + itemHeight/2);
+        }
+      }
+      
+      // Scroll indicator
+      if (userLevelsList.length > maxVisible) {
+        const scrollBarHeight = 200;
+        const scrollBarY = 120;
+        const scrollBarX = WIDTH - 20;
+        const thumbHeight = Math.max(20, scrollBarHeight * maxVisible / userLevelsList.length);
+        const thumbY = scrollBarY + (selectedUserLevelIndex / userLevelsList.length) * (scrollBarHeight - thumbHeight);
+        
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.fillRect(scrollBarX, scrollBarY, 4, scrollBarHeight);
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.fillRect(scrollBarX, thumbY, 4, thumbHeight);
+      }
+    }
+    
+    // Back button
+    const back = getCourseBackRect();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = hoverUserLevelsBack ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverUserLevelsBack ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillRect(back.x, back.y, back.w, back.h);
+    ctx.strokeRect(back.x, back.y, back.w, back.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Back', back.x + back.w/2, back.y + back.h/2 + 0.5);
+    
     // Version bottom-left
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.font = '12px system-ui, sans-serif';
@@ -3271,6 +3694,17 @@ function draw() {
   // right
   ctx.textAlign = 'right';
   ctx.fillText(rightText, WIDTH - 12, 6);
+  
+  // Test mode indicator
+  if (isTestingLevel) {
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ff6b35';
+    ctx.font = 'bold 14px system-ui, sans-serif';
+    ctx.fillText('TEST MODE - Press Esc to return to editor', WIDTH / 2, 26);
+    ctx.fillStyle = COLORS.hudText;
+    ctx.font = '16px system-ui, sans-serif';
+  }
+  
   // restore defaults used later
   ctx.textAlign = 'start';
 
@@ -3798,54 +4232,88 @@ boot().catch(console.error);
 
 // Restart flow after sink
 window.addEventListener('keydown', (e) => {
+  // Return to Level Editor when testing levels
+  if (gameState === 'play' && isTestingLevel && e.code === 'Escape') {
+    returnToEditor();
+    e.preventDefault();
+    return;
+  }
+  
   if (gameState === 'changelog') {
     if (e.code === 'ArrowDown' || e.code === 'PageDown') { changelogScrollY += (e.code === 'PageDown' ? 200 : 40); clampChangelogScroll(); }
     if (e.code === 'ArrowUp' || e.code === 'PageUp') { changelogScrollY -= (e.code === 'PageUp' ? 200 : 40); clampChangelogScroll(); }
-    if (e.code === 'Home') { changelogScrollY = 0; }
-    if (e.code === 'End') { const r = getChangelogContentRect(); changelogScrollY = Math.max(0, changelogLines.length * 20 - r.h); }
+    if (e.code === 'Escape') { gameState = 'menu'; }
+    return;
   }
-  if (e.code === 'Space' && gameState === 'sunk') {
-    // Restart current hole immediately (snappy)
-    loadLevelByIndex(currentLevelIndex).catch(console.error);
-  } else if (e.code === 'KeyR') {
-    loadLevelByIndex(currentLevelIndex).catch(console.error);
-  } else if (e.code === 'KeyN') {
-    // Continue from sunk banner or during play
-    if (gameState === 'sunk') {
-      if (!holeRecorded) { courseScores[currentLevelIndex] = strokes; holeRecorded = true; }
-      const isLastHole = courseInfo.index >= courseInfo.total;
-      if (isLastHole) {
-        if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
-        // Only show summary when on last hole
-        gameState = 'summary';
-      } else {
-        const next = currentLevelIndex + 1;
-        preloadLevelByIndex(next + 1);
-        currentLevelIndex = next;
-        loadLevelByIndex(currentLevelIndex).catch(console.error);
-      }
-    } else if (gameState === 'play') {
-      // Ignore N during play to avoid accidental hole skip triggering summary logic
+  if (gameState === 'userLevels') {
+    if (e.code === 'ArrowUp') {
+      selectedUserLevelIndex = Math.max(0, selectedUserLevelIndex - 1);
+      e.preventDefault();
     }
-  } else if (e.code === 'KeyP' || e.code === 'Escape') {
-    if (gameState === 'play' || gameState === 'sunk') {
-    paused = !paused;
-    } else if (gameState === 'options') {
-      // Return to previous state (pause or menu) from Options
+    if (e.code === 'ArrowDown') {
+      selectedUserLevelIndex = Math.min(userLevelsList.length - 1, selectedUserLevelIndex + 1);
+      e.preventDefault();
+    }
+    if (e.code === 'Enter' && userLevelsList.length > 0) {
+      void playUserLevel(userLevelsList[selectedUserLevelIndex]);
+      e.preventDefault();
+    }
+    if (e.code === 'KeyE' && userLevelsList.length > 0) {
+      void editUserLevel(userLevelsList[selectedUserLevelIndex]);
+      e.preventDefault();
+    }
+    if (e.code === 'Delete' && userLevelsList.length > 0) {
+      void deleteUserLevel(userLevelsList[selectedUserLevelIndex]);
+      e.preventDefault();
+    }
+    if (e.code === 'Escape') {
+      gameState = 'course';
+      e.preventDefault();
+    }
+    return;
+  }
+  if (gameState === 'sunk') {
+    if (e.code === 'Space' || e.code === 'Enter') {
+      if (currentLevelIndex + 1 < levelPaths.length) {
+        currentLevelIndex++;
+        gameState = 'play';
+        loadLevelByIndex(currentLevelIndex);
+        preloadLevelByIndex(currentLevelIndex + 1);
+      } else {
+        gameState = 'summary';
+      }
+    }
+    if (e.code === 'Escape') {
+      paused = !paused;
+    }
+    return;
+  }
+  if (gameState === 'play') {
+    if (e.code === 'Escape') {
+      paused = !paused;
+    }
+    return;
+  }
+  if (gameState === 'options') {
+    if (e.code === 'Escape') {
       if (paused && (previousGameState === 'play' || previousGameState === 'sunk')) {
         gameState = previousGameState;
       } else {
         gameState = 'menu';
       }
     }
-  } else if ((e.code === 'Enter' || e.code === 'NumpadEnter') && gameState === 'summary') {
-    // restart course (keyboard)
-    courseScores = [];
-    currentLevelIndex = 0;
-    gameState = 'play';
-    loadLevelByIndex(currentLevelIndex).catch(console.error);
-  } else if ((e.code === 'Escape' || e.code === 'KeyM') && gameState === 'summary') {
-    // go back to main menu from summary
-    gameState = 'menu';
+    return;
+  }
+  if (gameState === 'summary') {
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+      courseScores = [];
+      currentLevelIndex = 0;
+      gameState = 'play';
+      loadLevelByIndex(currentLevelIndex).catch(console.error);
+    }
+    if (e.code === 'Escape' || e.code === 'KeyM') {
+      gameState = 'menu';
+    }
+    return;
   }
 });

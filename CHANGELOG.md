@@ -9,6 +9,19 @@ All notable changes to this project will be documented in this file.
 - **Level Editor Hill Direction Control**: Interactive picker UI with N/S/E/W directional arrows for hill placement
 - **Level Editor Post Radius Control**: Interactive picker UI with radius options (6, 8, 10, 12, 16, 20) for post placement
 - **Level Editor Point Placement**: Tee, Cup, and Post tools with proper click placement and grid snapping
+- **Course Select User Made Levels**: Complete implementation of User Made Levels category in Course Select screen
+  - Lists user-created levels from filesystem (`User_Levels/<Username>/`) and localStorage with title, author, and source labels
+  - Play/Edit/Delete actions with owner/admin permission enforcement
+  - Keyboard navigation: Up/Down to navigate, Enter to play, E to edit, Delete to delete, Esc to go back
+  - Mouse hover support for level selection and action buttons
+  - Integrated with Level Editor filesystem persistence for seamless level creation and management
+- **Level Editor Test Level**: Added Test Level functionality for quick level testing during creation and editing
+  - Test Level menu item in File menu and Ctrl+T keyboard shortcut
+  - Validates level has required tee and cup before testing
+  - Loads current editor state directly into gameplay without saving
+  - Visual test mode indicator in HUD with return instructions
+  - Press Esc during test to return to Level Editor
+  - Seamless workflow for iterative level design and testing
 
 ### Changed
 - **Level Editor Migration Completed**: Successfully migrated all level editor code from `src/main.ts` to modular `src/editor/levelEditor.ts` structure
@@ -31,6 +44,21 @@ All notable changes to this project will be documented in this file.
    - Implemented File menu Back/Exit action to show in-game confirm, then call `env.exitToMenu()`.
    - Added `exitToMenu` to the keyboard `editorEnv` in `handleLevelEditorKeys()` so Escape uses the same confirm-and-exit flow without runtime/type errors.
    - Escape key path is guarded by overlay/menu state to avoid accidental exits.
+
+### Fixed
+- Fix (Level Editor • File menu): Save / Save As / Load behaviors
+  - Save now prompts for a level name when none exists; uses a slugged name as the key for persistence.
+  - Save As always prompts for a new level name and saves a new copy.
+  - Level Load shows a simple prompt-based list to choose which saved level to load (replaces previous behavior that loaded the first entry).
+  - Note: This is a temporary prompt-based UI; a proper in-game overlay picker will replace prompts in a follow-up.
+- Feature (Level Editor • Filesystem Integration): Complete filesystem persistence implementation
+  - File System Access API support for direct file read/write to User_Levels/<Username>/ directories
+  - Load levels from bundled levels/ directory, User_Levels/, and localStorage (backward compatibility)
+  - Save prioritizes filesystem over localStorage; falls back gracefully when File System Access unavailable
+  - Export functionality for browser-only builds (download as JSON)
+  - Import level from file upload when no saved levels found
+  - Level validation and metadata (author, lastModified) automatically added on save/export
+  - Combined level picker shows source labels: [bundled], [user], [localStorage]
 
  - Fix (Level Editor): Added local `COLORS` constant and `SelectableObject` union in `src/editor/levelEditor.ts` to avoid cross-module type mismatches. Palette values mirror `docs/PALETTE.md` and `src/main.ts`.
  - Fix (Level Editor): Standardized naming to `wallsPoly` in `getObjectBounds()` (removed stray `wallPoly` reference) to match tools and data arrays.

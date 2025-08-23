@@ -4,17 +4,18 @@
 
 # Project Progress — Vector Putt
 
-Updated: 2025-08-23 (local) — Next: Option A selected — Course Select "User Made Levels" category; planning and criteria captured below. Overlays now render consistently on Course/Options/Changelog.
+Updated: 2025-08-23 (local) — Level Editor filesystem integration complete: File System Access API, User_Levels/<Username>/ directories, Export/Import, bundled levels loading. Save/Load/Export working with filesystem priority and localStorage fallback.
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 
 ## Now (Current Focus)
-- [ ] Option A: Course Select "User Made Levels" category (in progress)
-  - Listing: Title + Author from localStorage `vp.levels.v1`, sorted by modified desc
+- [x] Course Select "User Made Levels" category (completed)
+  - Listing: Title + Author from filesystem and localStorage, sorted by modified desc
   - Actions: Play; Edit/Delete only for owner/admin; confirm delete
   - Permissions: non-owners see disabled Edit/Delete with hint
   - Controls: Up/Down navigate, Enter Play, E Edit, Del Delete, Esc Back
   - No regressions to bundled Course Select
+  - Integration: Seamless with Level Editor filesystem persistence
 - [x] Editor: Polygon objects selectable/movable/deletable (`wallsPoly`/`waterPoly`/`sandPoly`)
 - [x] Axis-aligned walls + deterministic reflections (angle in = angle out)
 - [x] Minimal HUD (Hole x/y, Par n, Strokes m); increment strokes on release
@@ -66,9 +67,9 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
   - Level Editor UI Selections Audit (2025-08-19 local)
     - Tools working: Tee, Cup, Post, Wall, Bridge, Water, Sand, Hill (rectangles), Select Tool
     - Tools present but not yet implemented: WallsPoly, WaterPoly, SandPoly (no placement/vertex-edit UI)
-    - Actions working: Grid toggle, Grid -/+, Back/Exit, New, Save, Save As, Level Load, Delete — all via in-game overlays (async) with Enter/Esc support
+    - Actions working: Grid toggle, Grid -/+, Back/Exit, New, Save, Save As, Level Load, Delete — Back/Exit via in-game overlay confirm; Save/Save As/Load currently use temporary prompt-based UI for naming/selection (to be replaced with overlay dialogs)
     - Back/Exit fix: File menu Back/Exit now prompts for confirmation and returns to Main Menu; Escape key path uses the same confirm-and-exit flow and is blocked while overlays/menus are open
-    - Persistence: Save As targets Filesystem or `User_Levels/<Username>/` only (no LocalStorage per policy)
+    - Persistence: Filesystem integration complete - File System Access API for User_Levels/<Username>/ directories, Export/Import for browser-only builds, bundled levels/ loading, localStorage fallback for compatibility
       - Gaps:
         - [x] Polygon tools: implemented create/vertex-edit UI with click-to-add-vertex, Enter/Escape to finish/cancel, click-near-start to close (2025-08-22)
         - [x] Hill direction control: implemented direction picker UI with N/S/E/W arrows (2025-08-22)
@@ -117,6 +118,11 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
   - [x] Level Editor file system integration:
     - [x] Load any level from existing `levels/*.json` directory for editing
     - [x] Save levels to filesystem via File System Access API or download fallback
+    - [x] User_Levels/<Username>/ directory structure with automatic subdirectory creation
+    - [x] Export functionality for browser-only builds (download JSON)
+    - [x] Import level from file upload when no saved levels found
+    - [x] Combined level picker showing [bundled], [user], [localStorage] source labels
+    - [x] Level validation and automatic metadata (author, lastModified) on save/export
     - [x] Combined level listing: shows both localStorage and filesystem levels with [LS]/[FS] labels
     - [x] Directory structure: `User_Levels/Username/Level.json` option for user-created levels
     - [x] Load existing `levels/*.json` files for editing and re-saving

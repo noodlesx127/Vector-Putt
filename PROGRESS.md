@@ -4,7 +4,7 @@
 
 # Project Progress — Vector Putt
 
- Updated: 2025-08-20 (local) — Next: Option A selected — Course Select "User Made Levels" category; planning and criteria captured below. Overlays now render consistently on Course/Options/Changelog.
+Updated: 2025-08-23 (local) — Next: Option A selected — Course Select "User Made Levels" category; planning and criteria captured below. Overlays now render consistently on Course/Options/Changelog.
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 
@@ -73,6 +73,9 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
         - [x] Hill direction control: implemented direction picker UI with N/S/E/W arrows (2025-08-22)
         - [x] Post radius control: implemented radius picker UI with 6/8/10/12/16/20 options (2025-08-22)
       - Rotation: implemented for rectangular items with 15° snapping; shadow duplication fixed by removing legacy non-rotated shadows
+      - Group rotation: multi-select rotates about the group bounds center; hold Shift to snap to 15°; snapshot original states at rotation start for accurate transforms
+      - Polygon guards: polygons (wallsPoly/waterPoly/sandPoly) are translate-only; rotation/resize disabled; rotation handles hidden when any polygons are selected
+      - Visual/UX: selection bounds cached each frame; multi-select bounds follow drag offset while moving; rotation state cleared on commit
       - Diagnosis resolved: Included polygon variants in `findObjectAtPoint()` and `getObjectBounds()`; `moveSelectedObjects()` now translates polygon `points`; Delete key removes from poly arrays and `editorLevelData`; removed duplicate/incorrect implementations.
       - Consistency: Defined local `COLORS` and `SelectableObject` in `src/editor/levelEditor.ts` and standardized naming to `wallsPoly` in `getObjectBounds()`.
       - Code refs (`src/main.ts`): `saveEditorLevel()`, `saveEditorLevelAs()`, `openLoadPicker()`, `openDeletePicker()`, `newEditorLevel()`, `assembleEditorLevel()`, Level Editor `mousedown`/`mousemove`/`mouseup`
@@ -100,10 +103,10 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
     - 4-point rotation handles for rectangular objects with 15-degree angle snapping
     - Visual feedback: blue dashed outlines, blue resize handles, orange rotation handles, selection box with translucent fill
     - Cursor changes: appropriate resize cursors (nw-resize, e-resize, etc.), move cursor, and crosshair for rotation
-  - [ ] Select Tool: move, resize, and rotate items (MS Paint/Photoshop-style); multi-select with bounding outline
-    - Drag inside selection to move; 8 corner/side handles to resize; rotate via corner handles/outer arc; bounding outline drawn around selection
-    - Grid snapping and fairway-bounds clamping on move/resize; min size = 1 grid step; no negative sizes
-    - Applies to rect items (walls/bridges/water/sand/hills); Posts: resize radius; Tee/Cup: move-only; multi-select transforms apply to all selected
+  - [x] Select Tool: move, resize, and rotate items (MS Paint/Photoshop-style); multi-select with bounding outline
+    - Drag inside selection to move; 8 corner/side handles to resize; rotate via rotation handles around object/group bounds; bounding outline drawn around selection
+    - Grid snapping and fairway-bounds clamping on move/resize/rotate; min size = 1 grid step; no negative sizes
+    - Applies to rect items (walls/bridges/water/sand/hills); Posts: resize radius; Tee/Cup: move-only; multi-select transforms apply to all selected; rotation restricted to rect-like items; polygons translate-only and hide rotation handles when included in selection
   - [ ] Undo/Redo in Level Editor: toolbar buttons and shortcuts (Ctrl+Z/Ctrl+Y); snapshot editor state on placements and actions (Save/Load/New/Delete)
     - Placement: Main toolbar, immediately next to the Editor Tools section
     - Size: small icon buttons (compact footprint)

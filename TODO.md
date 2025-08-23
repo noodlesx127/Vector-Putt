@@ -137,15 +137,15 @@ Notes:
   - [ ] Undo/Redo in Level Editor: toolbar buttons and shortcuts (Ctrl+Z/Ctrl+Y); snapshot editor state on placements and actions (Save/Load/New/Delete)
   - [ ] Tool palette: Tee, Cup, Walls, WallsPoly, Posts, Bridges, Water, WaterPoly, Sand, SandPoly, Hill, decorations
  - [ ] Selection tools: select/move/duplicate/delete; vertex edit for polygons; rotate/scale where applicable
-  - Done: select, multi-select, move, delete; scale (resize) for rect items with grid snap and bounds clamp
-  - Pending: duplicate; polygon vertex edit; rotate
+  - Done: select, multi-select, move, delete; scale (resize) for rect items with grid snap and bounds clamp; rotate for rect items including multi-select group rotation (Shift = 15° snap)
+  - Pending: duplicate; polygon vertex edit
   - Done (polygons, minimum viable): selection + move + delete for wallsPoly/waterPoly/sandPoly
     - Implemented: included poly variants in `findObjectAtPoint()` and `getObjectBounds()`; `moveSelectedObjects()` translates polygon `points`; Delete key removes from poly arrays and `editorLevelData`; removed duplicate/incorrect implementations in `src/main.ts`.
-    - Defer: precise point-in-polygon/edge proximity hit-test; rotate/resize for polys; vertex edit mode
-- [ ] Select Tool: move, resize, and rotate items (MS Paint/Photoshop-style); multi-select with bounding outline
+    - Defer: precise point-in-polygon/edge proximity hit-test; rotate/resize for polys (polygons are translate-only for now); vertex edit mode
+ - [x] Select Tool: move, resize, and rotate items (MS Paint/Photoshop-style); multi-select with bounding outline
   - Grid snapping and fairway-bounds clamping on move/resize/rotate; min size = 1 grid step; no negative sizes
-  - Applies to rect items (walls/bridges/water/sand/hills); Posts: resize radius; Tee/Cup: move-only; multi-select transforms apply to all selected
-  - Progress: selection + multi-select + move complete; 8-point resize implemented for rectangles; rotation pending
+  - Applies to rect items (walls/bridges/water/sand/hills); Posts: resize radius; Tee/Cup: move-only; multi-select transforms apply to all selected; rotation restricted to rect-like items; polygons are translate-only and hide rotation handles when selected
+  - Progress: selection + multi-select + move complete; 8-point resize implemented for rectangles; rotation complete for rect-like items, including multi-select group rotation with 15° snapping (Shift)
  - [ ] Delete selected item(s) via existing Delete button in the toolbar UI
  - [x] Grid snapping and nudge controls (arrow keys); configurable grid size
  - [x] Main Menu: add "Level Editor" entry to launch editor mode

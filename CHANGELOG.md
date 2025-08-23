@@ -66,7 +66,14 @@ All notable changes to this project will be documented in this file.
     - 8-point resize handles for rect items (walls/water/sand/bridges/hills) with snapping, min size = 1 grid step, and bounds clamping
     - 4-point rotation handles for rect items with 15-degree angle snapping
     - Visuals: dashed blue outlines, blue resize handles, orange rotation handles, translucent selection box; cursors update for move/resize/rotate
-- User System: Main Menu username input added above Start. Start is disabled until a non-empty name is entered. Username persists to `localStorage` and is prefilled on load. Cursor changes to text I-beam on hover, and placeholder shown when empty.
+  - Level Editor: Select Tool — Group rotation and polygon guards
+    - Multi-select group rotation via rotation handles around group bounds; rotates about the group center
+    - Hold Shift to snap rotation to 15° increments; original object states snapshot at rotation start for accurate transforms
+    - Polygons (`wallsPoly`, `waterPoly`, `sandPoly`) are translate-only: rotation/resize disabled; rotation handles hidden when any polygons are selected
+    - Single-object rotation restricted to rect-like types only (`wall`, `water`, `sand`, `bridge`, `hill`, `decoration`)
+    - Selection bounds cache computed each frame; multi-select bounding box follows drag offset during move for accurate visuals
+    - Rotation state is cleared on mouse up (group snapshots/angles reset)
+ - User System: Main Menu username input added above Start. Start is disabled until a non-empty name is entered. Username persists to `localStorage` and is prefilled on load. Cursor changes to text I-beam on hover, and placeholder shown when empty.
 - Fix: removed redundant Main Menu mouse handlers that could blur the username input on mouseup; consolidated focus handling so editing is stable.
  - UX: username input now has a clear focus state — placeholder hides while editing, caret blinks at the end of text, and I-beam cursor remains during edit. Input field nudged down to avoid clipping into the main graphic.
  - HUD: display active user's name on the top-left; `Hole x/y` pushed right to make room.

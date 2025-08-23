@@ -102,68 +102,32 @@ export interface EditorEnv {
   height: number;
 
   // Coordinate conversion helpers
-  canvasToPlayCoords(x: number, y: number): { x: number; y: number };
-  worldFromEvent(e: MouseEvent | PointerEvent | TouchEvent): { x: number; y: number };
+  worldFromEvent(e: MouseEvent): { x: number; y: number };
 
   // App/game state
-  isOverlayActive(): boolean;
-  renderGlobalOverlays(): void;
+  getGlobalState(): any;
+  setGlobalState(state: any): void;
 
-  // Fairway rect used by editor rendering and clamping
+  // Fairway bounds
   fairwayRect(): { x: number; y: number; w: number; h: number };
 
-  // Grid settings persistence hooks
-  getGridSize(): number;
-  setGridSize(n: number): void;
+  // Grid system
   getShowGrid(): boolean;
-  setShowGrid(b: boolean): void;
+  getGridSize(): number;
+  setShowGrid?(show: boolean): void;
+  setGridSize?(size: number): void;
 
-  // Global state access for editor initialization
-  getGlobalState(): {
-    WIDTH: number;
-    HEIGHT: number;
-    COURSE_MARGIN: number;
-    ball: { x: number; y: number; vx: number; vy: number; moving: boolean };
-    hole: { x: number; y: number; r?: number };
-    levelCanvas: { width: number; height: number };
-    walls: any[];
-    sands: any[];
-    sandsPoly: any[];
-    waters: any[];
-    watersPoly: any[];
-    decorations: any[];
-    hills: any[];
-    bridges: any[];
-    posts: any[];
-    polyWalls: any[];
-    userProfile: { name: string; role: string; id?: string };
-  };
-
-  // Global state setters for editor initialization
-  setGlobalState(state: {
-    levelCanvas?: { width: number; height: number };
-    walls?: any[];
-    sands?: any[];
-    sandsPoly?: any[];
-    waters?: any[];
-    watersPoly?: any[];
-    decorations?: any[];
-    hills?: any[];
-    bridges?: any[];
-    posts?: any[];
-    polyWalls?: any[];
-    ball?: { x: number; y: number; vx: number; vy: number; moving: boolean };
-    hole?: { x: number; y: number; r?: number };
-  }): void;
-
-  // Persistence helpers
-  getUserId(): string;
-  migrateSingleSlotIfNeeded(): void;
+  // UI feedback
+  showToast(message: string): void;
+  showConfirm(message: string, title?: string): Promise<boolean>;
+  renderGlobalOverlays(): void;
+  isOverlayActive?(): boolean;
+  migrateSingleSlotIfNeeded?(): void;
 }
 
-export interface LevelEditorAPI {
+export interface LevelEditor {
   // Lifecycle
-  enter(env: EditorEnv): void;
+  init(env: EditorEnv): void;
 
   // Rendering
   render(env: EditorEnv): void;
@@ -187,19 +151,17 @@ export interface LevelEditorAPI {
   getUiHotspots(): EditorHotspot[];
 }
 
-class LevelEditorImpl implements LevelEditorAPI {
-  private selectedTool: EditorTool = 'select';
-  private uiHotspots: EditorHotspot[] = [];
-
-  // Grid state (will be synced to main env via getters/setters if provided)
-  private showGrid = true;
-  private gridSize = 20;
-
+class LevelEditorImpl implements LevelEditor {
   // Editor state
-  private editorLevelData: Level | null = null;
-  private editorCurrentSavedId: string | null = null;
+  private selectedTool: EditorTool = 'select';
   private openEditorMenu: EditorMenuId | null = null;
-  private editorMenuActiveItemIndex: number = 0;
+  private uiHotspots: EditorHotspot[] = [];
+  private showGrid: boolean = true;
+  private editorLevelData: any = null;
+  private editorCurrentSavedId: string | null = null;
+  private env: EditorEnv | null = null;
+  private gridSize: number = 20;
+  private editorMenuActiveItemIndex: number = -1;
 
   // Drag state for rectangle placements
   private isEditorDragging = false;
@@ -212,6 +174,7 @@ class LevelEditorImpl implements LevelEditorAPI {
   private isDragMoving: boolean = false;
   private dragMoveOffset: { x: number; y: number } = { x: 0, y: 0 };
   private isResizing: boolean = false;
+  private isGroupResizing: boolean = false;
   private resizeStartBounds: { x: number; y: number; w: number; h: number } | null = null;
   private resizeStartMouse: { x: number; y: number } | null = null;
   private isSelectionDragging: boolean = false;
@@ -230,6 +193,10 @@ class LevelEditorImpl implements LevelEditorAPI {
   private rotationStartAngle: number = 0;
   private rotationStartMouse: { x: number; y: number } | null = null;
   private rotationSensitivity: number = 0.05;
+
+  // Cache selection bounds per frame
+  private selectionBoundsCache: { x: number; y: number; w: number; h: number } | null = null;
+  private groupResizeOriginals: Array<{ obj: SelectableObject; snap: any }> | null = null;
   private resizeHandleIndex: number | null = null;
   private dragMoveStart: { x: number; y: number } | null = null;
 
@@ -304,10 +271,12 @@ class LevelEditorImpl implements LevelEditorAPI {
     }
   };
 
-  enter(env: EditorEnv): void {
+  init(env: EditorEnv): void {
+    this.env = env;
+    // Initialize editor with environment
     // Try to initialize from saved local storage once per session
     // Run single-slot migration on first use
-    try { env.migrateSingleSlotIfNeeded(); } catch {}
+    try { env.migrateSingleSlotIfNeeded?.(); } catch {}
     
     if (this.editorLevelData === null) {
       try {
@@ -374,13 +343,10 @@ class LevelEditorImpl implements LevelEditorAPI {
     // Sync grid state from environment (if provided)
     try {
       this.showGrid = env.getShowGrid();
-      this.gridSize = env.getGridSize();
     } catch {}
 
     // Update dynamic menu labels
     this.EDITOR_MENUS.tools.items[1].label = this.showGrid ? 'Grid On' : 'Grid Off';
-    this.EDITOR_MENUS.tools.items[2].label = `Grid - (${this.gridSize}px)`;
-    this.EDITOR_MENUS.tools.items[3].label = `Grid + (${this.gridSize}px)`;
 
     // Reset hotspots each frame
     this.uiHotspots = [];
@@ -397,7 +363,7 @@ class LevelEditorImpl implements LevelEditorAPI {
     ctx.strokeRect(fairX + 1, fairY + 1, Math.max(0, fairW - 2), Math.max(0, fairH - 2));
 
     // Grid
-    if (this.showGrid && this.gridSize > 0) {
+    if (this.showGrid) {
       ctx.save();
       ctx.beginPath();
       ctx.rect(fairX, fairY, fairW, fairH);
@@ -405,11 +371,11 @@ class LevelEditorImpl implements LevelEditorAPI {
       ctx.strokeStyle = 'rgba(255,255,255,0.10)';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      for (let x = fairX; x <= fairX + fairW; x += this.gridSize) {
+      for (let x = fairX; x <= fairX + fairW; x += 20) {
         ctx.moveTo(Math.round(x) + 0.5, fairY);
         ctx.lineTo(Math.round(x) + 0.5, fairY + fairH);
       }
-      for (let y = fairY; y <= fairY + fairH; y += this.gridSize) {
+      for (let y = fairY; y <= fairY + fairH; y += 20) {
         ctx.moveTo(fairX, Math.round(y) + 0.5);
         ctx.lineTo(fairX + fairW, Math.round(y) + 0.5);
       }
@@ -787,6 +753,38 @@ class LevelEditorImpl implements LevelEditorAPI {
       ctx.lineWidth = 2;
       ctx.strokeStyle = '#00aaff';
 
+      // --- Group selection bounding box ---
+      if (this.selectedObjects.length > 1 && this.selectionBoundsCache) {
+        const selB = this.selectionBoundsCache;
+        // Outline
+        ctx.setLineDash([6, 4]);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#ffaa00';
+        ctx.strokeRect(selB.x, selB.y, selB.w, selB.h);
+        ctx.setLineDash([]);
+        // Handles (reuse helpers)
+        const handles = this.getResizeHandles(selB);
+        ctx.fillStyle = '#ffaa00';
+        for (const h of handles) {
+          ctx.fillRect(h.x, h.y, h.w, h.h);
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(h.x, h.y, h.w, h.h);
+        }
+        const rotHandles = this.getRotationHandles(selB);
+        ctx.fillStyle = '#ff6600';
+        for (const rh of rotHandles) {
+          ctx.beginPath();
+          ctx.arc(rh.x + rh.w / 2, rh.y + rh.h / 2, rh.w / 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(rh.x + rh.w / 2, rh.y + rh.h / 2, rh.w / 2, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+
       for (const obj of this.selectedObjects) {
         const bounds = this.getObjectBounds(obj);
         const offsetX = this.isDragMoving ? this.dragMoveOffset.x : 0;
@@ -948,7 +946,7 @@ class LevelEditorImpl implements LevelEditorAPI {
   }
 
   handleMouseDown(e: MouseEvent, env: EditorEnv): void {
-    if (env.isOverlayActive()) return;
+    if (env.isOverlayActive?.()) return;
     const p = env.worldFromEvent(e);
 
     // 1) Handle post radius picker first
@@ -1001,14 +999,15 @@ class LevelEditorImpl implements LevelEditorAPI {
       
       // Check if clicking on direction arrows
       const dirs = [
-        { dir: 'N', x: x + size/2, y: y + 10, w: 20, h: 20 },
-        { dir: 'S', x: x + size/2, y: y + size - 20, w: 20, h: 20 },
-        { dir: 'W', x: x + 10, y: y + size/2, w: 20, h: 20 },
-        { dir: 'E', x: x + size - 20, y: y + size/2, w: 20, h: 20 }
+        { dir: 'N', x: x + size/2, y: y + 10, label: '↑' },
+        { dir: 'S', x: x + size/2, y: y + size - 20, label: '↓' },
+        { dir: 'W', x: x + 10, y: y + size/2, label: '←' },
+        { dir: 'E', x: x + size - 20, y: y + size/2, label: '→' }
       ];
       
       for (const d of dirs) {
-        if (p.x >= d.x - d.w/2 && p.x <= d.x + d.w/2 && p.y >= d.y - d.h/2 && p.y <= d.y + d.h/2) {
+        const hitSize = 15;
+        if (p.x >= d.x - hitSize/2 && p.x <= d.x + hitSize/2 && p.y >= d.y - hitSize/2 && p.y <= d.y + hitSize/2) {
           // Update the most recently created hill's direction
           const gs = env.getGlobalState();
           if (gs.hills.length > 0) {
@@ -1048,11 +1047,11 @@ class LevelEditorImpl implements LevelEditorAPI {
           }
           if (item.kind === 'action') {
             if (item.action === 'gridToggle') {
-              try { env.setShowGrid(!env.getShowGrid()); } catch {}
+              try { env.setShowGrid?.(!env.getShowGrid()); } catch {}
             } else if (item.action === 'gridMinus') {
-              try { const g = Math.max(2, Math.min(128, env.getGridSize() - 2)); env.setGridSize(g); } catch {}
+              try { const g = Math.max(2, env.getGridSize() - 2); env.setGridSize?.(g); } catch {}
             } else if (item.action === 'gridPlus') {
-              try { const g = Math.max(2, Math.min(128, env.getGridSize() + 2)); env.setGridSize(g); } catch {}
+              try { const g = Math.max(2, env.getGridSize() + 2); env.setGridSize?.(g); } catch {}
             } else if (item.action === 'new') {
               void this.newLevel();
             } else if (item.action === 'save') {
@@ -1148,6 +1147,26 @@ class LevelEditorImpl implements LevelEditorAPI {
     }
 
     // 3) Selection tool interactions
+    // Group resize handles when multiple selection
+    if (this.selectedTool === 'select' && this.selectedObjects.length > 1) {
+      const selBounds = this.getSelectionBounds();
+      // Rotation handles (not yet implemented for group)
+      const handles = this.getResizeHandles(selBounds);
+      for (let i = 0; i < handles.length; i++) {
+        const h = handles[i];
+        if (p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h) {
+          this.isGroupResizing = true;
+          this.resizeHandleIndex = i;
+          this.resizeStartBounds = { ...selBounds };
+          this.resizeStartMouse = { x: px, y: py };
+          // Snapshot originals for proportional scaling
+          this.groupResizeOriginals = this.selectedObjects.map(o => ({ obj: o, snap: JSON.parse(JSON.stringify(o.object)) }));
+          return;
+        }
+      }
+    }
+
+    // Check rotation/resize handles first when single selection
     // Check rotation/resize handles first when single selection
     if (this.selectedTool === 'select' && this.selectedObjects.length === 1) {
       const obj = this.selectedObjects[0];
@@ -1236,7 +1255,8 @@ class LevelEditorImpl implements LevelEditorAPI {
       return;
     }
 
-    if (this.isResizing && this.selectedObjects.length === 1 && this.resizeStartBounds && this.resizeStartMouse && this.resizeHandleIndex !== null) {
+    // --- Single-object resize ---
+    if (this.isResizing && !this.isGroupResizing && this.selectedObjects.length === 1 && this.resizeStartBounds && this.resizeStartMouse && this.resizeHandleIndex !== null) {
       const obj = this.selectedObjects[0];
       const dx = px - this.resizeStartMouse.x;
       const dy = py - this.resizeStartMouse.y;
@@ -1260,6 +1280,49 @@ class LevelEditorImpl implements LevelEditorAPI {
       // Apply to rect-like object
       const o: any = obj.object as any;
       o.x = x; o.y = y; if ('w' in o) o.w = w; if ('h' in o) o.h = h;
+      return;
+    }
+
+    // --- Group resize ---
+    if (this.isGroupResizing && this.resizeStartBounds && this.resizeStartMouse && this.groupResizeOriginals && this.resizeHandleIndex !== null) {
+      const dx = px - this.resizeStartMouse.x;
+      const dy = py - this.resizeStartMouse.y;
+      let { x: bx, y: by, w: bw, h: bh } = { ...this.resizeStartBounds };
+      const idx = this.resizeHandleIndex;
+      if (idx === 0) { bx += dx; by += dy; bw -= dx; bh -= dy; }
+      else if (idx === 1) { by += dy; bw += dx; bh -= dy; }
+      else if (idx === 2) { bx += dx; bw -= dx; bh += dy; }
+      else if (idx === 3) { bw += dx; bh += dy; }
+      else if (idx === 4) { by += dy; bh -= dy; }
+      else if (idx === 5) { bw += dx; }
+      else if (idx === 6) { bh += dy; }
+      else if (idx === 7) { bx += dx; bw -= dx; }
+      if (bw < 1) { bx += (bw - 1); bw = 1; }
+      if (bh < 1) { by += (bh - 1); bh = 1; }
+      // Compute scale factors
+      const scaleX = bw / this.resizeStartBounds.w;
+      const scaleY = bh / this.resizeStartBounds.h;
+      const baseX = this.resizeStartBounds.x;
+      const baseY = this.resizeStartBounds.y;
+      for (const rec of this.groupResizeOriginals) {
+        const o: any = rec.snap;
+        const objType = rec.obj.type;
+        if (objType === 'wall' || objType === 'water' || objType === 'sand' || objType === 'bridge' || objType === 'hill' || objType === 'post') {
+          const relX = o.x - baseX;
+          const relY = o.y - baseY;
+          (rec.obj.object as any).x = bx + relX * scaleX;
+          (rec.obj.object as any).y = by + relY * scaleY;
+          if ('w' in o) (rec.obj.object as any).w = (o.w || 0) * scaleX;
+          if ('h' in o) (rec.obj.object as any).h = (o.h || 0) * scaleY;
+          if ('r' in o) (rec.obj.object as any).r = (o.r || 0) * ((scaleX + scaleY) / 2);
+        } else if (objType === 'tee' || objType === 'cup') {
+          const relX = o.x - baseX;
+          const relY = o.y - baseY;
+          (rec.obj.object as any).x = bx + relX * scaleX;
+          (rec.obj.object as any).y = by + relY * scaleY;
+        }
+        // Poly types skipped for now
+      }
       return;
     }
 
@@ -1321,12 +1384,22 @@ class LevelEditorImpl implements LevelEditorAPI {
       return;
     }
 
-    // Commit resize
+    // Commit resize (single)
     if (this.isResizing) {
       this.isResizing = false;
       this.resizeHandleIndex = null;
       this.resizeStartBounds = null;
       this.resizeStartMouse = null;
+      return;
+    }
+
+    // Commit group resize
+    if (this.isGroupResizing) {
+      this.isGroupResizing = false;
+      this.resizeHandleIndex = null;
+      this.resizeStartBounds = null;
+      this.resizeStartMouse = null;
+      this.groupResizeOriginals = null;
       return;
     }
 
@@ -1408,7 +1481,7 @@ class LevelEditorImpl implements LevelEditorAPI {
   }
 
   handleKeyDown(e: KeyboardEvent, env: EditorEnv): void {
-    if (env.isOverlayActive()) return;
+    if (env.isOverlayActive?.()) return;
     
     // Enter/Escape for polygon completion/cancellation
     if (this.polygonInProgress) {
@@ -1468,15 +1541,15 @@ class LevelEditorImpl implements LevelEditorAPI {
 
     // Grid controls
     if (e.code === 'KeyG') {
-      try { env.setShowGrid(!env.getShowGrid()); } catch {}
+      try { env.setShowGrid?.(!env.getShowGrid()); } catch {}
       return;
     }
     if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
-      try { const g = Math.max(2, env.getGridSize() - 2); env.setGridSize(g); } catch {}
+      try { const g = Math.max(2, env.getGridSize() - 2); env.setGridSize?.(g); } catch {}
       return;
     }
     if (e.code === 'Equal' || e.code === 'NumpadAdd') {
-      try { const g = Math.min(128, env.getGridSize() + 2); env.setGridSize(g); } catch {}
+      try { const g = Math.max(2, env.getGridSize() + 2); env.setGridSize?.(g); } catch {}
       return;
     }
 
@@ -1516,6 +1589,12 @@ class LevelEditorImpl implements LevelEditorAPI {
   }
 
   async newLevel(): Promise<void> {
+    // Confirm if there are unsaved changes
+    if (this.editorLevelData && this.env) {
+      const confirmed = await this.env.showConfirm('Create new level? Unsaved changes will be lost.', 'New Level');
+      if (!confirmed) return;
+    }
+
     const gs = this.getDefaultGlobalState();
     this.editorLevelData = {
       canvas: { width: gs.WIDTH, height: gs.HEIGHT },
@@ -1536,32 +1615,178 @@ class LevelEditorImpl implements LevelEditorAPI {
     };
     this.editorCurrentSavedId = null;
     this.selectedObjects = [];
+    
+    // Update global state to reflect new level
+    if (this.env) {
+      const newGlobalState = {
+        ball: { x: this.editorLevelData.tee.x, y: this.editorLevelData.tee.y, vx: 0, vy: 0, moving: false },
+        hole: { x: this.editorLevelData.cup.x, y: this.editorLevelData.cup.y, r: this.editorLevelData.cup.r },
+        walls: [],
+        polyWalls: [],
+        posts: [],
+        bridges: [],
+        waters: [],
+        watersPoly: [],
+        sands: [],
+        sandsPoly: [],
+        hills: [],
+        decorations: []
+      };
+      this.env.setGlobalState(newGlobalState);
+      this.env.showToast('New level created');
+    }
   }
 
   async openLoadPicker(): Promise<void> {
-    // Implementation would show level picker UI
-    console.log('Load picker not yet implemented');
+    if (!this.env) {
+      console.warn('No environment available for load picker');
+      return;
+    }
+
+    try {
+      // Get all saved levels from localStorage
+      const savedLevels: Array<{key: string, data: any, title: string}> = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key?.startsWith('vp.editor.')) {
+          try {
+            const data = JSON.parse(localStorage.getItem(key) || '{}');
+            if (data.course?.title) {
+              savedLevels.push({ key, data, title: data.course.title });
+            }
+          } catch (e) {
+            console.warn('Failed to parse saved level:', key);
+          }
+        }
+      }
+
+      if (savedLevels.length === 0) {
+        this.env.showToast('No saved levels found');
+        return;
+      }
+
+      // For now, just load the first saved level
+      // TODO: Show proper level picker UI
+      const levelToLoad = savedLevels[0];
+      
+      // Confirm if there are unsaved changes
+      if (this.editorLevelData) {
+        const confirmed = await this.env.showConfirm(`Load "${levelToLoad.title}"? Unsaved changes will be lost.`, 'Load Level');
+        if (!confirmed) return;
+      }
+
+      this.editorLevelData = levelToLoad.data;
+      this.editorCurrentSavedId = levelToLoad.key.replace('vp.editor.', '');
+      this.selectedObjects = [];
+      
+      // Update global state
+      this.loadEditorLevelIntoGlobals(this.env!);
+      this.env.showToast(`Loaded: ${levelToLoad.title}`);
+      
+    } catch (error) {
+      console.error('Failed to load level:', error);
+      this.env.showToast('Failed to load level');
+    }
   }
 
   async openDeletePicker(): Promise<void> {
-    // Implementation would show delete confirmation UI
-    console.log('Delete picker not yet implemented');
+    if (!this.env) {
+      console.warn('No environment available for delete picker');
+      return;
+    }
+
+    if (!this.editorCurrentSavedId) {
+      this.env.showToast('No saved level to delete');
+      return;
+    }
+
+    try {
+      const levelKey = `vp.editor.${this.editorCurrentSavedId}`;
+      const levelData = localStorage.getItem(levelKey);
+      
+      if (!levelData) {
+        this.env.showToast('Level not found');
+        return;
+      }
+
+      const parsed = JSON.parse(levelData);
+      const levelTitle = parsed.course?.title || 'Untitled';
+      
+      const confirmed = await this.env.showConfirm(
+        `Permanently delete "${levelTitle}"? This cannot be undone.`,
+        'Delete Level'
+      );
+      
+      if (confirmed) {
+        localStorage.removeItem(levelKey);
+        this.env.showToast(`Deleted: ${levelTitle}`);
+        
+        // Create new level after deletion
+        await this.newLevel();
+      }
+      
+    } catch (error) {
+      console.error('Failed to delete level:', error);
+      this.env.showToast('Failed to delete level');
+    }
   }
 
   async save(): Promise<void> {
-    if (this.editorLevelData) {
-      try {
-        localStorage.setItem('vp.editor.level', JSON.stringify(this.editorLevelData));
-        console.log('Level saved to localStorage');
-      } catch (error) {
-        console.error('Failed to save level:', error);
+    if (!this.editorLevelData) {
+      console.warn('No level data to save');
+      return;
+    }
+
+    // Sync current editor state to level data
+    this.syncEditorDataFromGlobals(this.env!);
+    
+    try {
+      // For now, use localStorage as placeholder until file system integration
+      // TODO: Replace with proper file system persistence per project policy
+      const levelKey = this.editorCurrentSavedId || `level_${Date.now()}`;
+      localStorage.setItem(`vp.editor.${levelKey}`, JSON.stringify(this.editorLevelData));
+      
+      if (!this.editorCurrentSavedId) {
+        this.editorCurrentSavedId = levelKey;
+      }
+      
+      // Show success feedback
+      if (this.env) {
+        this.env.showToast('Level saved successfully');
+      }
+      console.log('Level saved:', levelKey);
+    } catch (error) {
+      console.error('Failed to save level:', error);
+      if (this.env) {
+        this.env.showToast('Failed to save level');
       }
     }
   }
 
+
   async saveAs(): Promise<void> {
-    // For now, same as save - would show save dialog in full implementation
-    await this.save();
+    if (!this.editorLevelData) {
+      console.warn('No level data to save');
+      return;
+    }
+
+    // Sync current editor state
+    this.syncEditorDataFromGlobals(this.env!);
+    
+    // Force new save ID to create a copy
+    const oldId = this.editorCurrentSavedId;
+    this.editorCurrentSavedId = null;
+    
+    try {
+      await this.save();
+      if (this.env) {
+        this.env.showToast('Level saved as new copy');
+      }
+    } catch (error) {
+      // Restore old ID on failure
+      this.editorCurrentSavedId = oldId;
+      throw error;
+    }
   }
 
   getSelectedTool(): EditorTool { return this.selectedTool; }
@@ -1575,6 +1800,26 @@ class LevelEditorImpl implements LevelEditorAPI {
       HEIGHT: 600,
       COURSE_MARGIN: 40
     };
+  }
+
+  private loadEditorLevelIntoGlobals(env: EditorEnv): void {
+    if (!this.editorLevelData) return;
+    
+    const gs = env.getGlobalState();
+    // Update global state with editor level data
+    gs.ball = { x: this.editorLevelData.tee.x, y: this.editorLevelData.tee.y, vx: 0, vy: 0, moving: false };
+    gs.hole = { x: this.editorLevelData.cup.x, y: this.editorLevelData.cup.y, r: this.editorLevelData.cup.r };
+    gs.walls = [...this.editorLevelData.walls];
+    gs.polyWalls = [...this.editorLevelData.wallsPoly];
+    gs.posts = [...this.editorLevelData.posts];
+    gs.bridges = [...this.editorLevelData.bridges];
+    gs.waters = [...this.editorLevelData.water];
+    gs.watersPoly = [...this.editorLevelData.waterPoly];
+    gs.sands = [...this.editorLevelData.sand];
+    gs.sandsPoly = [...this.editorLevelData.sandPoly];
+    gs.hills = [...this.editorLevelData.hills];
+    gs.decorations = [...this.editorLevelData.decorations];
+    env.setGlobalState(gs);
   }
 
   private syncEditorDataFromGlobals(env: EditorEnv): void {
@@ -1618,6 +1863,19 @@ class LevelEditorImpl implements LevelEditorAPI {
 
   private rectsIntersect(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }): boolean {
     return !(a.x + a.w < b.x || b.x + b.w < a.x || a.y + a.h < b.y || b.y + b.h < a.y);
+  }
+
+  private getSelectionBounds(): { x: number; y: number; w: number; h: number } {
+    if (this.selectedObjects.length === 0) return { x: 0, y: 0, w: 0, h: 0 };
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const obj of this.selectedObjects) {
+      const b = this.getObjectBounds(obj);
+      minX = Math.min(minX, b.x);
+      minY = Math.min(minY, b.y);
+      maxX = Math.max(maxX, b.x + b.w);
+      maxY = Math.max(maxY, b.y + b.h);
+    }
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
   }
 
   private getResizeHandles(bounds: { x: number; y: number; w: number; h: number }): Array<{ x: number; y: number; w: number; h: number; cursor?: string }> {
@@ -1733,4 +1991,4 @@ class LevelEditorImpl implements LevelEditorAPI {
   }
 }
 
-export const levelEditor: LevelEditorAPI = new LevelEditorImpl();
+export const levelEditor: LevelEditor = new LevelEditorImpl();

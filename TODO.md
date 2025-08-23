@@ -131,6 +131,7 @@ Notes:
   - Layout: top menubar with pulldown panels; render above preview; ensure readability and spacing; maintain current preview layering
   - Shortcuts: preserved existing shortcuts (G, -, +); mnemonics (Alt+F/O/D/E), arrow keys navigate, Enter selects, Esc closes
   - Docs: updated `PROGRESS.md` and `CHANGELOG.md`
+  - Back/Exit wiring: File→Back/Exit prompts via in-game Confirm and calls `env.exitToMenu()`; Escape key path uses the same confirm-and-exit flow and is disabled while overlays/menus are open
   - Tests: hover/click open-close behavior; action dispatch correctness
   - [x] Refactor: delegate all Level Editor keyboard handling from `src/main.ts` to `levelEditor.handleKeyDown(editorEnv)`; remove legacy unreachable code in `main.ts` referencing old editor globals.
   - [ ] Standardize level schema: keep both rectangular and polygon variants (walls/water/sand). Ensure Editor supports full selection/move/delete on both; no migration of existing levels.

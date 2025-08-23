@@ -67,6 +67,7 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
     - Tools working: Tee, Cup, Post, Wall, Bridge, Water, Sand, Hill (rectangles), Select Tool
     - Tools present but not yet implemented: WallsPoly, WaterPoly, SandPoly (no placement/vertex-edit UI)
     - Actions working: Grid toggle, Grid -/+, Back/Exit, New, Save, Save As, Level Load, Delete — all via in-game overlays (async) with Enter/Esc support
+    - Back/Exit fix: File menu Back/Exit now prompts for confirmation and returns to Main Menu; Escape key path uses the same confirm-and-exit flow and is blocked while overlays/menus are open
     - Persistence: Save As targets Filesystem or `User_Levels/<Username>/` only (no LocalStorage per policy)
       - Gaps:
         - [x] Polygon tools: implemented create/vertex-edit UI with click-to-add-vertex, Enter/Escape to finish/cancel, click-near-start to close (2025-08-22)

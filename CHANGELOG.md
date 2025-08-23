@@ -27,6 +27,10 @@ All notable changes to this project will be documented in this file.
  - Fix: TypeScript narrowing in Users Admin "remove" confirm flow; captured `hs.id` prior to async
  - Fix: Editor menu and keyboard handlers wrap async calls with `.catch(console.error)` to avoid unhandled rejections
  - Fix: Overlays did not render on Course Select, Options, and Changelog screens due to early returns in `draw()`. Added inline `renderGlobalOverlays()` calls before those returns so overlays render consistently across all UI states. Mouse clicks are swallowed while an overlay is active to prevent click-through. Toast notifications now render as a top-right stack and auto-expire.
+ - Fix (Level Editor): Back/Exit now confirms and properly returns to Main Menu from the editor.
+   - Implemented File menu Back/Exit action to show in-game confirm, then call `env.exitToMenu()`.
+   - Added `exitToMenu` to the keyboard `editorEnv` in `handleLevelEditorKeys()` so Escape uses the same confirm-and-exit flow without runtime/type errors.
+   - Escape key path is guarded by overlay/menu state to avoid accidental exits.
 
  - Fix (Level Editor): Added local `COLORS` constant and `SelectableObject` union in `src/editor/levelEditor.ts` to avoid cross-module type mismatches. Palette values mirror `docs/PALETTE.md` and `src/main.ts`.
  - Fix (Level Editor): Standardized naming to `wallsPoly` in `getObjectBounds()` (removed stray `wallPoly` reference) to match tools and data arrays.

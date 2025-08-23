@@ -1258,6 +1258,8 @@ canvas.addEventListener('mousedown', (e) => {
         setGridSize: (n: number) => { /* delegated to levelEditor */ },
         getShowGrid: () => false,
         setShowGrid: (b: boolean) => { /* delegated to levelEditor */ },
+        showToast: (msg: string) => showUiToast(msg),
+        showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
         getGlobalState: () => ({
           WIDTH,
           HEIGHT,
@@ -1303,9 +1305,10 @@ canvas.addEventListener('mousedown', (e) => {
           }
         },
         getUserId,
-        migrateSingleSlotIfNeeded
+        migrateSingleSlotIfNeeded,
+        exitToMenu: () => { gameState = 'menu'; }
       };
-      levelEditor.enter(editorEnv);
+      levelEditor.init(editorEnv);
       return;
     }
     const o = getMainOptionsRect();
@@ -1366,6 +1369,8 @@ canvas.addEventListener('mousedown', (e) => {
       setGridSize: () => {},
       getShowGrid: () => true,
       setShowGrid: () => {},
+      showToast: (msg: string) => showUiToast(msg),
+      showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
       getGlobalState: () => ({
         WIDTH,
         HEIGHT,
@@ -1411,7 +1416,8 @@ canvas.addEventListener('mousedown', (e) => {
         }
       },
       getUserId,
-      migrateSingleSlotIfNeeded
+      migrateSingleSlotIfNeeded,
+      exitToMenu: () => { gameState = 'menu'; }
     };
     levelEditor.handleMouseDown(e, editorEnv);
     return;
@@ -1592,6 +1598,8 @@ canvas.addEventListener('mousemove', (e) => {
       setGridSize: () => {},
       getShowGrid: () => true,
       setShowGrid: () => {},
+      showToast: (msg: string) => showUiToast(msg),
+      showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
       getGlobalState: () => ({
         WIDTH,
         HEIGHT,
@@ -1627,7 +1635,8 @@ canvas.addEventListener('mousemove', (e) => {
         if (state.hole) { hole.x = state.hole.x; hole.y = state.hole.y; if (state.hole.r !== undefined) (hole as any).r = state.hole.r; }
       },
       getUserId,
-      migrateSingleSlotIfNeeded
+      migrateSingleSlotIfNeeded,
+      exitToMenu: () => { gameState = 'menu'; }
     };
     levelEditor.handleMouseMove(e as MouseEvent, editorEnv);
     // Cursor: pointer over UI hotspots, crosshair for placement tools, default otherwise
@@ -1733,6 +1742,8 @@ canvas.addEventListener('mouseup', (e) => {
       setGridSize: () => {},
       getShowGrid: () => true,
       setShowGrid: () => {},
+      showToast: (msg: string) => showUiToast(msg),
+      showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
       getGlobalState: () => ({
         WIDTH,
         HEIGHT,
@@ -1768,7 +1779,8 @@ canvas.addEventListener('mouseup', (e) => {
         if (state.hole) { hole.x = state.hole.x; hole.y = state.hole.y; if (state.hole.r !== undefined) (hole as any).r = state.hole.r; }
       },
       getUserId,
-      migrateSingleSlotIfNeeded
+      migrateSingleSlotIfNeeded,
+      exitToMenu: () => { gameState = 'menu'; }
     };
     levelEditor.handleMouseUp(e as MouseEvent, editorEnv);
     return;
@@ -1902,6 +1914,8 @@ function handleLevelEditorKeys(e: KeyboardEvent) {
     setGridSize: () => {},
     getShowGrid: () => true,
     setShowGrid: () => {},
+      showToast: (msg: string) => showUiToast(msg),
+      showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
     getGlobalState: () => ({
       WIDTH,
       HEIGHT,
@@ -1937,7 +1951,8 @@ function handleLevelEditorKeys(e: KeyboardEvent) {
       if (state.hole) { hole.x = state.hole.x; hole.y = state.hole.y; if (state.hole.r !== undefined) (hole as any).r = state.hole.r; }
     },
     getUserId,
-    migrateSingleSlotIfNeeded
+    migrateSingleSlotIfNeeded,
+    exitToMenu: () => { gameState = 'menu'; }
   };
   levelEditor.handleKeyDown(e, editorEnv);
 }
@@ -2669,6 +2684,8 @@ function draw() {
       setGridSize: () => {},
       getShowGrid: () => true,
       setShowGrid: () => {},
+      showToast: (msg: string) => showUiToast(msg),
+      showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
       getGlobalState: () => ({
         WIDTH,
         HEIGHT,
@@ -2704,7 +2721,8 @@ function draw() {
         if (state.hole) { hole.x = state.hole.x; hole.y = state.hole.y; if (state.hole.r !== undefined) (hole as any).r = state.hole.r; }
       },
       getUserId,
-      migrateSingleSlotIfNeeded
+      migrateSingleSlotIfNeeded,
+      exitToMenu: () => { gameState = 'menu'; }
     };
     levelEditor.render(editorEnv);
     renderGlobalOverlays();

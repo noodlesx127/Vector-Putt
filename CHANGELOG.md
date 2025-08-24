@@ -27,6 +27,7 @@ All notable changes to this project will be documented in this file.
 - Fixed Level Editor loading crash when level data missing arrays (bridges, decorations, etc.)
 - Fixed user ID consistency between Level Editor and User Made Levels picker for Firebase operations
 - Made user system case insensitive for username comparisons in level ownership checks
+- Fixed cross-browser level access by implementing automatic level migration when user ID changes during Firebase synchronization
 
 ### Technical
 - Added type adapters to handle polygon format differences between Firebase and main app

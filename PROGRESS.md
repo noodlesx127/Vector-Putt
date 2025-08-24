@@ -181,6 +181,7 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [x] Bank-shot dev harness (dev-only path preview) — toggle with `B` (dev builds only)
 - [x] Palette extraction to `docs/PALETTE.md`; applied flat fills + clear outlines for water/sand (rects: 1.5px inset; polys: 2px stroke)
  - [x] Options: basic SFX volume and mute controls
+- [x] **2025-08-24**: Fixed cross-browser level access issue by implementing automatic level migration when user ID changes during Firebase synchronization
 
 ## Blockers / Open Questions
 - [ ] Confirm hole capture radius vs. exact entry (measure from videos)

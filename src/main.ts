@@ -579,14 +579,63 @@ function canModifyLevel(level: Level): boolean {
 
 
 
+async function migrateLevelsToNewUserId(oldUserId: string, newUserId: string): Promise<void> {
+  if (!firebaseReady) return;
+  
+  try {
+    console.log(`Migrating levels from ${oldUserId} to ${newUserId}`);
+    
+    // Get all levels for the old user ID
+    const oldUserLevels = await firebaseManager.levels.getAllLevels(oldUserId);
+    const levelsToMigrate = oldUserLevels.filter(level => 
+      level.data.meta?.authorId === oldUserId
+    );
+    
+    if (levelsToMigrate.length === 0) {
+      console.log('No levels to migrate');
+      return;
+    }
+    
+    console.log(`Migrating ${levelsToMigrate.length} levels to new user ID`);
+    
+    // Save each level under the new user ID
+    for (const levelEntry of levelsToMigrate) {
+      const levelData = { ...levelEntry.data };
+      
+      // Update the author ID in metadata
+      if (levelData.meta) {
+        levelData.meta.authorId = newUserId;
+        levelData.meta.lastModified = Date.now();
+      }
+      
+      // Save under new user ID
+      await firebaseManager.levels.saveLevel(levelData, undefined, newUserId);
+      
+      // Delete from old user ID (if it exists as a separate record)
+      try {
+        await firebaseManager.levels.deleteLevel(levelEntry.name, oldUserId);
+      } catch (e) {
+        // Ignore deletion errors - the level might not exist as a separate record
+        console.log(`Could not delete old level ${levelEntry.name} for ${oldUserId}:`, e);
+      }
+    }
+    
+    showUiToast(`Migrated ${levelsToMigrate.length} levels to new account`);
+    console.log(`Successfully migrated ${levelsToMigrate.length} levels`);
+    
+  } catch (error) {
+    console.error('Failed to migrate levels to new user ID:', error);
+    showUiToast('Failed to migrate some levels');
+  }
+}
+
 async function migrateSingleSlotIfNeeded(): Promise<void> {
   if (!firebaseReady) return;
   
   try {
-    const doc = await readLevelsDoc();
-    if (doc.levels.length > 0) return;
     const raw = localStorage.getItem('vp.editor.level');
     if (!raw) return;
+    
     const parsed = JSON.parse(raw) as Level;
     if (!parsed || !parsed.tee || !parsed.cup) return;
     // Set ownership if missing
@@ -594,10 +643,9 @@ async function migrateSingleSlotIfNeeded(): Promise<void> {
     parsed.meta = {
       authorId: parsed.meta?.authorId || uid,
       authorName: parsed.meta?.authorName || (userProfile.name || 'unknown'),
-      created: parsed.meta?.created || new Date().toISOString(),
-      modified: new Date().toISOString(),
-    };
-    if (!parsed.course) (parsed as any).course = { index: 1, total: 1 } as any;
+      title: (parsed.meta as any)?.title || 'Migrated Level',
+      lastModified: Date.now()
+    } as any;
     if (!parsed.course.title) (parsed.course as any).title = 'Untitled (migrated)';
     
     // Save to Firebase instead of localStorage
@@ -606,6 +654,7 @@ async function migrateSingleSlotIfNeeded(): Promise<void> {
     await firebaseManager.levels.saveLevel(firebaseLevel, undefined, userId);
     // Remove from localStorage after migration
     localStorage.removeItem('vp.editor.level');
+    showUiToast('Migrated legacy level to Firebase');
   } catch (error) {
     console.error('Failed to migrate single slot level:', error);
   }
@@ -1597,18 +1646,38 @@ canvas.addEventListener('mousedown', (e) => {
               if (name.toLowerCase() === 'admin' && match.role !== 'admin') {
                 try { await firebaseManager.users.toggleRole(match.id); match.role = 'admin'; } catch {}
               }
+              
+              // Store old ID for level migration
+              const oldUserId = userProfile.id;
+              
               userProfile.role = match.role as any;
               userProfile.id = match.id;
               saveUserProfile();
+              
+              // Migrate levels from old ID to new ID if they differ
+              if (oldUserId && oldUserId !== match.id) {
+                await migrateLevelsToNewUserId(oldUserId, match.id);
+              }
+              
               // Migrate user-specific data
               await firebaseManager.migrateUserData(match.id);
             } else {
               // Create a new user in the store (admin if name is 'admin')
               const defaultRole = (name.toLowerCase() === 'admin') ? 'admin' : 'user';
               const rec = await firebaseManager.users.addUser(name, defaultRole as any);
+              
+              // Store old ID for level migration
+              const oldUserId = userProfile.id;
+              
               userProfile.role = rec.role as any;
               userProfile.id = rec.id;
               saveUserProfile();
+              
+              // Migrate levels from old ID to new ID if they differ
+              if (oldUserId && oldUserId !== rec.id) {
+                await migrateLevelsToNewUserId(oldUserId, rec.id);
+              }
+              
               // Migrate user-specific data
               await firebaseManager.migrateUserData(rec.id);
             }

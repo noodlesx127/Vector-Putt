@@ -1044,7 +1044,9 @@ async function loadUserLevelsList(): Promise<void> {
     // Load from Firebase instead of filesystem/localStorage
     if (firebaseReady) {
       const userId = getUserId();
+      console.log('User Made Levels: Loading from Firebase for userId:', userId);
       const firebaseLevels = await firebaseManager.levels.getAllLevels(userId);
+      console.log('User Made Levels: Firebase returned', firebaseLevels.length, 'levels:', firebaseLevels);
       
       const allLevels: UserLevelEntry[] = firebaseLevels.map(entry => ({
         name: entry.title,
@@ -1055,6 +1057,7 @@ async function loadUserLevelsList(): Promise<void> {
       }));
       
       userLevelsList = allLevels.sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0));
+      console.log('User Made Levels: Final userLevelsList length:', userLevelsList.length);
     } else {
       // Fallback: try to load from filesystem for bundled levels
       try {

@@ -49,8 +49,11 @@ export class FirebaseLevelStore {
     const allLevels: LevelEntry[] = [];
 
     try {
+      console.log('FirebaseLevelStore.getAllLevels called with userId:', currentUserId);
+      
       // Get public levels
       const publicLevels = await FirebaseDatabase.getLevels();
+      console.log('Public levels from Firebase:', publicLevels.length, publicLevels);
       for (const level of publicLevels) {
         allLevels.push({
           name: level.id,
@@ -65,6 +68,7 @@ export class FirebaseLevelStore {
       // Get user levels if userId provided
       if (currentUserId) {
         const userLevels = await FirebaseDatabase.getUserLevels(currentUserId);
+        console.log('User levels from Firebase for', currentUserId, ':', userLevels.length, userLevels);
         for (const level of userLevels) {
           allLevels.push({
             name: level.id,
@@ -76,6 +80,8 @@ export class FirebaseLevelStore {
           });
         }
       }
+      
+      console.log('FirebaseLevelStore.getAllLevels returning', allLevels.length, 'total levels');
 
       // Cache the results
       for (const level of [...publicLevels, ...(currentUserId ? await FirebaseDatabase.getUserLevels(currentUserId) : [])]) {

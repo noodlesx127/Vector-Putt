@@ -16,7 +16,7 @@ A classic mini golf recreation using TypeScript + Canvas with data‑driven leve
 - Minimal HUD, pause overlay, keyboard shortcuts (R/N/Space/P/Esc)
 - Retro vector palette and clean course framing
 - In-game overlay dialogs (Confirm, Prompt, List) and Toast notifications replace browser alerts/prompts; overlays render above all UI, rebuild hotspots every frame, swallow input while active, and support Enter/Esc/Arrow keys.
-- Level Editor: top menubar with pull-down menus (File, Objects, Decorations, Editor Tools); tool palette and selection; Tee/Cup placement with 20px grid snapping; multi-level persistence (Save, Save As, Load, New, Delete) via Firebase Realtime Database; ownership metadata (authorId/authorName) with owner/admin overwrite/delete permissions; automatic migration from localStorage; in-editor grid preview; editor preview renders existing geometry (water, sand, bridges, hills, decorations, walls, polygon walls, posts) using play-mode visuals; interactive placement for Posts (click) and Walls/Bridges/Water/Sand/Hills (click-drag rectangles) with grid snapping and fairway clamping. Select Tool supports selection, movement, and deletion for polygon objects (`wallsPoly`, `waterPoly`, `sandPoly`).
+- Level Editor: top menubar with pull-down menus (File, Objects, Decorations, Editor Tools); tool palette and selection; Tee/Cup placement with 20px grid snapping; multi-level persistence (Save, Save As, Load, New, Delete) via Firebase Realtime Database; ownership metadata (authorId/authorName) with owner/admin overwrite/delete permissions; automatic migration from localStorage; in-editor grid preview; editor preview renders existing geometry (water, sand, bridges, hills, decorations, walls, polygon walls, posts) using play-mode visuals; interactive placement for Posts (click) and Walls/Bridges/Water/Sand/Hills (click-drag rectangles) with grid snapping and fairway clamping. Select Tool supports selection, movement, and deletion for polygon objects (`wallsPoly`, `waterPoly`, `sandPoly`). Undo/Redo (Ctrl+Z/Ctrl+Y) with 50-step history; Clipboard (Copy/Cut/Paste via Ctrl+C/Ctrl+X/Ctrl+V) across rects, posts, and polygons (translate-only for polys), paste at mouse cursor with grid snap and clamping.
 
 ## Stack
 
@@ -38,6 +38,8 @@ A classic mini golf recreation using TypeScript + Canvas with data‑driven leve
 npm install
 npm run dev
 ```
+
+Note (dev/test): The Test Overlay demo toggles with Shift+T to avoid conflicts while typing.
 
 ## Database Maintenance
 

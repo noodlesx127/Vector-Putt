@@ -8,6 +8,14 @@
   implementation will integrate file-based persistence; for browser-only builds expose Import/Export.
 */
 
+import { 
+  loadLevelsFromFilesystem, 
+  importLevelFromFile, 
+  saveLevelToFilesystem, 
+  isFileSystemAccessSupported, 
+  saveLevelAsDownload 
+} from './filesystem';
+
 // Local palette for the editor module (matches docs/PALETTE.md and main.ts)
 const COLORS = {
   table: '#7a7b1e',
@@ -53,7 +61,7 @@ export type EditorTool =
   | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'sand' | 'sandPoly' | 'hill';
 
 export type EditorAction =
-  | 'save' | 'saveAs' | 'load' | 'export' | 'new' | 'delete' | 'test' | 'gridToggle' | 'gridMinus' | 'gridPlus' | 'back' | 'undo' | 'redo';
+  | 'save' | 'saveAs' | 'load' | 'export' | 'new' | 'delete' | 'test' | 'gridToggle' | 'gridMinus' | 'gridPlus' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste';
 
 export type EditorMenuId = 'file' | 'objects' | 'decorations' | 'tools';
 
@@ -182,6 +190,11 @@ class LevelEditorImpl implements LevelEditor {
   private redoStack: EditorSnapshot[] = [];
   private maxUndoSteps: number = 50;
   private isApplyingUndoRedo: boolean = false;
+
+  // Clipboard system
+  private clipboard: SelectableObject[] = [];
+  private clipboardOffset: { x: number; y: number } = { x: 0, y: 0 };
+  private lastMousePosition: { x: number; y: number } = { x: 400, y: 300 };
 
   // Drag state for rectangle placements
   private isEditorDragging = false;
@@ -321,6 +334,165 @@ class LevelEditorImpl implements LevelEditor {
     this.env.showToast(`Redo: ${redoSnapshot.description}`);
   }
 
+  // Clipboard operations
+  private copySelectedObjects(): void {
+    if (this.selectedObjects.length === 0 || !this.env) return;
+    
+    // Deep copy selected objects
+    this.clipboard = this.selectedObjects.map(obj => ({
+      ...obj,
+      object: JSON.parse(JSON.stringify(obj.object))
+    }));
+    
+    // Calculate clipboard offset (center of selection bounds)
+    const bounds = this.getSelectionBounds();
+    this.clipboardOffset = {
+      x: bounds.x + bounds.w / 2,
+      y: bounds.y + bounds.h / 2
+    };
+    
+    this.env.showToast(`Copied ${this.clipboard.length} object(s)`);
+  }
+
+  private cutSelectedObjects(): void {
+    if (this.selectedObjects.length === 0 || !this.env) return;
+    
+    this.pushUndoSnapshot(`Cut ${this.selectedObjects.length} object(s)`);
+    this.copySelectedObjects();
+    this.deleteSelectedObjects();
+  }
+
+  private pasteObjects(mouseX: number, mouseY: number): void {
+    if (this.clipboard.length === 0 || !this.env) return;
+    
+    this.pushUndoSnapshot(`Paste ${this.clipboard.length} object(s)`);
+    
+    const gs = this.env.getGlobalState();
+    const { x: fairX, y: fairY, w: fairW, h: fairH } = this.env.fairwayRect();
+    const clampX = (x: number) => Math.max(fairX, Math.min(fairX + fairW, x));
+    const clampY = (y: number) => Math.max(fairY, Math.min(fairY + fairH, y));
+    const snap = (n: number) => {
+      try { if (this.showGrid && this.env!.getShowGrid()) { const g = this.env!.getGridSize(); return Math.round(n / g) * g; } } catch {}
+      return n;
+    };
+    
+    // Calculate paste offset from clipboard center to mouse position
+    const pasteOffsetX = snap(clampX(mouseX)) - this.clipboardOffset.x;
+    const pasteOffsetY = snap(clampY(mouseY)) - this.clipboardOffset.y;
+    
+    const newSelection: SelectableObject[] = [];
+    
+    for (const clipObj of this.clipboard) {
+      const newObj = JSON.parse(JSON.stringify(clipObj.object));
+      
+      // Apply paste offset
+      if ('x' in newObj && 'y' in newObj) {
+        newObj.x = clampX(newObj.x + pasteOffsetX);
+        newObj.y = clampY(newObj.y + pasteOffsetY);
+      }
+      
+      // Handle polygon points
+      if (clipObj.type === 'wallsPoly' || clipObj.type === 'waterPoly' || clipObj.type === 'sandPoly') {
+        const points: number[] = newObj.points || [];
+        for (let i = 0; i < points.length; i += 2) {
+          points[i] = clampX(points[i] + pasteOffsetX);
+          points[i + 1] = clampY(points[i + 1] + pasteOffsetY);
+        }
+      }
+      
+      // Add to appropriate global arrays and create selection object
+      if (clipObj.type === 'wall') {
+        gs.walls.push(newObj);
+        newSelection.push({ type: 'wall', object: newObj, index: gs.walls.length - 1 });
+      } else if (clipObj.type === 'post') {
+        gs.posts.push(newObj);
+        newSelection.push({ type: 'post', object: newObj, index: gs.posts.length - 1 });
+      } else if (clipObj.type === 'water') {
+        gs.waters.push(newObj);
+        newSelection.push({ type: 'water', object: newObj, index: gs.waters.length - 1 });
+      } else if (clipObj.type === 'sand') {
+        gs.sands.push(newObj);
+        newSelection.push({ type: 'sand', object: newObj, index: gs.sands.length - 1 });
+      } else if (clipObj.type === 'bridge') {
+        gs.bridges.push(newObj);
+        newSelection.push({ type: 'bridge', object: newObj, index: gs.bridges.length - 1 });
+      } else if (clipObj.type === 'hill') {
+        gs.hills.push(newObj);
+        newSelection.push({ type: 'hill', object: newObj, index: gs.hills.length - 1 });
+      } else if (clipObj.type === 'decoration') {
+        gs.decorations.push(newObj);
+        newSelection.push({ type: 'decoration', object: newObj, index: gs.decorations.length - 1 });
+      } else if (clipObj.type === 'wallsPoly') {
+        gs.polyWalls.push(newObj);
+        newSelection.push({ type: 'wallsPoly', object: newObj, index: gs.polyWalls.length - 1 });
+      } else if (clipObj.type === 'waterPoly') {
+        gs.watersPoly.push(newObj);
+        newSelection.push({ type: 'waterPoly', object: newObj, index: gs.watersPoly.length - 1 });
+      } else if (clipObj.type === 'sandPoly') {
+        gs.sandsPoly.push(newObj);
+        newSelection.push({ type: 'sandPoly', object: newObj, index: gs.sandsPoly.length - 1 });
+      }
+      // Note: Tee and Cup are unique objects, so we don't paste them
+    }
+    
+    this.env.setGlobalState(gs);
+    this.syncEditorDataFromGlobals(this.env);
+    this.selectedObjects = newSelection;
+    
+    this.env.showToast(`Pasted ${newSelection.length} object(s)`);
+  }
+
+  private deleteSelectedObjects(): void {
+    if (this.selectedObjects.length === 0 || !this.env) return;
+    
+    const gs = this.env.getGlobalState();
+    
+    // Sort by index descending to avoid index shifting issues
+    const sortedObjects = [...this.selectedObjects].sort((a, b) => {
+      const aIndex = 'index' in a ? a.index : 0;
+      const bIndex = 'index' in b ? b.index : 0;
+      return bIndex - aIndex;
+    });
+    
+    for (const obj of sortedObjects) {
+      if (obj.type === 'wall' && 'index' in obj) {
+        const idx = obj.index;
+        if (idx >= 0 && idx < gs.walls.length) gs.walls.splice(idx, 1);
+      } else if (obj.type === 'post' && 'index' in obj) {
+        const idx = obj.index;
+        if (idx >= 0 && idx < gs.posts.length) gs.posts.splice(idx, 1);
+      } else if (obj.type === 'water' && 'index' in obj) {
+        const idx = obj.index;
+        if (idx >= 0 && idx < gs.waters.length) gs.waters.splice(idx, 1);
+      } else if (obj.type === 'sand' && 'index' in obj) {
+        const idx = obj.index;
+        if (idx >= 0 && idx < gs.sands.length) gs.sands.splice(idx, 1);
+      } else if (obj.type === 'bridge' && 'index' in obj) {
+        const idx = obj.index;
+        if (idx >= 0 && idx < gs.bridges.length) gs.bridges.splice(idx, 1);
+      } else if (obj.type === 'hill' && 'index' in obj) {
+        const idx = obj.index;
+        if (idx >= 0 && idx < gs.hills.length) gs.hills.splice(idx, 1);
+      } else if (obj.type === 'decoration' && 'index' in obj) {
+        const idx = obj.index;
+        if (idx >= 0 && idx < gs.decorations.length) gs.decorations.splice(idx, 1);
+      } else if (obj.type === 'wallsPoly' && 'index' in obj) {
+        const idx = obj.index;
+        if (idx >= 0 && idx < gs.polyWalls.length) gs.polyWalls.splice(idx, 1);
+      } else if (obj.type === 'waterPoly' && 'index' in obj) {
+        const idx = obj.index;
+        if (idx >= 0 && idx < gs.watersPoly.length) gs.watersPoly.splice(idx, 1);
+      } else if (obj.type === 'sandPoly' && 'index' in obj) {
+        const idx = obj.index;
+        if (idx >= 0 && idx < gs.sandsPoly.length) gs.sandsPoly.splice(idx, 1);
+      }
+    }
+    
+    this.env.setGlobalState(gs);
+    this.syncEditorDataFromGlobals(this.env);
+    this.selectedObjects = [];
+  }
+
   // Helper method to finish polygon creation
   private finishPolygon(env: EditorEnv): void {
     if (!this.polygonInProgress || this.polygonInProgress.points.length < 6) {
@@ -388,11 +560,14 @@ class LevelEditorImpl implements LevelEditor {
       title: 'Editor Tools',
       items: [
         { label: 'Select Tool', item: { kind: 'tool', tool: 'select' } },
-        { label: `Undo ${this.canUndo() ? '(Ctrl+Z)' : '(disabled)'}`, item: { kind: 'action', action: 'undo' }, separator: true },
-        { label: `Redo ${this.canRedo() ? '(Ctrl+Y)' : '(disabled)'}`, item: { kind: 'action', action: 'redo' } },
-        { label: this.showGrid ? 'Grid On' : 'Grid Off', item: { kind: 'action', action: 'gridToggle' }, separator: true },
-        { label: `Grid - (${this.gridSize}px)`, item: { kind: 'action', action: 'gridMinus' } },
-        { label: `Grid + (${this.gridSize}px)`, item: { kind: 'action', action: 'gridPlus' } }
+        { label: 'Undo (Ctrl+Z)', item: { kind: 'action', action: 'undo' }, separator: true },
+        { label: 'Redo (Ctrl+Y)', item: { kind: 'action', action: 'redo' } },
+        { label: 'Copy (Ctrl+C)', item: { kind: 'action', action: 'copy' }, separator: true },
+        { label: 'Cut (Ctrl+X)', item: { kind: 'action', action: 'cut' } },
+        { label: 'Paste (Ctrl+V)', item: { kind: 'action', action: 'paste' } },
+        { label: 'Grid Toggle', item: { kind: 'action', action: 'gridToggle' }, separator: true },
+        { label: 'Grid -', item: { kind: 'action', action: 'gridMinus' } },
+        { label: 'Grid +', item: { kind: 'action', action: 'gridPlus' } }
       ]
     }
   };
@@ -400,6 +575,8 @@ class LevelEditorImpl implements LevelEditor {
   init(env: EditorEnv): void {
     this.env = env;
     // Initialize editor with environment
+    // Ensure select tool is always the default
+    this.selectedTool = 'select';
     // Try to initialize from saved local storage once per session
     // Run single-slot migration on first use
     try { env.migrateSingleSlotIfNeeded?.(); } catch {}
@@ -1063,8 +1240,46 @@ class LevelEditorImpl implements LevelEditor {
           ctx.lineTo(dropdownX + dropdownW - 6, itemY - 1);
           ctx.stroke();
         }
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText(menuItem.label, dropdownX + 8, itemY + itemH / 2);
+        // Generate dynamic label based on current state
+        let displayLabel = menuItem.label;
+        let isDisabled = false;
+        
+        if (menuItem.item.kind === 'action') {
+          switch (menuItem.item.action) {
+            case 'undo':
+              displayLabel = `Undo ${this.canUndo() ? '(Ctrl+Z)' : '(disabled)'}`;
+              isDisabled = !this.canUndo();
+              break;
+            case 'redo':
+              displayLabel = `Redo ${this.canRedo() ? '(Ctrl+Y)' : '(disabled)'}`;
+              isDisabled = !this.canRedo();
+              break;
+            case 'copy':
+              displayLabel = `Copy ${this.selectedObjects.length > 0 ? '(Ctrl+C)' : '(disabled)'}`;
+              isDisabled = this.selectedObjects.length === 0;
+              break;
+            case 'cut':
+              displayLabel = `Cut ${this.selectedObjects.length > 0 ? '(Ctrl+X)' : '(disabled)'}`;
+              isDisabled = this.selectedObjects.length === 0;
+              break;
+            case 'paste':
+              displayLabel = `Paste ${this.clipboard.length > 0 ? '(Ctrl+V)' : '(disabled)'}`;
+              isDisabled = this.clipboard.length === 0;
+              break;
+            case 'gridToggle':
+              displayLabel = this.showGrid ? 'Grid On' : 'Grid Off';
+              break;
+            case 'gridMinus':
+              displayLabel = `Grid - (${this.gridSize}px)`;
+              break;
+            case 'gridPlus':
+              displayLabel = `Grid + (${this.gridSize}px)`;
+              break;
+          }
+        }
+        
+        ctx.fillStyle = isDisabled ? 'rgba(255,255,255,0.5)' : '#ffffff';
+        ctx.fillText(displayLabel, dropdownX + 8, itemY + itemH / 2);
         this.uiHotspots.push({ kind: 'menuItem', menu: this.openEditorMenu, item: menuItem.item, x: dropdownX, y: itemY, w: dropdownW, h: itemH });
         itemY += itemH;
       }
@@ -1195,9 +1410,15 @@ class LevelEditorImpl implements LevelEditor {
             } else if (item.action === 'delete') {
               void this.openDeletePicker();
             } else if (item.action === 'undo') {
-              this.performUndo();
+              if (this.canUndo()) this.performUndo();
             } else if (item.action === 'redo') {
-              this.performRedo();
+              if (this.canRedo()) this.performRedo();
+            } else if (item.action === 'copy') {
+              if (this.selectedObjects.length > 0) this.copySelectedObjects();
+            } else if (item.action === 'cut') {
+              if (this.selectedObjects.length > 0) this.cutSelectedObjects();
+            } else if (item.action === 'paste') {
+              if (this.clipboard.length > 0) this.pasteObjects(this.lastMousePosition.x, this.lastMousePosition.y);
             } else if (item.action === 'back') {
               (async () => {
                 const ok = await env.showConfirm('Exit Level Editor and return to Main Menu? Unsaved changes will be lost.', 'Exit Editor');
@@ -1399,6 +1620,10 @@ class LevelEditorImpl implements LevelEditor {
 
   handleMouseMove(e: MouseEvent, env: EditorEnv): void {
     const p = env.worldFromEvent(e);
+    
+    // Track mouse position for clipboard paste
+    this.lastMousePosition = { x: p.x, y: p.y };
+    
     const { x: fairX, y: fairY, w: fairW, h: fairH } = env.fairwayRect();
     const snap = (n: number) => {
       try { if (this.showGrid && env.getShowGrid()) { const g = env.getGridSize(); return Math.round(n / g) * g; } } catch {}
@@ -1781,14 +2006,14 @@ class LevelEditorImpl implements LevelEditor {
       return;
     }
 
-    // Tool shortcuts
+    // Tool shortcuts (only when Ctrl is not pressed to avoid conflicts)
     if (e.code === 'KeyS' && !e.ctrlKey) { this.selectedTool = 'select'; return; }
     if (e.code === 'KeyT' && !e.ctrlKey) { this.selectedTool = 'tee'; return; }
-    if (e.code === 'KeyC') { this.selectedTool = 'cup'; return; }
-    if (e.code === 'KeyW') { this.selectedTool = 'wall'; return; }
-    if (e.code === 'KeyP') { this.selectedTool = 'post'; return; }
-    if (e.code === 'KeyB') { this.selectedTool = 'bridge'; return; }
-    if (e.code === 'KeyH') { this.selectedTool = 'hill'; return; }
+    if (e.code === 'KeyC' && !e.ctrlKey) { this.selectedTool = 'cup'; return; }
+    if (e.code === 'KeyW' && !e.ctrlKey) { this.selectedTool = 'wall'; return; }
+    if (e.code === 'KeyP' && !e.ctrlKey) { this.selectedTool = 'post'; return; }
+    if (e.code === 'KeyB' && !e.ctrlKey) { this.selectedTool = 'bridge'; return; }
+    if (e.code === 'KeyH' && !e.ctrlKey) { this.selectedTool = 'hill'; return; }
 
     // Test Level shortcut
     if (e.ctrlKey && e.code === 'KeyT') {
@@ -1806,6 +2031,23 @@ class LevelEditorImpl implements LevelEditor {
     if (e.ctrlKey && (e.code === 'KeyY' || (e.code === 'KeyZ' && e.shiftKey))) {
       e.preventDefault();
       this.performRedo();
+      return;
+    }
+
+    // Clipboard shortcuts
+    if (e.ctrlKey && e.code === 'KeyC' && !e.altKey) {
+      e.preventDefault();
+      this.copySelectedObjects();
+      return;
+    }
+    if (e.ctrlKey && e.code === 'KeyX') {
+      e.preventDefault();
+      this.cutSelectedObjects();
+      return;
+    }
+    if (e.ctrlKey && e.code === 'KeyV') {
+      e.preventDefault();
+      this.pasteObjects(this.lastMousePosition.x, this.lastMousePosition.y);
       return;
     }
 
@@ -1901,7 +2143,6 @@ class LevelEditorImpl implements LevelEditor {
     }
 
     try {
-      const { loadLevelsFromFilesystem, importLevelFromFile } = await import('./filesystem');
       const username = this.env.getGlobalState().userProfile?.name || 'DefaultUser';
       
       // Load from Firebase using the same API as User Made Levels picker
@@ -1912,16 +2153,32 @@ class LevelEditorImpl implements LevelEditor {
       let allLevels: Array<{name: string; data: any; source: string}> = [];
       
       try {
-        // Use getAllLevels to get all user levels (same as User Made Levels picker)
-        const firebaseLevels = await firebaseManager.levels.getAllLevels(userId);
+        // Check if user is admin - if so, load ALL levels from all users
+        const userProfile = globalState.userProfile;
+        const isAdmin = userProfile?.role === 'admin';
         
-        allLevels = firebaseLevels.map(entry => ({
-          name: `${entry.title || 'Untitled Level'} [${entry.author || 'user'}]`,
-          data: entry.data,
-          source: 'firebase'
-        }));
+        if (isAdmin) {
+          // Admin users see all levels from all users
+          console.log('Level Editor: Loading all levels for admin user');
+          const allUserLevels = await firebaseManager.levels.getAllLevels(undefined); // undefined = all users
+          
+          allLevels = allUserLevels.map(entry => ({
+            name: `${entry.title || 'Untitled Level'} [${entry.author || 'user'}]`,
+            data: entry.data,
+            source: 'firebase'
+          }));
+        } else {
+          // Regular users only see their own levels
+          const firebaseLevels = await firebaseManager.levels.getAllLevels(userId);
+          
+          allLevels = firebaseLevels.map(entry => ({
+            name: `${entry.title || 'Untitled Level'} [${entry.author || 'user'}]`,
+            data: entry.data,
+            source: 'firebase'
+          }));
+        }
         
-        console.log(`Level Editor: Loaded ${allLevels.length} levels from Firebase`);
+        console.log(`Level Editor: Loaded ${allLevels.length} levels from Firebase (admin: ${isAdmin})`);
       } catch (error) {
         console.error('Level Editor: Failed to load levels from Firebase:', error);
         allLevels = [];
@@ -2047,7 +2304,6 @@ class LevelEditorImpl implements LevelEditor {
       const filename = this.editorCurrentSavedId || slug;
       
       // Try filesystem save first
-      const { saveLevelToFilesystem, isFileSystemAccessSupported } = await import('./filesystem');
       
       let saved = false;
       if (isFileSystemAccessSupported()) {
@@ -2130,7 +2386,6 @@ class LevelEditorImpl implements LevelEditor {
     this.syncEditorDataFromGlobals(this.env!);
 
     try {
-      const { saveLevelAsDownload } = await import('./filesystem');
       const title = this.editorLevelData.course?.title || 'Untitled';
       const filename = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'level';
       

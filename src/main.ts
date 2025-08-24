@@ -4401,9 +4401,21 @@ function testOverlay() {
 
 // Add test key handler
 window.addEventListener('keydown', (e) => {
-  // Press 'T' to test overlay rendering
-  if (e.code === 'KeyT' && !isOverlayActive()) {
-    console.log('T key pressed, showing test overlay');
+  // Press Shift+T to test overlay rendering (avoid conflicts while typing names)
+  const activeEl = (document && document.activeElement) as HTMLElement | null;
+  const isTyping = !!activeEl && (
+    activeEl.tagName === 'INPUT' ||
+    activeEl.tagName === 'TEXTAREA' ||
+    activeEl.isContentEditable === true
+  );
+  if (
+    e.code === 'KeyT' &&
+    e.shiftKey &&
+    !e.ctrlKey && !e.metaKey && !e.altKey &&
+    !isOverlayActive() &&
+    !isTyping
+  ) {
+    console.log('Shift+T pressed, showing test overlay');
     testOverlay();
   }
 });

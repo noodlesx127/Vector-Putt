@@ -11,6 +11,9 @@ All notable changes to this project will be documented in this file.
 - Cloud-based score tracking and leaderboards
 - Cross-device level sharing and discovery
 - **Level Editor Undo/Redo**: Full undo/redo system with Ctrl+Z/Ctrl+Y shortcuts, 50-step history, automatic snapshots on all operations (place, delete, move, resize, rotate), and dynamic menu labels with toast feedback
+ - **Level Editor Clipboard**: Copy, Cut, Paste for selected objects with Ctrl+C / Ctrl+X / Ctrl+V
+   - Supports rectangles (walls, water, sand, bridges, hills), posts (radius preserved), and polygons (`wallsPoly`, `waterPoly`, `sandPoly`, translate-only)
+   - Paste at mouse cursor with grid snapping and fairway clamping; retains relative offsets for multi-select groups
 
 ### Changed
 - Migrated from localStorage to Firebase Realtime Database
@@ -18,6 +21,7 @@ All notable changes to this project will be documented in this file.
 - User Made Levels system now loads from Firebase with real-time updates
 - Score system updated to use Firebase with async operations
 - Level discovery system migrated to Firebase for cross-user sharing
+ - Dev/Test: Changed Test Overlay hotkey from `T` to `Shift+T` to avoid conflicts while typing in text inputs
 
 ### Fixed
 - Fixed duplicate user creation in Firebase user management with existence checks

@@ -115,11 +115,21 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
     - Drag inside selection to move; 8 corner/side handles to resize; rotate via rotation handles around object/group bounds; bounding outline drawn around selection
     - Grid snapping and fairway-bounds clamping on move/resize/rotate; min size = 1 grid step; no negative sizes
     - Applies to rect items (walls/bridges/water/sand/hills); Posts: resize radius; Tee/Cup: move-only; multi-select transforms apply to all selected; rotation restricted to rect-like items; polygons translate-only and hide rotation handles when included in selection
-  - [ ] Undo/Redo in Level Editor: toolbar buttons and shortcuts (Ctrl+Z/Ctrl+Y); snapshot editor state on placements and actions (Save/Load/New/Delete)
-    - Placement: Main toolbar, immediately next to the Editor Tools section
-    - Size: small icon buttons (compact footprint)
-    - Icons: conventional Undo/Redo arrow icons consistent with common editors
-    - Shortcuts: Ctrl+Z (Undo), Ctrl+Y (Redo); consider Shift+Ctrl+Z alternative on some platforms
+  - [x] Undo/Redo in Level Editor: toolbar buttons and shortcuts (Ctrl+Z/Ctrl+Y); snapshot editor state on placements and actions (Save/Load/New/Delete)
+    - Placement: Editor Tools menu with dynamic labels showing availability
+    - Shortcuts: Ctrl+Z (Undo), Ctrl+Y (Redo), Shift+Ctrl+Z (alternative Redo)
+    - State management: 50-step undo stack with automatic snapshots on all placement, deletion, movement, resize, and rotation operations
+    - UI feedback: toast messages showing undo/redo descriptions; menu labels update dynamically
+  - [ ] Clipboard: Copy/Cut/Paste selected objects in Level Editor
+    - Shortcuts: Ctrl+C (Copy), Ctrl+X (Cut), Ctrl+V (Paste)
+    - Supports: rects (walls/water/sand/bridges/hills), posts (radius preserved), polygons (translate-only)
+    - Paste behavior: place at mouse cursor with grid snapping and fairway clamping; maintain relative offsets for group selections
+    - Cross-level: allow pasting into another level within the same editor session
+  - [ ] Import: Proper Import flow to complement Export
+    - UI: in-game overlay with file picker and list (supports multi-select); clear source labels [FS]/[User]
+    - Validation: full schema validation with readable error reporting; automatic fix-ups where safe
+    - Metadata: set/confirm authorName/authorId and lastModified; title prompt with conflict resolution (rename/overwrite/cancel)
+    - Sources: filesystem (File System Access API) and browser builds (file upload)
   - [ ] Course Select: add "User Made Levels" category; list Title — Author; Play; owner/admin Edit/Delete; permissions gating; no regression
   - [x] Level Editor file system integration:
     - [x] Load any level from existing `levels/*.json` directory for editing

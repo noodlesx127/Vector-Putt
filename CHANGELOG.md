@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - Firebase-powered user management with automatic data migration
 - Cloud-based score tracking and leaderboards
 - Cross-device level sharing and discovery
+- **Level Editor Undo/Redo**: Full undo/redo system with Ctrl+Z/Ctrl+Y shortcuts, 50-step history, automatic snapshots on all operations (place, delete, move, resize, rotate), and dynamic menu labels with toast feedback
 
 ### Changed
 - Migrated from localStorage to Firebase Realtime Database

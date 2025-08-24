@@ -53,7 +53,7 @@ export type EditorTool =
   | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'sand' | 'sandPoly' | 'hill';
 
 export type EditorAction =
-  | 'save' | 'saveAs' | 'load' | 'export' | 'new' | 'delete' | 'test' | 'gridToggle' | 'gridMinus' | 'gridPlus' | 'back';
+  | 'save' | 'saveAs' | 'load' | 'export' | 'new' | 'delete' | 'test' | 'gridToggle' | 'gridMinus' | 'gridPlus' | 'back' | 'undo' | 'redo';
 
 export type EditorMenuId = 'file' | 'objects' | 'decorations' | 'tools';
 
@@ -157,6 +157,14 @@ export interface LevelEditor {
   getUiHotspots(): EditorHotspot[];
 }
 
+// Undo/Redo state snapshot
+type EditorSnapshot = {
+  levelData: any;
+  globalState: any;
+  timestamp: number;
+  description: string;
+};
+
 class LevelEditorImpl implements LevelEditor {
   // Editor state
   private selectedTool: EditorTool = 'select';
@@ -168,6 +176,12 @@ class LevelEditorImpl implements LevelEditor {
   private env: EditorEnv | null = null;
   private gridSize: number = 20;
   private editorMenuActiveItemIndex: number = -1;
+
+  // Undo/Redo system
+  private undoStack: EditorSnapshot[] = [];
+  private redoStack: EditorSnapshot[] = [];
+  private maxUndoSteps: number = 50;
+  private isApplyingUndoRedo: boolean = false;
 
   // Drag state for rectangle placements
   private isEditorDragging = false;
@@ -208,6 +222,105 @@ class LevelEditorImpl implements LevelEditor {
   private resizeHandleIndex: number | null = null;
   private dragMoveStart: { x: number; y: number } | null = null;
 
+  // Undo/Redo system methods
+  private createSnapshot(description: string): EditorSnapshot {
+    if (!this.env) throw new Error('Editor not initialized');
+    
+    return {
+      levelData: this.editorLevelData ? JSON.parse(JSON.stringify(this.editorLevelData)) : null,
+      globalState: JSON.parse(JSON.stringify(this.env.getGlobalState())),
+      timestamp: Date.now(),
+      description
+    };
+  }
+
+  private pushUndoSnapshot(description: string): void {
+    if (this.isApplyingUndoRedo) return; // Don't create snapshots during undo/redo operations
+    
+    const snapshot = this.createSnapshot(description);
+    this.undoStack.push(snapshot);
+    
+    // Limit undo stack size
+    if (this.undoStack.length > this.maxUndoSteps) {
+      this.undoStack.shift();
+    }
+    
+    // Clear redo stack when new action is performed
+    this.redoStack = [];
+  }
+
+  private applySnapshot(snapshot: EditorSnapshot): void {
+    if (!this.env) return;
+    
+    this.isApplyingUndoRedo = true;
+    
+    try {
+      // Restore level data
+      this.editorLevelData = snapshot.levelData ? JSON.parse(JSON.stringify(snapshot.levelData)) : null;
+      
+      // Restore global state
+      this.env.setGlobalState(JSON.parse(JSON.stringify(snapshot.globalState)));
+      
+      // Clear selection since objects may have changed
+      this.selectedObjects = [];
+      this.clearDragState();
+    } finally {
+      this.isApplyingUndoRedo = false;
+    }
+  }
+
+  private clearDragState(): void {
+    this.isDragMoving = false;
+    this.isResizing = false;
+    this.isGroupResizing = false;
+    this.isSelectionDragging = false;
+    this.isRotating = false;
+    this.selectionBoxStart = null;
+    this.resizeStartBounds = null;
+    this.resizeStartMouse = null;
+    this.rotationCenter = null;
+    this.rotationStartMouse = null;
+    this.groupResizeOriginals = null;
+    this.groupRotateOriginals = null;
+    this.dragMoveStart = null;
+  }
+
+  private canUndo(): boolean {
+    return this.undoStack.length > 0;
+  }
+
+  private canRedo(): boolean {
+    return this.redoStack.length > 0;
+  }
+
+  private performUndo(): void {
+    if (!this.canUndo() || !this.env) return;
+    
+    // Save current state to redo stack
+    const currentSnapshot = this.createSnapshot('Current state before undo');
+    this.redoStack.push(currentSnapshot);
+    
+    // Apply previous state
+    const undoSnapshot = this.undoStack.pop()!;
+    this.applySnapshot(undoSnapshot);
+    
+    this.env.showToast(`Undo: ${undoSnapshot.description}`);
+  }
+
+  private performRedo(): void {
+    if (!this.canRedo() || !this.env) return;
+    
+    // Save current state to undo stack
+    const currentSnapshot = this.createSnapshot('Current state before redo');
+    this.undoStack.push(currentSnapshot);
+    
+    // Apply next state
+    const redoSnapshot = this.redoStack.pop()!;
+    this.applySnapshot(redoSnapshot);
+    
+    this.env.showToast(`Redo: ${redoSnapshot.description}`);
+  }
+
   // Helper method to finish polygon creation
   private finishPolygon(env: EditorEnv): void {
     if (!this.polygonInProgress || this.polygonInProgress.points.length < 6) {
@@ -215,6 +328,7 @@ class LevelEditorImpl implements LevelEditor {
       return;
     }
 
+    this.pushUndoSnapshot(`Place ${this.polygonInProgress.tool}`);
     const poly = { points: [...this.polygonInProgress.points] };
     const gs = env.getGlobalState();
 
@@ -274,6 +388,8 @@ class LevelEditorImpl implements LevelEditor {
       title: 'Editor Tools',
       items: [
         { label: 'Select Tool', item: { kind: 'tool', tool: 'select' } },
+        { label: `Undo ${this.canUndo() ? '(Ctrl+Z)' : '(disabled)'}`, item: { kind: 'action', action: 'undo' }, separator: true },
+        { label: `Redo ${this.canRedo() ? '(Ctrl+Y)' : '(disabled)'}`, item: { kind: 'action', action: 'redo' } },
         { label: this.showGrid ? 'Grid On' : 'Grid Off', item: { kind: 'action', action: 'gridToggle' }, separator: true },
         { label: `Grid - (${this.gridSize}px)`, item: { kind: 'action', action: 'gridMinus' } },
         { label: `Grid + (${this.gridSize}px)`, item: { kind: 'action', action: 'gridPlus' } }
@@ -1078,6 +1194,10 @@ class LevelEditorImpl implements LevelEditor {
               void this.testLevel();
             } else if (item.action === 'delete') {
               void this.openDeletePicker();
+            } else if (item.action === 'undo') {
+              this.performUndo();
+            } else if (item.action === 'redo') {
+              this.performRedo();
             } else if (item.action === 'back') {
               (async () => {
                 const ok = await env.showConfirm('Exit Level Editor and return to Main Menu? Unsaved changes will be lost.', 'Exit Editor');
@@ -1140,6 +1260,7 @@ class LevelEditorImpl implements LevelEditor {
       
       // Point placement for tee/cup/post
       if (inFairway && (this.selectedTool === 'tee' || this.selectedTool === 'cup' || this.selectedTool === 'post')) {
+        this.pushUndoSnapshot(`Place ${this.selectedTool}`);
         const gs = env.getGlobalState();
         
         if (this.selectedTool === 'tee') {
@@ -1449,6 +1570,7 @@ class LevelEditorImpl implements LevelEditor {
       const rx = Math.min(x0, x1), ry = Math.min(y0, y1);
       const rw = Math.abs(x1 - x0), rh = Math.abs(y1 - y0);
       if (rw > 0 && rh > 0) {
+        this.pushUndoSnapshot(`Place ${this.editorDragTool}`);
         const gs = env.getGlobalState();
         const rect = { x: rx, y: ry, w: rw, h: rh } as any;
         if (this.editorDragTool === 'wall') (gs.walls as any[]).push(rect);
@@ -1466,6 +1588,7 @@ class LevelEditorImpl implements LevelEditor {
             selectedDir: 'S' 
           };
         }
+        this.syncEditorDataFromGlobals(env);
       }
       this.isEditorDragging = false; this.editorDragTool = null;
       return;
@@ -1473,30 +1596,36 @@ class LevelEditorImpl implements LevelEditor {
 
     // Commit rotation
     if (this.isRotating) {
+      this.pushUndoSnapshot('Rotate object(s)');
       this.isRotating = false;
       this.rotationCenter = null;
       this.rotationStartMouse = null;
       this.groupRotateOriginals = null;
       this.groupRotationStartAngle = 0;
+      this.syncEditorDataFromGlobals(env);
       return;
     }
 
     // Commit resize (single)
     if (this.isResizing) {
+      this.pushUndoSnapshot('Resize object');
       this.isResizing = false;
       this.resizeHandleIndex = null;
       this.resizeStartBounds = null;
       this.resizeStartMouse = null;
+      this.syncEditorDataFromGlobals(env);
       return;
     }
 
     // Commit group resize
     if (this.isGroupResizing) {
+      this.pushUndoSnapshot('Resize group');
       this.isGroupResizing = false;
       this.resizeHandleIndex = null;
       this.resizeStartBounds = null;
       this.resizeStartMouse = null;
       this.groupResizeOriginals = null;
+      this.syncEditorDataFromGlobals(env);
       return;
     }
 
@@ -1505,6 +1634,7 @@ class LevelEditorImpl implements LevelEditor {
       const dx = this.dragMoveOffset.x;
       const dy = this.dragMoveOffset.y;
       if (Math.abs(dx) > 0 || Math.abs(dy) > 0) {
+        this.pushUndoSnapshot(`Move ${this.selectedObjects.length} object(s)`);
         const gs = env.getGlobalState();
         for (const obj of this.selectedObjects) {
           if (obj.type === 'tee') {
@@ -1596,6 +1726,7 @@ class LevelEditorImpl implements LevelEditor {
     // Delete key - remove selected objects
     if (e.code === 'Delete' || e.code === 'Backspace') {
       if (this.selectedObjects.length > 0) {
+        this.pushUndoSnapshot(`Delete ${this.selectedObjects.length} object(s)`);
         const gs = env.getGlobalState();
         for (const obj of this.selectedObjects) {
           if (obj.type === 'wall') {
@@ -1663,6 +1794,18 @@ class LevelEditorImpl implements LevelEditor {
     if (e.ctrlKey && e.code === 'KeyT') {
       e.preventDefault();
       void this.testLevel();
+      return;
+    }
+
+    // Undo/Redo shortcuts
+    if (e.ctrlKey && e.code === 'KeyZ' && !e.shiftKey) {
+      e.preventDefault();
+      this.performUndo();
+      return;
+    }
+    if (e.ctrlKey && (e.code === 'KeyY' || (e.code === 'KeyZ' && e.shiftKey))) {
+      e.preventDefault();
+      this.performRedo();
       return;
     }
 

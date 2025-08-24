@@ -37,6 +37,7 @@ export class FirebaseManager {
       console.log('Performing data migrations...');
       await firebaseUsersStore.migrateFromLocalStorage();
       await firebaseLevelStore.migrateFromLocalStorage();
+      await firebaseLevelStore.migrateBundledLevels();
 
       this.initialized = true;
       console.log('Firebase services initialized successfully');

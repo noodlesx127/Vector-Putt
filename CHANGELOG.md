@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file.
 - Added missing back button to admin users menu (Shift+F) with proper hotspot registration
 - Fixed Level Editor level loading issue where canvas dimensions weren't updated after loading saved levels
 - Fixed Level Editor Firebase integration to use getAllLevels API (same as User Made Levels picker)
+- Fixed level loading issue where no levels were found in Level Editor and Course Select by implementing automatic migration of bundled filesystem levels to Firebase on startup with enhanced logging and fallback migration for production builds
 - Fixed level saving to properly set title in metadata for Firebase persistence
 - Fixed Level Editor loading crash when level data missing arrays (bridges, decorations, etc.)
 - Fixed user ID consistency between Level Editor and User Made Levels picker for Firebase operations

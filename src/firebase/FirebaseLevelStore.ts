@@ -277,6 +277,152 @@ export class FirebaseLevelStore {
     }
   }
 
+  // Migrate bundled levels from filesystem to Firebase
+  async migrateBundledLevels(): Promise<void> {
+    try {
+      console.log('Checking for existing public levels in Firebase...');
+      // Check if we already have public levels in Firebase
+      const existingLevels = await FirebaseDatabase.getLevels();
+      console.log(`Found ${existingLevels.length} existing public levels in Firebase`);
+      if (existingLevels.length > 0) {
+        console.log('Bundled levels already migrated to Firebase');
+        return;
+      }
+
+      console.log('Starting bundled levels migration from filesystem to Firebase...');
+      const migrationPromises: Promise<string>[] = [];
+      let successCount = 0;
+      
+      // Try fetch approach first
+      const levelFiles = ['level1.json', 'level2.json', 'level3.json', 'level4.json', 'level5.json', 'level6.json', 'level7.json', 'level8.json'];
+      
+      for (const filename of levelFiles) {
+        try {
+          console.log(`Attempting to fetch /levels/${filename}...`);
+          const response = await fetch(`/levels/${filename}`);
+          console.log(`Fetch response for ${filename}: status=${response.status}, ok=${response.ok}`);
+          
+          if (response.ok) {
+            const levelData = await response.json();
+            console.log(`Successfully loaded level data for ${filename}:`, levelData.course?.title || 'No title');
+            
+            // Ensure meta exists and set appropriate values
+            if (!levelData.meta) levelData.meta = {};
+            levelData.meta.title = levelData.meta.title || `Level ${filename.replace('level', '').replace('.json', '')}`;
+            levelData.meta.authorName = levelData.meta.authorName || 'Game Developer';
+            levelData.meta.authorId = 'system';
+            levelData.meta.lastModified = Date.now();
+            
+            // Create Firebase level as public
+            const firebaseLevel: Omit<FirebaseLevel, 'id'> = {
+              title: levelData.meta.title,
+              authorId: 'system',
+              authorName: 'Game Developer',
+              data: levelData,
+              createdAt: Date.now(),
+              lastModified: Date.now(),
+              isPublic: true
+            };
+            
+            console.log(`Preparing to save ${filename} as public level with title: ${firebaseLevel.title}`);
+            migrationPromises.push(FirebaseDatabase.saveLevel(firebaseLevel, false));
+            successCount++;
+          }
+        } catch (error) {
+          console.error(`Failed to load bundled level ${filename}:`, error);
+        }
+      }
+      
+      // If fetch approach failed, use fallback with hardcoded data
+      if (successCount === 0) {
+        console.log('Fetch approach failed, using fallback hardcoded level data...');
+        await this.migrateBundledLevelsFallback();
+        return;
+      }
+      
+      console.log(`Migration summary: ${successCount} levels prepared for save`);
+      
+      if (migrationPromises.length > 0) {
+        console.log(`Saving ${migrationPromises.length} levels to Firebase...`);
+        const results = await Promise.all(migrationPromises);
+        console.log(`Successfully migrated ${results.length} bundled levels to Firebase:`, results);
+      } else {
+        console.warn('No levels were successfully loaded for migration');
+      }
+      
+    } catch (error) {
+      console.error('Failed to migrate bundled levels:', error);
+    }
+  }
+
+  // Fallback migration with hardcoded level data
+  private async migrateBundledLevelsFallback(): Promise<void> {
+    console.log('Using fallback migration with hardcoded level data...');
+    
+    // Hardcoded level data as fallback
+    const bundledLevels = [
+      {
+        title: 'Level 1',
+        data: {
+          canvas: { width: 800, height: 600 },
+          course: { index: 1, total: 8 },
+          par: 3,
+          tee: { x: 240, y: 340 },
+          cup: { x: 600, y: 240, r: 12 },
+          decorations: [
+            { x: 40, y: 16, w: 720, h: 16, kind: 'flowers' },
+            { x: 40, y: 568, w: 720, h: 16, kind: 'flowers' }
+          ],
+          walls: [
+            { x: 40, y: 40, w: 720, h: 20 },
+            { x: 40, y: 540, w: 720, h: 20 },
+            { x: 40, y: 60, w: 20, h: 480 },
+            { x: 740, y: 60, w: 20, h: 480 },
+            { x: 300, y: 60, w: 20, h: 260 },
+            { x: 300, y: 360, w: 200, h: 20 }
+          ],
+          meta: {
+            title: '',
+            authorName: '',
+            authorId: '',
+            lastModified: 0
+          }
+        }
+      },
+      // Add more levels as needed - for now just Level 1 to test
+    ];
+
+    const migrationPromises: Promise<string>[] = [];
+    
+    for (const levelDef of bundledLevels) {
+      const levelData = levelDef.data;
+      
+      // Set meta properties
+      levelData.meta.title = levelDef.title;
+      levelData.meta.authorName = 'Game Developer';
+      levelData.meta.authorId = 'system';
+      levelData.meta.lastModified = Date.now();
+      
+      const firebaseLevel: Omit<FirebaseLevel, 'id'> = {
+        title: levelDef.title,
+        authorId: 'system',
+        authorName: 'Game Developer',
+        data: levelData,
+        createdAt: Date.now(),
+        lastModified: Date.now(),
+        isPublic: true
+      };
+      
+      console.log(`Preparing fallback level: ${levelDef.title}`);
+      migrationPromises.push(FirebaseDatabase.saveLevel(firebaseLevel, false));
+    }
+    
+    if (migrationPromises.length > 0) {
+      const results = await Promise.all(migrationPromises);
+      console.log(`Successfully migrated ${results.length} fallback levels to Firebase`);
+    }
+  }
+
   // Clear cache
   clearCache(): void {
     this.cachedLevels.clear();

@@ -1777,6 +1777,8 @@ canvas.addEventListener('mousedown', (e) => {
       setShowGrid: () => {},
       showToast: (msg: string) => showUiToast(msg),
       showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
+      showPrompt: (msg: string, def?: string, title?: string) => showUiPrompt(msg, def, title),
+      showList: (title: string, items: Array<{label: string; value: any}>, startIndex?: number) => showUiList(title, items, startIndex),
       getGlobalState: () => ({
         WIDTH,
         HEIGHT,
@@ -2046,6 +2048,8 @@ canvas.addEventListener('mousemove', (e) => {
       setShowGrid: () => {},
       showToast: (msg: string) => showUiToast(msg),
       showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
+      showPrompt: (msg: string, def?: string, title?: string) => showUiPrompt(msg, def, title),
+      showList: (title: string, items: Array<{label: string; value: any}>, startIndex?: number) => showUiList(title, items, startIndex),
       getGlobalState: () => ({
         WIDTH,
         HEIGHT,
@@ -2199,6 +2203,8 @@ canvas.addEventListener('mouseup', (e) => {
       setShowGrid: () => {},
       showToast: (msg: string) => showUiToast(msg),
       showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
+      showPrompt: (msg: string, def?: string, title?: string) => showUiPrompt(msg, def, title),
+      showList: (title: string, items: Array<{label: string; value: any}>, startIndex?: number) => showUiList(title, items, startIndex),
       getGlobalState: () => ({
         WIDTH,
         HEIGHT,
@@ -3145,6 +3151,8 @@ function draw() {
       setShowGrid: () => {},
       showToast: (msg: string) => showUiToast(msg),
       showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
+      showPrompt: (msg: string, def?: string, title?: string) => showUiPrompt(msg, def, title),
+      showList: (title: string, items: Array<{label: string; value: any}>, startIndex?: number) => showUiList(title, items, startIndex),
       getGlobalState: () => ({
         WIDTH,
         HEIGHT,

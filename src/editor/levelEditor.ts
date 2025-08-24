@@ -2074,6 +2074,13 @@ class LevelEditorImpl implements LevelEditor {
     if (!this.editorLevelData) return;
     
     const gs = env.getGlobalState();
+    
+    // Update canvas dimensions if present in level data
+    if (this.editorLevelData.canvas) {
+      gs.levelCanvas.width = this.editorLevelData.canvas.width;
+      gs.levelCanvas.height = this.editorLevelData.canvas.height;
+    }
+    
     // Update global state with editor level data
     gs.ball = { x: this.editorLevelData.tee.x, y: this.editorLevelData.tee.y, vx: 0, vy: 0, moving: false };
     gs.hole = { x: this.editorLevelData.cup.x, y: this.editorLevelData.cup.y, r: this.editorLevelData.cup.r };

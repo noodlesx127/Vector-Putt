@@ -76,9 +76,13 @@ export class FirebaseScoreStore {
         userId,
         levelId,
         strokes,
-        timestamp: Date.now(),
-        courseId
+        timestamp: Date.now()
       };
+      
+      // Only include courseId if it's defined (Firebase doesn't allow undefined values)
+      if (courseId !== undefined) {
+        score.courseId = courseId;
+      }
 
       await FirebaseDatabase.saveScore(score);
       

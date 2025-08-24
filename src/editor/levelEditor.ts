@@ -1761,10 +1761,11 @@ class LevelEditorImpl implements LevelEditor {
       
       // Load from multiple sources: Firebase user levels + dev levels
       const firebaseManager = (await import('../firebase')).default;
-      const firebaseLevels = await firebaseManager.levels.getUserLevels(username);
+      const globalState = this.env.getGlobalState();
+      const userId = globalState.userProfile?.id || username;
+      const firebaseLevels = await firebaseManager.levels.getUserLevels(userId);
       
       // Get dev levels from main game state
-      const globalState = this.env.getGlobalState();
       const devLevels = globalState.devLevels || [];
       
       const allLevels = [

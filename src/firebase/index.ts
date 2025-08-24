@@ -35,7 +35,7 @@ export class FirebaseManager {
 
       // Perform migrations
       console.log('Performing data migrations...');
-      await firebaseUsersStore.migrateFromLocalStorage();
+      // Users are Firebase-only now; migrate levels and bundled content
       await firebaseLevelStore.migrateFromLocalStorage();
       await firebaseLevelStore.migrateBundledLevels();
 

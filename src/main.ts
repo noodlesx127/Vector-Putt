@@ -3187,73 +3187,144 @@ function draw() {
   // Users admin screen
   if (gameState === 'users') {
     usersUiHotspots = [];
+    
+    // Title
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     ctx.font = '28px system-ui, sans-serif';
-    ctx.fillText('Users (Admin)', WIDTH/2, 60);
-    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    ctx.font = '14px system-ui, sans-serif';
-    // Active profile info
+    ctx.fillText('User Management', WIDTH/2, 60);
+    
+    // Active user info panel
     const activeName = (userProfile.name || '').trim() || '(unnamed)';
-    ctx.fillText(`Active: ${activeName} (${userProfile.role})`, WIDTH/2 - 220, 96);
-    // Top action buttons
-    const topY = 120;
-    const btnW = 120, btnH = 26, gap = 12;
-    let bx = WIDTH/2 - (btnW*4 + gap*3)/2;
-    function drawTopBtn(label: string, kind: UsersHotspot['kind']) {
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = '#cfd2cf';
-      ctx.fillStyle = 'rgba(255,255,255,0.10)';
-      ctx.fillRect(bx, topY, btnW, btnH); ctx.strokeRect(bx, topY, btnW, btnH);
-      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(label, bx + btnW/2, topY + btnH/2 + 0.5);
-      usersUiHotspots.push({ kind, x: bx, y: topY, w: btnW, h: btnH });
-      bx += btnW + gap;
+    const infoPanel = { x: WIDTH/2 - 200, y: 100, w: 400, h: 32 };
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fillRect(infoPanel.x, infoPanel.y, infoPanel.w, infoPanel.h);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(infoPanel.x, infoPanel.y, infoPanel.w, infoPanel.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(`Active: ${activeName} (${userProfile.role})`, infoPanel.x + infoPanel.w/2, infoPanel.y + infoPanel.h/2);
+
+    // Action buttons - consistent with main menu style
+    const btnY = 150;
+    const btnW = 140, btnH = 36, btnGap = 16;
+    const totalBtnWidth = btnW * 4 + btnGap * 3;
+    let btnX = WIDTH/2 - totalBtnWidth/2;
+    
+    function drawActionBtn(label: string, kind: UsersHotspot['kind'], isHovered = false) {
+      ctx.fillStyle = isHovered ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+      ctx.fillRect(btnX, btnY, btnW, btnH);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(btnX, btnY, btnW, btnH);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '16px system-ui, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(label, btnX + btnW/2, btnY + btnH/2 + 0.5);
+      usersUiHotspots.push({ kind, x: btnX, y: btnY, w: btnW, h: btnH });
+      btnX += btnW + btnGap;
     }
-    drawTopBtn('Add User', 'addUser');
-    drawTopBtn('Add Admin', 'addAdmin');
-    drawTopBtn('Export JSON', 'export');
-    drawTopBtn('Import JSON', 'import');
+    
+    drawActionBtn('Add User', 'addUser');
+    drawActionBtn('Add Admin', 'addAdmin');
+    drawActionBtn('Export JSON', 'export');
+    drawActionBtn('Import JSON', 'import');
 
-    // Table header
-    const tableX = WIDTH/2 - 340;
-    const tableY = topY + 46;
-    const rowH = 28;
-    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.font = '14px system-ui, sans-serif';
-    ctx.fillText('Name', tableX + 10, tableY);
-    ctx.fillText('Role', tableX + 250, tableY);
-    ctx.fillText('Enabled', tableX + 330, tableY);
-    ctx.fillText('Actions', tableX + 430, tableY);
-    ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.beginPath(); ctx.moveTo(tableX, tableY + 10); ctx.lineTo(tableX + 680, tableY + 10); ctx.stroke();
-
-    // Rows
+    // Users list - card-based layout
     const list = firebaseReady ? firebaseManager.users.getAll() : [];
-    let ry = tableY + 26;
-    const actionW = 86, actionH = 22, actionGap = 8;
-    for (const u of list) {
-      // name and meta
-      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-      ctx.fillText(u.name, tableX + 10, ry);
-      ctx.fillText(u.role, tableX + 250, ry);
-      ctx.fillText(u.enabled ? 'Yes' : 'No', tableX + 330, ry);
-      // actions: promote/demote, enable/disable, remove
-      let ax = tableX + 430;
-      function drawRowBtn(label: string, kind: UsersHotspot['kind'], id: string) {
-        ctx.lineWidth = 1.2; ctx.strokeStyle = '#cfd2cf'; ctx.fillStyle = 'rgba(255,255,255,0.10)';
-        ctx.fillRect(ax, ry - actionH/2, actionW, actionH); ctx.strokeRect(ax, ry - actionH/2, actionW, actionH);
-        ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '12px system-ui, sans-serif';
-        ctx.fillText(label, ax + actionW/2, ry + 0.5);
-        usersUiHotspots.push({ kind, id, x: ax, y: ry - actionH/2, w: actionW, h: actionH });
-        ax += actionW + actionGap;
+    const cardY = 210;
+    const cardW = 680, cardH = 50;
+    const cardX = WIDTH/2 - cardW/2;
+    
+    // Header
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText('Name', cardX + 20, cardY - 10);
+    ctx.fillText('Role', cardX + 200, cardY - 10);
+    ctx.fillText('Status', cardX + 300, cardY - 10);
+    ctx.fillText('Actions', cardX + 400, cardY - 10);
+    
+    // User cards
+    let currentY = cardY;
+    for (let i = 0; i < list.length; i++) {
+      const u = list[i];
+      
+      // Card background
+      ctx.fillStyle = 'rgba(0,0,0,0.15)';
+      ctx.fillRect(cardX, currentY, cardW, cardH);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(cardX, currentY, cardW, cardH);
+      
+      // User info
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '16px system-ui, sans-serif';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText(u.name, cardX + 20, currentY + cardH/2);
+      
+      // Role with color coding
+      ctx.fillStyle = u.role === 'admin' ? '#ffd700' : '#ffffff';
+      ctx.fillText(u.role, cardX + 200, currentY + cardH/2);
+      
+      // Status with color coding
+      ctx.fillStyle = u.enabled ? '#90ee90' : '#ff6b6b';
+      ctx.fillText(u.enabled ? 'Active' : 'Disabled', cardX + 300, currentY + cardH/2);
+      
+      // Action buttons
+      const actionBtnW = 60, actionBtnH = 24;
+      let actionX = cardX + 400;
+      const actionY = currentY + (cardH - actionBtnH)/2;
+      
+      function drawUserActionBtn(label: string, kind: UsersHotspot['kind'], id: string, color = '#ffffff') {
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.fillRect(actionX, actionY, actionBtnW, actionBtnH);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(actionX, actionY, actionBtnW, actionBtnH);
+        ctx.fillStyle = color;
+        ctx.font = '12px system-ui, sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(label, actionX + actionBtnW/2, actionY + actionBtnH/2);
+        usersUiHotspots.push({ kind, id, x: actionX, y: actionY, w: actionBtnW, h: actionBtnH });
+        actionX += actionBtnW + 8;
       }
-      if (u.role === 'admin') drawRowBtn('Demote', 'demote', u.id); else drawRowBtn('Promote', 'promote', u.id);
-      if (u.enabled) drawRowBtn('Disable', 'disable', u.id); else drawRowBtn('Enable', 'enable', u.id);
-      drawRowBtn('Remove', 'remove', u.id);
-      ry += rowH;
+      
+      // Role toggle
+      if (u.role === 'admin') {
+        drawUserActionBtn('Demote', 'demote', u.id, '#ffd700');
+      } else {
+        drawUserActionBtn('Promote', 'promote', u.id, '#90ee90');
+      }
+      
+      // Enable/Disable
+      if (u.enabled) {
+        drawUserActionBtn('Disable', 'disable', u.id, '#ff6b6b');
+      } else {
+        drawUserActionBtn('Enable', 'enable', u.id, '#90ee90');
+      }
+      
+      // Remove
+      drawUserActionBtn('Remove', 'remove', u.id, '#ff6b6b');
+      
+      currentY += cardH + 8;
     }
 
-    // Back button
+    // Back button - consistent with other screens
     const back = getCourseBackRect();
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fillRect(back.x, back.y, back.w, back.h);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(back.x, back.y, back.w, back.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Back', back.x + back.w/2, back.y + back.h/2 + 0.5);
+    usersUiHotspots.push({ kind: 'back', x: back.x, y: back.y, w: back.w, h: back.h });
+    
     renderGlobalOverlays();
     return;
   }

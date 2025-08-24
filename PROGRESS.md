@@ -4,7 +4,7 @@
 
 # Project Progress — Vector Putt
 
-Updated: 2025-08-23 (local) — Fixed strict TypeScript errors in `src/__tests__/FirebaseConnection.test.ts` by adding a safe `getErrorMessage(err: unknown)` helper; type-check is clean.
+Updated: 2025-08-24 (local) — Fixed Level Editor load bug: canvas dimensions now update when loading saved levels; CHANGELOG updated; build is clean.
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 
@@ -238,6 +238,8 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [x] User System: level ownership metadata (authorId/authorName) added to Level schema; per-user score tracking with best scores shown in HUD.
 
 - [x] Docs: CHANGELOG structure restored (Unreleased on top); version 0.3.23 recorded
+
+- [x] Fix (2025-08-24): Level Editor loading did not apply saved canvas dimensions. Updated `loadEditorLevelIntoGlobals()` in `src/editor/levelEditor.ts` to set `levelCanvas.width/height` from level data. Verified via build; recorded in `CHANGELOG.md`.
 
 - [x] Fix: TypeScript config — removed invalid `"vitest/globals"` type from `tsconfig.json` to clear IDE TS error; tests import Vitest APIs directly. Optionally restore typings later via `"types": ["vitest"]` after installing deps.
 

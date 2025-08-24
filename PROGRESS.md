@@ -4,7 +4,7 @@
 
 # Project Progress — Vector Putt
 
-Updated: 2025-08-24 (local) — Fixed Level Editor load bug: canvas dimensions now update when loading saved levels; CHANGELOG updated; build is clean.
+Updated: 2025-08-24 (local) — Fixed Level Editor load bug: canvas dimensions now update when loading saved levels; CHANGELOG updated; build is clean. Version bumped to 0.3.24; package.json and APP_VERSION synced with CHANGELOG.
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 

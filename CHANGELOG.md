@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## v0.3.24 — 2025-08-24
 
 ### Added
 - Firebase Realtime Database integration for cloud-based data persistence
@@ -127,7 +127,7 @@ All notable changes to this project will be documented in this file.
  - Fix: Resolved TypeScript errors in `src/main.ts`
   - Verified and referenced implementations for `loadLevel`, `loadLevelByIndex`, and `preloadLevelByIndex` (present near end of file) to address previously reported "missing function" errors.
   - Added explicit `unknown` type for a caught error parameter (`err`) to satisfy strict TypeScript settings.
-  - Closed a missing closing brace in `draw()` that caused TS1005 (`'}` expected`) at EOF; `npx tsc --noEmit` is now clean.
+  - Closed a missing closing brace in `draw()` that caused TS1005 (`'}' expected`) at EOF; `npx tsc --noEmit` is now clean.
 
 - Refactor (Level Editor): Delegated all editor keyboard handling from `src/main.ts` to `levelEditor.handleKeyDown()` with `editorEnv`.
   - Removed legacy/unreachable code that referenced old globals (`selectedEditorTool`, `openEditorMenu`, `selectedObjects`, `editorLevelData`, `editorGridSize`, `clearSelection()`, `moveSelectedObjects()`).
@@ -211,6 +211,7 @@ All notable changes to this project will be documented in this file.
 
 - Level Editor: initial Tool Palette UI
   - Renders a vertical list of tool buttons: Select, Tee, Cup, Wall, WallsPoly, Post, Bridge, Water, WaterPoly, Sand, SandPoly, Hill.
+{{ ... }}
  - Input: extended `mousemove` and `mousedown` for `levelEditor`
  - Hover sets pointer cursor over Back and tool buttons.
  - Click on a tool selects it (`selectedEditorTool`).

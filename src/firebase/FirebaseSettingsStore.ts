@@ -58,9 +58,13 @@ export class FirebaseSettingsStore {
       const firebaseSettings: FirebaseSettings = {
         userId,
         volume: settings.volume,
-        muted: settings.muted,
-        lastUsername: settings.lastUsername
+        muted: settings.muted
       };
+      
+      // Only include lastUsername if it's defined (Firebase doesn't allow undefined values)
+      if (settings.lastUsername !== undefined) {
+        firebaseSettings.lastUsername = settings.lastUsername;
+      }
 
       await FirebaseDatabase.saveUserSettings(firebaseSettings);
       

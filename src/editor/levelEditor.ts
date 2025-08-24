@@ -2243,6 +2243,17 @@ class LevelEditorImpl implements LevelEditor {
         return;
       }
       
+      // Check permissions for delete
+      const globalState = this.env.getGlobalState();
+      const userProfile = globalState.userProfile;
+      const isOwner = this.editorLevelData?.meta?.authorId === userProfile?.id;
+      const isAdmin = userProfile?.role === 'admin';
+      
+      if (!isOwner && !isAdmin) {
+        this.env.showToast('Permission denied: You can only delete your own levels.');
+        return;
+      }
+      
       const levelTitle = this.editorLevelData?.course?.title || this.editorCurrentSavedId;
       
       const confirmed = await this.env.showConfirm(
@@ -2252,7 +2263,6 @@ class LevelEditorImpl implements LevelEditor {
       
       if (confirmed) {
         const firebaseManager = (await import('../firebase')).default;
-        const globalState = this.env.getGlobalState();
         const userId = globalState.userProfile?.id;
         
         if (userId) {
@@ -2275,6 +2285,19 @@ class LevelEditorImpl implements LevelEditor {
     if (!this.editorLevelData) {
       console.warn('No level data to save');
       return;
+    }
+
+    // Check permissions for overwrite if this is an existing level
+    if (this.editorCurrentSavedId) {
+      const globalState = this.env!.getGlobalState();
+      const userProfile = globalState.userProfile;
+      const isOwner = this.editorLevelData.meta?.authorId === userProfile?.id;
+      const isAdmin = userProfile?.role === 'admin';
+      
+      if (!isOwner && !isAdmin) {
+        this.env?.showToast('Permission denied: You can only save your own levels. Use "Save As" to create a copy.');
+        return;
+      }
     }
 
     // Sync current editor state to level data

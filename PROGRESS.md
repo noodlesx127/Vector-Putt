@@ -157,11 +157,11 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
   - [ ] Metadata editor: Level title and Author (persist in JSON)
   - [ ] Par/Birdie suggestion engine based on path analysis and bank heuristics
 
-- [ ] User System
+- [x] User System
   - [x] Local profiles: create/select active user; persist name and role (admin/user)
-  - [ ] Roles & permissions: Admin can edit/delete any level; Normal users can edit/delete their own and duplicate others
+  - [x] Roles & permissions: Admin can edit/delete any level; Normal users can edit/delete their own and duplicate others
     - [x] Verify current enforcement across Save/Delete flows and any editor entry points
-    - [ ] Add clear UI messaging when an action is blocked due to permissions
+    - [x] Add clear UI messaging when an action is blocked due to permissions
     - [x] Add unit tests for permission rules (UsersStore invariants: last-admin safeguards, enable/disable, promote/demote, import/export, init fallbacks)
   - [x] Admin-only role management UI (no toggle on Main Menu)
     - Access: Press Shift+F after clicking Start (from Select Course and onward). Options button removed.

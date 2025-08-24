@@ -1310,6 +1310,61 @@ async function editUserLevel(level: UserLevelEntry): Promise<void> {
   }
 }
 
+// Duplicate a user level (any user can duplicate any level)
+async function duplicateUserLevel(level: UserLevelEntry): Promise<void> {
+  try {
+    const newName = await showUiPrompt(
+      `Duplicate "${level.name}"?\nEnter new level name:`,
+      `${level.name} (Copy)`,
+      'Duplicate Level'
+    );
+    
+    if (!newName || !newName.trim()) {
+      showUiToast('Duplicate cancelled');
+      return;
+    }
+    
+    const trimmedName = newName.trim();
+    
+    // Create a copy of the level data
+    const duplicatedLevel = JSON.parse(JSON.stringify(level.data));
+    
+    // Update metadata for the new level
+    if (!duplicatedLevel.meta) duplicatedLevel.meta = {};
+    duplicatedLevel.meta.title = trimmedName;
+    duplicatedLevel.meta.authorName = userProfile?.name || 'DefaultUser';
+    duplicatedLevel.meta.authorId = getUserId();
+    duplicatedLevel.meta.lastModified = Date.now();
+    
+    // Update course title if it exists
+    if (duplicatedLevel.course) {
+      duplicatedLevel.course.title = trimmedName;
+    }
+    
+    // Save the duplicated level to Firebase
+    if (firebaseReady) {
+      const userId = getUserId();
+      if (userId) {
+        const slug = trimmedName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `level-${Date.now()}`;
+        await firebaseManager.levels.saveLevel(duplicatedLevel, slug, userId);
+        
+        // Reload the levels list to show the new duplicate
+        await loadUserLevelsList();
+        
+        showUiToast(`Duplicated: ${trimmedName}`);
+        console.log(`Duplicated level: ${level.name} -> ${trimmedName}`);
+      } else {
+        showUiToast('User not authenticated');
+      }
+    } else {
+      showUiToast('Firebase services not ready');
+    }
+  } catch (error) {
+    console.error('Failed to duplicate user level:', error);
+    showUiToast('Failed to duplicate level');
+  }
+}
+
 // Delete a user level (if owner/admin)
 async function deleteUserLevel(level: UserLevelEntry): Promise<void> {
   const isOwner = (level.author || '').toLowerCase() === (userProfile?.name || '').toLowerCase();
@@ -3553,7 +3608,7 @@ function draw() {
     } else {
       // Instructions
       ctx.font = '14px system-ui, sans-serif';
-      ctx.fillText('↑↓ Navigate • Enter Play • E Edit • Del Delete • Esc Back', WIDTH/2, 86);
+      ctx.fillText('↑↓ Navigate • Enter Play • E Edit • Del Delete • D Duplicate • Esc Back', WIDTH/2, 86);
       
       // Level list
       const listY = 120;
@@ -3593,11 +3648,12 @@ function draw() {
         if (isSelected) {
           ctx.textAlign = 'right';
           ctx.fillStyle = canEdit ? '#ffffff' : '#666666';
-          ctx.fillText(canEdit ? 'E Edit' : 'E Edit (disabled)', WIDTH - 180, y + itemHeight/2 - 6);
+          ctx.fillText(canEdit ? 'E Edit' : 'E Edit (disabled)', WIDTH - 240, y + itemHeight/2 - 10);
           ctx.fillStyle = canEdit ? '#ffffff' : '#666666';
-          ctx.fillText(canEdit ? 'Del Delete' : 'Del Delete (disabled)', WIDTH - 180, y + itemHeight/2 + 8);
+          ctx.fillText(canEdit ? 'Del Delete' : 'Del Delete (disabled)', WIDTH - 240, y + itemHeight/2 + 4);
           ctx.fillStyle = '#ffffff';
-          ctx.fillText('Enter Play', WIDTH - 70, y + itemHeight/2);
+          ctx.fillText('D Duplicate', WIDTH - 120, y + itemHeight/2 - 3);
+          ctx.fillText('Enter Play', WIDTH - 70, y + itemHeight/2 + 10);
         }
       }
       
@@ -4655,6 +4711,10 @@ window.addEventListener('keydown', (e) => {
     }
     if (e.code === 'Delete' && userLevelsList.length > 0) {
       void deleteUserLevel(userLevelsList[selectedUserLevelIndex]);
+      e.preventDefault();
+    }
+    if (e.code === 'KeyD' && userLevelsList.length > 0) {
+      void duplicateUserLevel(userLevelsList[selectedUserLevelIndex]);
       e.preventDefault();
     }
     if (e.code === 'Escape') {

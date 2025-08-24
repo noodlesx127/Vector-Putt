@@ -287,15 +287,8 @@ class LevelEditorImpl implements LevelEditor {
     try { env.migrateSingleSlotIfNeeded?.(); } catch {}
     
     if (this.editorLevelData === null) {
-      try {
-        const raw = localStorage.getItem('vp.editor.level');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && parsed.tee && parsed.cup) {
-            this.editorLevelData = parsed as Level;
-          }
-        }
-      } catch {}
+      // Level initialization now handled by Firebase migration
+      // The migrateSingleSlotIfNeeded call above handles localStorage migration
     }
     
     if (this.editorLevelData === null) {
@@ -1766,28 +1759,15 @@ class LevelEditorImpl implements LevelEditor {
       const { loadLevelsFromFilesystem, importLevelFromFile } = await import('./filesystem');
       const username = this.env.getGlobalState().userProfile?.name || 'DefaultUser';
       
-      // Load from filesystem and localStorage fallback
-      const filesystemLevels = await loadLevelsFromFilesystem({ 
-        username, 
-        useUserDirectory: true 
-      });
+      // Load from Firebase instead of filesystem/localStorage
+      const firebaseManager = (await import('../firebase')).default;
+      const firebaseLevels = await firebaseManager.levels.getUserLevels(username);
       
-      // Also check localStorage for backward compatibility
-      const localStorageLevels: Array<{name: string, data: any, source: string}> = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key?.startsWith('vp.editor.')) {
-          try {
-            const data = JSON.parse(localStorage.getItem(key) || '{}');
-            const title = (data.course?.title || key.replace('vp.editor.', '')) as string;
-            localStorageLevels.push({ name: title, data, source: 'localStorage' });
-          } catch (e) {
-            console.warn('Failed to parse saved level:', key);
-          }
-        }
-      }
-      
-      const allLevels = [...filesystemLevels, ...localStorageLevels];
+      const allLevels = firebaseLevels.map(entry => ({
+        name: entry.title,
+        data: entry.data,
+        source: 'firebase'
+      }));
       
       if (allLevels.length === 0) {
         // Offer to import a level
@@ -1822,7 +1802,7 @@ class LevelEditorImpl implements LevelEditor {
       }
 
       this.editorLevelData = levelToLoad.data;
-      this.editorCurrentSavedId = levelToLoad.source === 'localStorage' ? levelToLoad.name : null;
+      this.editorCurrentSavedId = levelToLoad.source === 'firebase' ? levelToLoad.name : null;
       this.selectedObjects = [];
 
       // Update global state
@@ -1841,39 +1821,37 @@ class LevelEditorImpl implements LevelEditor {
       return;
     }
 
-    if (!this.editorCurrentSavedId) {
-      this.env.showToast('No saved level to delete');
-      return;
-    }
-
     try {
-      const levelKey = `vp.editor.${this.editorCurrentSavedId}`;
-      const levelData = localStorage.getItem(levelKey);
-      
-      if (!levelData) {
-        this.env.showToast('Level not found');
+      if (!this.editorCurrentSavedId) {
+        this.env.showToast('No level selected for deletion');
         return;
       }
-
-      const parsed = JSON.parse(levelData);
-      const levelTitle = parsed.course?.title || 'Untitled';
+      
+      const levelTitle = this.editorLevelData?.course?.title || this.editorCurrentSavedId;
       
       const confirmed = await this.env.showConfirm(
-        `Permanently delete "${levelTitle}"? This cannot be undone.`,
+        `Delete "${levelTitle}"?\n\nThis action cannot be undone.`,
         'Delete Level'
       );
       
       if (confirmed) {
-        localStorage.removeItem(levelKey);
-        this.env.showToast(`Deleted: ${levelTitle}`);
+        const firebaseManager = (await import('../firebase')).default;
+        const globalState = this.env.getGlobalState();
+        const userId = globalState.userProfile?.id;
         
-        // Create new level after deletion
-        await this.newLevel();
+        if (userId) {
+          await firebaseManager.levels.deleteLevel(this.editorCurrentSavedId, userId);
+          this.env.showToast(`Deleted: ${levelTitle}`);
+          
+          // Create new level after deletion
+          await this.newLevel();
+        } else {
+          this.env.showToast('User not authenticated');
+        }
       }
-      
     } catch (error) {
       console.error('Failed to delete level:', error);
-      this.env.showToast('Failed to delete level');
+      this.env?.showToast('Failed to delete level');
     }
   }
 
@@ -1921,9 +1899,20 @@ class LevelEditorImpl implements LevelEditor {
       }
       
       if (!saved) {
-        // Fallback to localStorage for now (will be removed in browser-only builds)
-        localStorage.setItem(`vp.editor.${filename}`, JSON.stringify(this.editorLevelData));
-        console.warn('Using localStorage fallback - filesystem save failed');
+        // Save to Firebase as fallback
+        try {
+          const firebaseManager = (await import('../firebase')).default;
+          const globalState = this.env!.getGlobalState();
+          const userId = globalState.userProfile?.id;
+          
+          if (userId && this.editorLevelData) {
+            await firebaseManager.levels.saveLevel(this.editorLevelData, filename, userId);
+            saved = true;
+            console.log('Saved to Firebase as fallback');
+          }
+        } catch (error) {
+          console.error('Firebase fallback save failed:', error);
+        }
       }
 
       if (!this.editorCurrentSavedId) {
@@ -1932,7 +1921,7 @@ class LevelEditorImpl implements LevelEditor {
 
       // Show success feedback
       this.env?.showToast(`Saved: ${title}`);
-      console.log('Level saved:', filename, saved ? '(filesystem)' : '(localStorage)');
+      console.log('Level saved:', filename, saved ? '(filesystem/firebase)' : '(failed)');
     } catch (error) {
       console.error('Failed to save level:', error);
       if (this.env) {

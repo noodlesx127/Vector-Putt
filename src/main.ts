@@ -1,5 +1,5 @@
 import CHANGELOG_RAW from '../CHANGELOG.md?raw';
-import usersStore from './UsersStore';
+import firebaseManager from './firebase';
 import { levelEditor } from './editor/levelEditor';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -25,7 +25,7 @@ type LevelsDocV1 = { version: 1; levels: SavedLevelV1[] };
 const LS_LEVELS_KEY = 'vp.levels.v1';
 
 // Filesystem integration
-type LevelSource = 'localStorage' | 'filesystem';
+type LevelSource = 'localStorage' | 'filesystem' | 'firebase';
 type LevelEntry = {
   id: string;
   level: Level;
@@ -181,24 +181,105 @@ function handleOverlayMouseDown(e: MouseEvent) {
 }
 canvas.addEventListener('mousedown', handleOverlayMouseDown, { capture: true });
 
-function readLevelsDoc(): LevelsDocV1 {
+// Type adapter to convert between Firebase and main app Level formats
+function adaptFirebaseLevelToMain(firebaseLevel: any): Level {
+  const level = { ...firebaseLevel };
+  
+  // Convert polygon points from Firebase format {x,y}[] to main app format number[]
+  if (level.wallsPoly) {
+    level.wallsPoly = level.wallsPoly.map((poly: any) => ({
+      points: poly.points ? poly.points.flatMap((p: any) => [p.x, p.y]) : []
+    }));
+  }
+  if (level.waterPoly) {
+    level.waterPoly = level.waterPoly.map((poly: any) => ({
+      points: poly.points ? poly.points.flatMap((p: any) => [p.x, p.y]) : []
+    }));
+  }
+  if (level.sandPoly) {
+    level.sandPoly = level.sandPoly.map((poly: any) => ({
+      points: poly.points ? poly.points.flatMap((p: any) => [p.x, p.y]) : []
+    }));
+  }
+  
+  // Ensure required fields exist
+  if (!level.course) level.course = { index: 1, total: 1, title: level.meta?.title || 'Untitled' };
+  if (!level.par) level.par = level.meta?.par || 3;
+  
+  return level;
+}
+
+function adaptMainLevelToFirebase(mainLevel: Level): any {
+  const level = { ...mainLevel };
+  
+  // Convert polygon points from main app format number[] to Firebase format {x,y}[]
+  if (level.wallsPoly) {
+    (level as any).wallsPoly = level.wallsPoly.map((poly: any) => {
+      const points = [];
+      for (let i = 0; i < poly.points.length; i += 2) {
+        points.push({ x: poly.points[i], y: poly.points[i + 1] });
+      }
+      return { points };
+    });
+  }
+  if (level.waterPoly) {
+    (level as any).waterPoly = level.waterPoly.map((poly: any) => {
+      const points = [];
+      for (let i = 0; i < poly.points.length; i += 2) {
+        points.push({ x: poly.points[i], y: poly.points[i + 1] });
+      }
+      return { points };
+    });
+  }
+  if (level.sandPoly) {
+    (level as any).sandPoly = level.sandPoly.map((poly: any) => {
+      const points = [];
+      for (let i = 0; i < poly.points.length; i += 2) {
+        points.push({ x: poly.points[i], y: poly.points[i + 1] });
+      }
+      return { points };
+    });
+  }
+  
+  // Move course/par info to meta
+  if (!level.meta) level.meta = {} as any;
+  (level.meta as any).title = level.course?.title;
+  (level.meta as any).par = level.par;
+  
+  return level;
+}
+
+// Level storage now handled by Firebase
+async function readLevelsDoc(): Promise<LevelsDocV1> {
+  if (!firebaseReady) return { version: 1, levels: [] };
+  
   try {
-    const s = localStorage.getItem(LS_LEVELS_KEY);
-    if (!s) return { version: 1, levels: [] };
-    const doc = JSON.parse(s) as LevelsDocV1;
-    if (!doc || (doc as any).version !== 1 || !Array.isArray((doc as any).levels)) return { version: 1, levels: [] };
-    // sanitize entries
-    const levels: SavedLevelV1[] = (doc as any).levels
-      .filter((e: any) => e && typeof e.id === 'string' && e.level && typeof e.level === 'object')
-      .map((e: any) => ({ id: String(e.id), level: e.level as Level }));
-    return { version: 1, levels };
-  } catch {
+    const userId = getUserId();
+    const levelEntries = await firebaseManager.levels.getAllLevels(userId);
+    const savedLevels: SavedLevelV1[] = levelEntries.map(entry => ({
+      id: entry.name,
+      level: adaptFirebaseLevelToMain(entry.data)
+    }));
+    return { version: 1, levels: savedLevels };
+  } catch (error) {
+    console.error('Failed to read levels from Firebase:', error);
     return { version: 1, levels: [] };
   }
 }
 
-function writeLevelsDoc(doc: LevelsDocV1): void {
-  try { localStorage.setItem(LS_LEVELS_KEY, JSON.stringify(doc)); } catch {}
+async function writeLevelsDoc(doc: LevelsDocV1): Promise<void> {
+  if (!firebaseReady) return;
+  
+  try {
+    // Save each level to Firebase
+    const userId = getUserId();
+    for (const savedLevel of doc.levels) {
+      const firebaseLevel = adaptMainLevelToFirebase(savedLevel.level);
+      await firebaseManager.levels.saveLevel(firebaseLevel, savedLevel.id, userId);
+    }
+  } catch (error) {
+    console.error('Failed to write levels to Firebase:', error);
+  }
 }
 
 // Filesystem operations
@@ -351,14 +432,21 @@ async function saveFilesystemLevel(level: Level, filename: string, userDirectory
 async function getAllLevels(): Promise<LevelEntry[]> {
   const allLevels: LevelEntry[] = [];
   
-  // Get localStorage levels
-  const doc = readLevelsDoc();
-  for (const saved of doc.levels) {
-    allLevels.push({
-      id: saved.id,
-      level: saved.level,
-      source: 'localStorage'
-    });
+  // Get Firebase levels
+  if (firebaseReady) {
+    try {
+      const userId = getUserId();
+      const firebaseLevels = await firebaseManager.levels.getAllLevels(userId);
+      for (const levelEntry of firebaseLevels) {
+        allLevels.push({
+          id: levelEntry.name,
+          level: adaptFirebaseLevelToMain(levelEntry.data),
+          source: 'firebase'
+        });
+      }
+    } catch (error) {
+      console.error('Failed to get Firebase levels:', error);
+    }
   }
   
   // Get filesystem levels (cached)
@@ -491,9 +579,11 @@ function canModifyLevel(level: Level): boolean {
 
 
 
-function migrateSingleSlotIfNeeded(): void {
+async function migrateSingleSlotIfNeeded(): Promise<void> {
+  if (!firebaseReady) return;
+  
   try {
-    const doc = readLevelsDoc();
+    const doc = await readLevelsDoc();
     if (doc.levels.length > 0) return;
     const raw = localStorage.getItem('vp.editor.level');
     if (!raw) return;
@@ -509,9 +599,16 @@ function migrateSingleSlotIfNeeded(): void {
     };
     if (!parsed.course) (parsed as any).course = { index: 1, total: 1 } as any;
     if (!parsed.course.title) (parsed.course as any).title = 'Untitled (migrated)';
-    doc.levels.push({ id: newLevelId(), level: parsed });
-    writeLevelsDoc(doc);
-  } catch {}
+    
+    // Save to Firebase instead of localStorage
+    const userId = getUserId();
+    const firebaseLevel = adaptMainLevelToFirebase(parsed);
+    await firebaseManager.levels.saveLevel(firebaseLevel, undefined, userId);
+    // Remove from localStorage after migration
+    localStorage.removeItem('vp.editor.level');
+  } catch (error) {
+    console.error('Failed to migrate single slot level:', error);
+  }
 }
 
 // Users Admin UI hotspots (rebuilt every frame while in users screen)
@@ -635,61 +732,53 @@ function getUserId(): string {
 }
 
 function loadUserProfile(): void {
-  try {
-    const s = localStorage.getItem('vp.user');
-    if (!s) return;
-    const o = JSON.parse(s);
-    if (o && typeof o.name === 'string') userProfile.name = o.name;
-    if (o && (o.role === 'admin' || o.role === 'user')) userProfile.role = o.role;
-    if (o && typeof o.id === 'string') userProfile.id = o.id;
-  } catch {}
+  // Profile loading now handled by Firebase during login
 }
 
 function saveUserProfile(): void {
-  try { localStorage.setItem('vp.user', JSON.stringify(userProfile)); } catch {}
+  // Profile saving now handled by Firebase during user operations
 }
 
 function loadUserScores(): void {
-  try {
-    const s = localStorage.getItem('vp.scores');
-    if (s) userScores = JSON.parse(s);
-  } catch {}
+  // Scores loading now handled by Firebase
 }
 
 function saveUserScores(): void {
-  try { localStorage.setItem('vp.scores', JSON.stringify(userScores)); } catch {}
+  // Scores saving now handled by Firebase
 }
 
-function recordScore(levelPath: string, score: number): void {
+async function recordScore(levelPath: string, score: number): Promise<void> {
   const userId = getUserId();
-  if (!userScores[userId]) userScores[userId] = {};
-  if (!userScores[userId][levelPath]) {
-    userScores[userId][levelPath] = { bestScore: score, attempts: 1, lastPlayed: new Date().toISOString() };
-  } else {
-    const existing = userScores[userId][levelPath];
-    existing.attempts++;
-    existing.lastPlayed = new Date().toISOString();
-    if (score < existing.bestScore) {
-      existing.bestScore = score;
-    }
+  if (!userId || !firebaseReady) return;
+  
+  try {
+    await firebaseManager.scores.saveScore(userId, levelPath, score);
+  } catch (error) {
+    console.error('Failed to record score:', error);
   }
-  saveUserScores();
 }
 
-function getBestScore(levelPath: string): number | null {
+async function getBestScore(levelPath: string): Promise<number | null> {
   const userId = getUserId();
-  return userScores[userId]?.[levelPath]?.bestScore ?? null;
+  if (!userId || !firebaseReady) return null;
+  
+  try {
+    return await firebaseManager.scores.getBestScore(userId, levelPath);
+  } catch (error) {
+    console.error('Failed to get best score:', error);
+    return null;
+  }
 }
 
-try { loadUserProfile(); loadUserScores(); } catch {}
-// Initialize UsersStore (async); fall back gracefully if it fails
-let usersStoreReady = false;
+// User profile and scores now loaded through Firebase during initialization
+// Initialize Firebase services (async); fall back gracefully if it fails
+let firebaseReady = false;
 (async () => {
   try {
-    await usersStore.init();
-    usersStoreReady = true;
+    await firebaseManager.init();
+    firebaseReady = true;
   } catch (e) {
-    console.error('Failed to initialize UsersStore', e);
+    console.error('Failed to initialize Firebase services', e);
   }
 })();
 
@@ -698,9 +787,9 @@ function isNameDisabled(name: string): boolean {
   const n = (name || '').trim();
   if (!n) return false;
   try {
-    if (usersStoreReady) {
-      const all = usersStore.getAll();
-      const match = all.find(u => (u.name || '').toLowerCase() === n.toLowerCase());
+    if (firebaseReady) {
+      const all = firebaseManager.users.getAll();
+      const match = all.find((u: any) => (u.name || '').toLowerCase() === n.toLowerCase());
       return !!(match && match.enabled === false);
     } else {
       const raw = localStorage.getItem('vp.users');
@@ -939,7 +1028,7 @@ interface UserLevelEntry {
   name: string;
   author: string;
   data: any;
-  source: 'filesystem' | 'localStorage' | 'bundled';
+  source: 'filesystem' | 'localStorage' | 'bundled' | 'firebase';
   path?: string;
   lastModified?: number;
 }
@@ -947,66 +1036,60 @@ let userLevelsList: UserLevelEntry[] = [];
 let selectedUserLevelIndex = 0;
 let hoverUserLevelsBack = false;
 
-// Load user levels list from filesystem and localStorage
+// Load user levels list from Firebase
 async function loadUserLevelsList(): Promise<void> {
   try {
-    const { loadLevelsFromFilesystem } = await import('./editor/filesystem');
     const username = userProfile?.name || 'DefaultUser';
     
-    // Load from filesystem (bundled + user levels)
-    const filesystemLevels = await loadLevelsFromFilesystem({ 
-      username, 
-      useUserDirectory: true 
-    });
-    
-    // Load from localStorage for backward compatibility
-    const localStorageLevels: UserLevelEntry[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith('vp.editor.')) {
-        try {
-          const data = JSON.parse(localStorage.getItem(key) || '{}');
-          const title = data.course?.title || key.replace('vp.editor.', '');
-          const author = data.meta?.authorName || 'Unknown';
-          localStorageLevels.push({
-            name: title,
-            author,
-            data,
-            source: 'localStorage',
-            lastModified: data.meta?.lastModified || 0
-          });
-        } catch (e) {
-          console.warn('Failed to parse saved level:', key);
-        }
+    // Load from Firebase instead of filesystem/localStorage
+    if (firebaseReady) {
+      const userId = getUserId();
+      const firebaseLevels = await firebaseManager.levels.getAllLevels(userId);
+      
+      const allLevels: UserLevelEntry[] = firebaseLevels.map(entry => ({
+        name: entry.title,
+        author: entry.author,
+        data: adaptFirebaseLevelToMain(entry.data),
+        source: 'firebase' as const,
+        lastModified: entry.lastModified || 0
+      }));
+      
+      userLevelsList = allLevels.sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0));
+    } else {
+      // Fallback: try to load from filesystem for bundled levels
+      try {
+        const { loadLevelsFromFilesystem } = await import('./editor/filesystem');
+        const filesystemLevels = await loadLevelsFromFilesystem({ 
+          username, 
+          useUserDirectory: false // Only bundled levels as fallback
+        });
+        
+        const allLevels: UserLevelEntry[] = filesystemLevels.map(level => ({
+          name: level.name,
+          author: level.data.meta?.authorName || 'Unknown',
+          data: level.data,
+          source: level.source as 'filesystem' | 'localStorage' | 'bundled',
+          path: level.path,
+          lastModified: level.lastModified || 0
+        }));
+        
+        userLevelsList = allLevels.sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0));
+      } catch (error) {
+        console.error('Failed to load fallback levels:', error);
+        userLevelsList = [];
       }
     }
     
-    // Convert filesystem levels to UserLevelEntry format
-    const allLevels: UserLevelEntry[] = [
-      ...filesystemLevels.map(level => ({
-        name: level.name,
-        author: level.data.meta?.authorName || 'Unknown',
-        data: level.data,
-        source: level.source as 'filesystem' | 'localStorage' | 'bundled',
-        path: level.path,
-        lastModified: level.lastModified || 0
-      })),
-      ...localStorageLevels
-    ];
-    
     // Sort by last modified (newest first), then by name
-    userLevelsList = allLevels.sort((a, b) => {
+    userLevelsList = userLevelsList.sort((a, b) => {
       const timeA = a.lastModified || 0;
       const timeB = b.lastModified || 0;
       if (timeA !== timeB) return timeB - timeA;
       return a.name.localeCompare(b.name);
     });
-    
-    selectedUserLevelIndex = 0;
   } catch (error) {
     console.error('Failed to load user levels list:', error);
     userLevelsList = [];
-    selectedUserLevelIndex = 0;
   }
 }
 
@@ -1070,26 +1153,37 @@ async function deleteUserLevel(level: UserLevelEntry): Promise<void> {
     
     if (!confirmed) return;
     
-    // Delete from storage based on source
-    if (level.source === 'localStorage') {
-      // Find and remove from localStorage
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key?.startsWith('vp.editor.')) {
-          try {
-            const data = JSON.parse(localStorage.getItem(key) || '{}');
-            if (data.course?.title === level.name && data.meta?.authorName === level.author) {
-              localStorage.removeItem(key);
-              break;
-            }
-          } catch (e) {
-            // Skip invalid entries
+    // Delete from Firebase storage
+    if (level.source === 'firebase') {
+      try {
+        const userId = getUserId();
+        if (userId && firebaseReady) {
+          // Find the level ID by matching name and author
+          const firebaseLevels = await firebaseManager.levels.getAllLevels(userId);
+          const levelToDelete = firebaseLevels.find(l => l.title === level.name && l.author === level.author);
+          
+          if (levelToDelete) {
+            await firebaseManager.levels.deleteLevel(levelToDelete.name, userId);
+          } else {
+            showUiToast('Level not found in Firebase', 3000);
+            return;
           }
+        } else {
+          showUiToast('Firebase not available or user not authenticated', 3000);
+          return;
         }
+      } catch (error) {
+        console.error('Failed to delete level from Firebase:', error);
+        showUiToast('Failed to delete level', 3000);
+        return;
       }
     } else if (level.source === 'filesystem' && level.path) {
-      // For filesystem levels, we can't delete directly but can show a message
-      showUiToast('Filesystem levels must be deleted manually from the file system');
+      // For filesystem levels, we can't actually delete them in a browser environment
+      showUiToast('Cannot delete filesystem levels from browser. Use file manager to delete: ' + level.path, 4000);
+      return;
+    } else {
+      // Legacy localStorage cleanup (should be rare after migration)
+      showUiToast('Cannot delete legacy level - please use Level Editor', 3000);
       return;
     }
     
@@ -1468,54 +1562,62 @@ canvas.addEventListener('mousedown', (e) => {
       // Go to Course Select
       gameState = 'course';
       // On Start: sync active profile with UsersStore (login by name)
-      try {
-        const name = (userProfile.name || '').trim();
-        if (!name) { /* nothing to sync */ }
-        else if (usersStoreReady) {
-          const all = usersStore.getAll();
-          const match = all.find(u => (u.name || '').toLowerCase() === name.toLowerCase());
-          if (match) {
-            // If typed 'admin' but record isn't admin yet, promote it
-            if (name.toLowerCase() === 'admin' && match.role !== 'admin') {
-              try { usersStore.toggleRole(match.id); match.role = 'admin'; } catch {}
+      (async () => {
+        try {
+          const name = (userProfile.name || '').trim();
+          if (!name) { /* nothing to sync */ }
+          else if (firebaseReady) {
+            const all = firebaseManager.users.getAll();
+            const match = all.find((u: any) => (u.name || '').toLowerCase() === name.toLowerCase());
+            if (match) {
+              // If typed 'admin' but record isn't admin yet, promote it
+              if (name.toLowerCase() === 'admin' && match.role !== 'admin') {
+                try { await firebaseManager.users.toggleRole(match.id); match.role = 'admin'; } catch {}
+              }
+              userProfile.role = match.role as any;
+              userProfile.id = match.id;
+              saveUserProfile();
+              // Migrate user-specific data
+              await firebaseManager.migrateUserData(match.id);
+            } else {
+              // Create a new user in the store (admin if name is 'admin')
+              const defaultRole = (name.toLowerCase() === 'admin') ? 'admin' : 'user';
+              const rec = await firebaseManager.users.addUser(name, defaultRole as any);
+              userProfile.role = rec.role as any;
+              userProfile.id = rec.id;
+              saveUserProfile();
+              // Migrate user-specific data
+              await firebaseManager.migrateUserData(rec.id);
             }
-            userProfile.role = match.role as any;
-            userProfile.id = match.id;
-            saveUserProfile();
-          } else {
-            // Create a new user in the store (admin if name is 'admin')
-            const defaultRole = (name.toLowerCase() === 'admin') ? 'admin' : 'user';
-            const rec = usersStore.addUser(name, defaultRole as any);
-            userProfile.role = rec.role as any;
-            userProfile.id = rec.id;
-            saveUserProfile();
-          }
-        } else {
-          // Fallback: try reading localStorage users doc (no await)
-          try {
-            const raw = localStorage.getItem('vp.users');
-            if (raw) {
-              const doc = JSON.parse(raw);
-              const arr = Array.isArray(doc?.users) ? doc.users : [];
-              const match = arr.find((u: any) => (u?.name || '').toLowerCase() === name.toLowerCase());
-              if (match && (match.role === 'admin' || match.role === 'user') && typeof match.id === 'string') {
-                // If typed 'admin' but stored record is user, bootstrap elevate in profile (persist will happen once store is ready)
-                const role = (name.toLowerCase() === 'admin') ? 'admin' : match.role;
-                userProfile.role = role as any;
-                userProfile.id = match.id;
-                saveUserProfile();
+            } else {
+            // Fallback: try reading localStorage users doc (no await)
+            try {
+              const raw = localStorage.getItem('vp.users');
+              if (raw) {
+                const doc = JSON.parse(raw);
+                const arr = Array.isArray(doc?.users) ? doc.users : [];
+                const match = arr.find((u: any) => (u?.name || '').toLowerCase() === name.toLowerCase());
+                if (match && (match.role === 'admin' || match.role === 'user') && typeof match.id === 'string') {
+                  // If typed 'admin' but stored record is user, bootstrap elevate in profile (persist will happen once store is ready)
+                  const role = (name.toLowerCase() === 'admin') ? 'admin' : match.role;
+                  userProfile.role = role as any;
+                  userProfile.id = match.id;
+                  saveUserProfile();
+                } else if (name.toLowerCase() === 'admin') {
+                  // Last resort: treat name 'admin' as admin until store init completes
+                  userProfile.role = 'admin' as any;
+                  saveUserProfile();
+                }
               } else if (name.toLowerCase() === 'admin') {
-                // Last resort: treat name 'admin' as admin until store init completes
                 userProfile.role = 'admin' as any;
                 saveUserProfile();
               }
-            } else if (name.toLowerCase() === 'admin') {
-              userProfile.role = 'admin' as any;
-              saveUserProfile();
-            }
-          } catch {}
+            } catch {}
+          }
+        } catch (e) {
+          console.error('Failed to sync user profile:', e);
         }
-      } catch {}
+      })();
       return;
     }
     // Level Editor button (disabled unless username non-empty)
@@ -1750,7 +1852,7 @@ canvas.addEventListener('mousedown', (e) => {
   if (gameState === 'users') {
     for (const hs of usersUiHotspots) {
       if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
-        if (!usersStoreReady) { showUiToast('Users store is not ready yet.'); return; }
+        if (!firebaseReady) { showUiToast('Firebase services are not ready yet.'); return; }
         try {
           switch (hs.kind) {
             case 'back':
@@ -1759,20 +1861,38 @@ canvas.addEventListener('mousedown', (e) => {
             case 'addUser': {
               (async () => {
                 const name = await showUiPrompt('Enter new user name', '', 'Add User');
-                if (name && name.trim()) usersStore.addUser(name.trim(), 'user');
+                if (name && name.trim()) {
+                  const trimmedName = name.trim();
+                  const existing = firebaseManager.users.getAll().find(u => u.name === trimmedName);
+                  if (existing) {
+                    showUiToast(`User "${trimmedName}" already exists.`);
+                  } else {
+                    await firebaseManager.users.addUser(trimmedName, 'user');
+                    showUiToast(`User "${trimmedName}" created.`);
+                  }
+                }
               })();
               break;
             }
             case 'addAdmin': {
               (async () => {
                 const name = await showUiPrompt('Enter new admin name', '', 'Add Admin');
-                if (name && name.trim()) usersStore.addUser(name.trim(), 'admin');
+                if (name && name.trim()) {
+                  const trimmedName = name.trim();
+                  const existing = firebaseManager.users.getAll().find(u => u.name === trimmedName);
+                  if (existing) {
+                    showUiToast(`User "${trimmedName}" already exists.`);
+                  } else {
+                    await firebaseManager.users.addUser(trimmedName, 'admin');
+                    showUiToast(`Admin "${trimmedName}" created.`);
+                  }
+                }
               })();
               break;
             }
             case 'export': {
               (async () => {
-                const json = usersStore.exportToJsonString(true);
+                const json = firebaseManager.users.exportToJsonString(true);
                 await showUiPrompt('Users JSON — copy:', json, 'Export Users');
               })();
               break;
@@ -1781,7 +1901,7 @@ canvas.addEventListener('mousedown', (e) => {
               (async () => {
                 const text = await showUiPrompt('Paste Users JSON to import', '', 'Import Users');
                 if (text && text.trim()) {
-                  try { usersStore.importFromJsonString(text.trim()); showUiToast('Users imported.'); }
+                  try { await firebaseManager.users.importFromJsonString(text.trim()); showUiToast('Users imported.'); }
                   catch (e) { showUiToast('Failed to import users.'); }
                 }
               })();
@@ -1789,20 +1909,41 @@ canvas.addEventListener('mousedown', (e) => {
             }
             case 'promote':
             case 'demote':
-              if (hs.id) usersStore.toggleRole(hs.id, getUserId());
+              if (hs.id) {
+                const userId = hs.id;
+                (async () => {
+                  try { await firebaseManager.users.toggleRole(userId, getUserId()); }
+                  catch (e) { showUiToast('Failed to update user role.'); }
+                })();
+              }
               break;
             case 'enable':
-              if (hs.id) usersStore.setEnabled(hs.id, true);
+              if (hs.id) {
+                const userId = hs.id;
+                (async () => {
+                  try { await firebaseManager.users.setEnabled(userId, true); }
+                  catch (e) { showUiToast('Failed to enable user.'); }
+                })();
+              }
               break;
             case 'disable':
-              if (hs.id) usersStore.setEnabled(hs.id, false);
+              if (hs.id) {
+                const userId = hs.id;
+                (async () => {
+                  try { await firebaseManager.users.setEnabled(userId, false); }
+                  catch (e) { showUiToast('Failed to disable user.'); }
+                })();
+              }
               break;
             case 'remove':
               if (hs.id) {
                 const id = hs.id; // capture before async to preserve narrowing
                 (async () => {
                   const ok = await showUiConfirm('Remove this user? This cannot be undone.');
-                  if (ok) usersStore.removeUser(id);
+                  if (ok) {
+                    try { await firebaseManager.users.removeUser(id); }
+                    catch (e) { showUiToast('Failed to remove user.'); }
+                  }
                 })();
               }
               break;
@@ -3086,7 +3227,7 @@ function draw() {
     ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.beginPath(); ctx.moveTo(tableX, tableY + 10); ctx.lineTo(tableX + 680, tableY + 10); ctx.stroke();
 
     // Rows
-    const list = usersStoreReady ? usersStore.getAll() : [];
+    const list = firebaseReady ? firebaseManager.users.getAll() : [];
     let ry = tableY + 26;
     const actionW = 86, actionH = 22, actionGap = 8;
     for (const u of list) {

@@ -9,7 +9,12 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "build:ts": "tsc -p tsconfig.build.json",
+    "cleanup:db": "npm run build:ts && node scripts/cleanup-db.js",
+    "cleanup:db:dry-run": "npm run build:ts && node scripts/cleanup-db.js --dry-run",
+    "cleanup:db:test-data": "npm run build:ts && node scripts/cleanup-db.js --test-data-only",
+    "cleanup:db:preview": "npm run build:ts && node scripts/cleanup-db.js --dry-run --remove-test-data"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",
@@ -17,5 +22,8 @@
     "typescript": "^5.5.4",
     "vite": "^7.1.3",
     "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "firebase": "^12.1.0"
   }
 }

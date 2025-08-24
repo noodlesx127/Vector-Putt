@@ -9,13 +9,14 @@ A classic mini golf recreation using TypeScript + Canvas with data‑driven leve
 ## Features
 
 - TypeScript + Canvas 2D, Vite dev server
+- **Firebase Realtime Database**: Complete cloud persistence for users, levels, settings, and scores with real-time synchronization
 - Tuned physics: friction, restitution, stop thresholds
 - Terrain zones: sand (higher friction), water (OOB penalty/reset)
 - Data‑driven levels: tee, cup, walls, decorations
 - Minimal HUD, pause overlay, keyboard shortcuts (R/N/Space/P/Esc)
 - Retro vector palette and clean course framing
 - In-game overlay dialogs (Confirm, Prompt, List) and Toast notifications replace browser alerts/prompts; overlays render above all UI, rebuild hotspots every frame, swallow input while active, and support Enter/Esc/Arrow keys.
-- Level Editor: top menubar with pull-down menus (File, Objects, Decorations, Editor Tools); tool palette and selection; Tee/Cup placement with 20px grid snapping; multi-level persistence (Save, Save As, Load, New, Delete) via in-game overlays; ownership metadata (authorId/authorName) with owner/admin overwrite/delete permissions; legacy single-slot data auto-migrated on first editor entry; in-editor grid preview; editor preview renders existing geometry (water, sand, bridges, hills, decorations, walls, polygon walls, posts) using play-mode visuals; interactive placement for Posts (click) and Walls/Bridges/Water/Sand/Hills (click-drag rectangles) with grid snapping and fairway clamping. Select Tool supports selection, movement, and deletion for polygon objects (`wallsPoly`, `waterPoly`, `sandPoly`). Policy: in dev/admin builds, Save As targets the filesystem or `User_Levels/<Username>/` (no LocalStorage Save As); browser-only builds should use explicit Import/Export.
+- Level Editor: top menubar with pull-down menus (File, Objects, Decorations, Editor Tools); tool palette and selection; Tee/Cup placement with 20px grid snapping; multi-level persistence (Save, Save As, Load, New, Delete) via Firebase Realtime Database; ownership metadata (authorId/authorName) with owner/admin overwrite/delete permissions; automatic migration from localStorage; in-editor grid preview; editor preview renders existing geometry (water, sand, bridges, hills, decorations, walls, polygon walls, posts) using play-mode visuals; interactive placement for Posts (click) and Walls/Bridges/Water/Sand/Hills (click-drag rectangles) with grid snapping and fairway clamping. Select Tool supports selection, movement, and deletion for polygon objects (`wallsPoly`, `waterPoly`, `sandPoly`).
 
 ## Stack
 
@@ -31,7 +32,29 @@ A classic mini golf recreation using TypeScript + Canvas with data‑driven leve
    - `npm run dev`
 3. Open the URL shown by Vite.
 
-See `TODO.md` for roadmap, `PROGRESS.md` for current focus, and `docs/PALETTE.md` for the canonical color palette.
+## Development
+
+```bash
+npm install
+npm run dev
+```
+
+## Database Maintenance
+
+The project includes a comprehensive Firebase database cleanup tool:
+
+```bash
+# Preview what would be cleaned (recommended first step)
+npm run cleanup:db:dry-run
+
+# Full database cleanup
+npm run cleanup:db
+
+# Remove only test data
+npm run cleanup:db:test-data
+```
+
+See [DATABASE_CLEANUP.md](docs/DATABASE_CLEANUP.md) for detailed documentation.
 
 ## Testing
 

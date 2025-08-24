@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- Firebase Realtime Database integration for cloud-based data persistence
+- Real-time level synchronization across devices and sessions
+- Firebase-powered user management with automatic data migration
+- Cloud-based score tracking and leaderboards
+- Cross-device level sharing and discovery
+
+### Changed
+- Migrated from localStorage to Firebase Realtime Database
+- Level Editor now saves directly to Firebase cloud storage
+- User Made Levels system now loads from Firebase with real-time updates
+- Score system updated to use Firebase with async operations
+- Level discovery system migrated to Firebase for cross-user sharing
+
+### Fixed
+- Fixed duplicate user creation in Firebase user management with existence checks
+- Added missing back button to admin users menu (Shift+F) with proper hotspot registration
+
+### Technical
+- Added type adapters to handle polygon format differences between Firebase and main app
+- Implemented automatic localStorage to Firebase data migration
+- Updated Level Editor with Firebase persistence fallbacks
+- Enhanced User Made Levels with Firebase-based CRUD operations
+- Fixed TypeScript nullability errors in Level Editor Firebase integration
+- Resolved Firebase test suite issues: mock state bleeding, error handling, and method calls
+- Fixed Firebase test isolation to prevent real database connections during testing
+- Created comprehensive Firebase database cleanup tool with duplicate removal, orphan cleanup, and data validation
+- Fix: Converted `scripts/cleanup-db.js` to ESM `import` to align with `package.json` ("type": "module"); resolves Node v22 require() error when running cleanup scripts
+- Fix: Updated TypeScript build configuration for Node.js compatibility; added `.js` extensions to imports and Node module resolution for cleanup CLI
+- Fix: Removed Firebase Analytics import from config to prevent browser module loading failures; analytics now loads conditionally in browser environment only
+
+### Added
+- **Firebase Realtime Database Integration**: Complete migration from localStorage to Firebase Realtime Database
+  - User management, level persistence, settings, and scores now stored in Firebase
+  - Real-time data synchronization across sessions and devices
+  - Automatic migration from existing localStorage data
+  - Firebase configuration with provided credentials for vector-putt project
+  - Centralized Firebase service management through FirebaseManager
 - **Level Editor Polygon Tools**: Implemented WallsPoly, WaterPoly, SandPoly with click-to-add-vertex placement, Enter/Escape to finish/cancel, click-near-start to close
 - **Level Editor Hill Direction Control**: Interactive picker UI with N/S/E/W directional arrows for hill placement
 - **Level Editor Post Radius Control**: Interactive picker UI with radius options (6, 8, 10, 12, 16, 20) for post placement

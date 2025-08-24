@@ -4,18 +4,24 @@
 
 # Project Progress — Vector Putt
 
-Updated: 2025-08-23 (local) — Level Editor filesystem integration complete: File System Access API, User_Levels/<Username>/ directories, Export/Import, bundled levels loading. Save/Load/Export working with filesystem priority and localStorage fallback.
+Updated: 2025-01-27 (local) — Firebase integration issues resolved: Fixed duplicate user creation and missing back button in admin users menu. All Firebase persistence features working correctly with proper UI navigation.
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 
 ## Now (Current Focus)
+- [x] Firebase Realtime Database Migration (completed)
+  - Complete migration from localStorage to Firebase Realtime Database
+  - User management, level persistence, settings, and scores in Firebase
+  - Real-time data synchronization across sessions and devices
+  - Automatic migration from existing localStorage data
+  - Firebase configuration with vector-putt project credentials
 - [x] Course Select "User Made Levels" category (completed)
-  - Listing: Title + Author from filesystem and localStorage, sorted by modified desc
+  - Listing: Title + Author from Firebase and localStorage, sorted by modified desc
   - Actions: Play; Edit/Delete only for owner/admin; confirm delete
   - Permissions: non-owners see disabled Edit/Delete with hint
   - Controls: Up/Down navigate, Enter Play, E Edit, Del Delete, Esc Back
   - No regressions to bundled Course Select
-  - Integration: Seamless with Level Editor filesystem persistence
+  - Integration: Seamless with Level Editor Firebase persistence
 - [x] Editor: Polygon objects selectable/movable/deletable (`wallsPoly`/`waterPoly`/`sandPoly`)
 - [x] Axis-aligned walls + deterministic reflections (angle in = angle out)
 - [x] Minimal HUD (Hole x/y, Par n, Strokes m); increment strokes on release
@@ -210,6 +216,8 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 ## Done
 - [x] Fix: Resolved TypeScript errors in `src/main.ts` — verified `loadLevel`, `loadLevelByIndex`, `preloadLevelByIndex` implementations near file end; added explicit `unknown` type to a caught error parameter to satisfy strict TS.
   - [x] Closed missing closing brace in `draw()` (TS1005 `'}` expected` at EOF); `npx tsc --noEmit` is clean.
+- [x] Fix: Converted `scripts/cleanup-db.js` to ESM `import` to match `package.json` ("type": "module"). This resolves the Node v22 `require()` error when running `npm run cleanup:db`.
+- [x] Fix: Updated all Firebase TypeScript modules with `.js` extensions for Node.js ESM compatibility; created store instances in `index.ts`; fixed import/export conflicts.
 - [x] Create `TODO.md` with phase-structured checklist
 - [x] Consolidate video findings into a single section
 - [x] Record stack recommendation matching early-2000s simplicity

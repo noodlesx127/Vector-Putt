@@ -22,6 +22,8 @@ All notable changes to this project will be documented in this file.
 - Fixed duplicate user creation in Firebase user management with existence checks
 - Added missing back button to admin users menu (Shift+F) with proper hotspot registration
 - Fixed Level Editor level loading issue where canvas dimensions weren't updated after loading saved levels
+- Fixed Level Editor Firebase integration to use getAllLevels API (same as User Made Levels picker)
+- Fixed level saving to properly set title in metadata for Firebase persistence
 
 ### Technical
 - Added type adapters to handle polygon format differences between Firebase and main app

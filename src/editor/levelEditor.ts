@@ -1761,29 +1761,28 @@ class LevelEditorImpl implements LevelEditor {
       const { loadLevelsFromFilesystem, importLevelFromFile } = await import('./filesystem');
       const username = this.env.getGlobalState().userProfile?.name || 'DefaultUser';
       
-      // Load from multiple sources: Firebase user levels + dev levels
+      // Load from Firebase using the same API as User Made Levels picker
       const firebaseManager = (await import('../firebase')).default;
       const globalState = this.env.getGlobalState();
       const userId = globalState.userProfile?.id || username;
-      const firebaseLevels = await firebaseManager.levels.getUserLevels(userId);
       
-      // Get dev levels from main game state
-      const devLevels = globalState.devLevels || [];
+      let allLevels: Array<{name: string; data: any; source: string}> = [];
       
-      const allLevels = [
-        // User levels from Firebase
-        ...firebaseLevels.map(entry => ({
-          name: `${entry.title} [user]`,
+      try {
+        // Use getAllLevels to get all user levels (same as User Made Levels picker)
+        const firebaseLevels = await firebaseManager.levels.getAllLevels(userId);
+        
+        allLevels = firebaseLevels.map(entry => ({
+          name: `${entry.title || 'Untitled Level'} [${entry.author || 'user'}]`,
           data: entry.data,
           source: 'firebase'
-        })),
-        // Dev levels from bundled content
-        ...devLevels.map((level: any, index: number) => ({
-          name: `${level.course?.title || `Dev Level ${index + 1}`} [dev]`,
-          data: level,
-          source: 'dev'
-        }))
-      ];
+        }));
+        
+        console.log(`Level Editor: Loaded ${allLevels.length} levels from Firebase`);
+      } catch (error) {
+        console.error('Level Editor: Failed to load levels from Firebase:', error);
+        allLevels = [];
+      }
       
       if (allLevels.length === 0) {
         // Offer to import a level
@@ -1896,6 +1895,7 @@ class LevelEditorImpl implements LevelEditor {
       // Add metadata
       const username = this.env!.getGlobalState().userProfile?.name || 'DefaultUser';
       if (!this.editorLevelData.meta) this.editorLevelData.meta = {};
+      this.editorLevelData.meta.title = title; // Set title in metadata for Firebase
       this.editorLevelData.meta.authorName = username;
       this.editorLevelData.meta.authorId = username;
       this.editorLevelData.meta.lastModified = Date.now();

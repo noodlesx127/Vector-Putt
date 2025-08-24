@@ -630,43 +630,99 @@ async function migrateLevelsToNewUserId(oldUserId: string, newUserId: string): P
   try {
     console.log(`Migrating levels from ${oldUserId} to ${newUserId}`);
     
-    // Get all levels for the old user ID
-    const oldUserLevels = await firebaseManager.levels.getAllLevels(oldUserId);
-    const levelsToMigrate = oldUserLevels.filter(level => 
-      level.data.meta?.authorId === oldUserId
-    );
+    // Check localStorage for levels with the old user ID first
+    const localStorageLevels: Level[] = [];
+    try {
+      const raw = localStorage.getItem('vp.levels.v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          for (const [levelId, levelData] of Object.entries(parsed)) {
+            const level = levelData as any;
+            if (level && level.meta?.authorId === oldUserId) {
+              localStorageLevels.push(level);
+              console.log(`Found localStorage level to migrate: ${levelId}`);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.log('Error reading localStorage levels:', e);
+    }
     
-    if (levelsToMigrate.length === 0) {
+    // Also check Firebase for any levels with the old user ID (unlikely but possible)
+    let firebaseLevels: any[] = [];
+    try {
+      const oldUserLevels = await firebaseManager.levels.getAllLevels(oldUserId);
+      firebaseLevels = oldUserLevels.filter(level => 
+        level.data.meta?.authorId === oldUserId
+      );
+    } catch (e) {
+      console.log('Error querying Firebase for old user levels:', e);
+    }
+    
+    const totalLevels = localStorageLevels.length + firebaseLevels.length;
+    if (totalLevels === 0) {
       console.log('No levels to migrate');
       return;
     }
     
-    console.log(`Migrating ${levelsToMigrate.length} levels to new user ID`);
+    console.log(`Migrating ${totalLevels} levels (${localStorageLevels.length} from localStorage, ${firebaseLevels.length} from Firebase) to new user ID`);
     
-    // Save each level under the new user ID
-    for (const levelEntry of levelsToMigrate) {
-      const levelData = { ...levelEntry.data };
-      
-      // Update the author ID in metadata
-      if (levelData.meta) {
-        levelData.meta.authorId = newUserId;
-        levelData.meta.lastModified = Date.now();
-      }
-      
-      // Save under new user ID
-      await firebaseManager.levels.saveLevel(levelData, undefined, newUserId);
-      
-      // Delete from old user ID (if it exists as a separate record)
+    let migratedCount = 0;
+    
+    // Migrate localStorage levels to Firebase
+    for (const levelData of localStorageLevels) {
       try {
-        await firebaseManager.levels.deleteLevel(levelEntry.name, oldUserId);
+        const updatedLevel = { ...levelData };
+        
+        // Update the author ID in metadata
+        if (updatedLevel.meta) {
+          updatedLevel.meta.authorId = newUserId;
+          updatedLevel.meta.modified = Date.now().toString();
+        }
+        
+        // Convert to Firebase format and save
+        const firebaseLevel = adaptMainLevelToFirebase(updatedLevel);
+        await firebaseManager.levels.saveLevel(firebaseLevel, undefined, newUserId);
+        migratedCount++;
+        
+        console.log(`Migrated localStorage level: ${(updatedLevel as any).meta?.title || (updatedLevel as any).course?.title || 'Untitled'}`);
       } catch (e) {
-        // Ignore deletion errors - the level might not exist as a separate record
-        console.log(`Could not delete old level ${levelEntry.name} for ${oldUserId}:`, e);
+        console.error('Failed to migrate localStorage level:', e);
       }
     }
     
-    showUiToast(`Migrated ${levelsToMigrate.length} levels to new account`);
-    console.log(`Successfully migrated ${levelsToMigrate.length} levels`);
+    // Migrate Firebase levels (if any)
+    for (const levelEntry of firebaseLevels) {
+      try {
+        const levelData = { ...levelEntry.data };
+        
+        // Update the author ID in metadata
+        if (levelData.meta) {
+          levelData.meta.authorId = newUserId;
+          levelData.meta.modified = Date.now().toString();
+        }
+        
+        // Save under new user ID
+        await firebaseManager.levels.saveLevel(levelData, undefined, newUserId);
+        migratedCount++;
+        
+        // Delete from old user ID
+        try {
+          await firebaseManager.levels.deleteLevel(levelEntry.name, oldUserId);
+        } catch (e) {
+          console.log(`Could not delete old Firebase level ${levelEntry.name}:`, e);
+        }
+      } catch (e) {
+        console.error('Failed to migrate Firebase level:', e);
+      }
+    }
+    
+    if (migratedCount > 0) {
+      showUiToast(`Migrated ${migratedCount} levels to new account`);
+      console.log(`Successfully migrated ${migratedCount} levels`);
+    }
     
   } catch (error) {
     console.error('Failed to migrate levels to new user ID:', error);

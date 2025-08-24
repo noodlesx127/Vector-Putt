@@ -732,11 +732,31 @@ function getUserId(): string {
 }
 
 function loadUserProfile(): void {
-  // Profile loading now handled by Firebase during login
+  // Load from localStorage for session persistence
+  const stored = localStorage.getItem('userProfile');
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored);
+      if (parsed.id) userProfile.id = parsed.id;
+      if (parsed.name) userProfile.name = parsed.name;
+      if (parsed.role) userProfile.role = parsed.role;
+    } catch (error) {
+      console.warn('Failed to load user profile from localStorage:', error);
+    }
+  }
 }
 
 function saveUserProfile(): void {
-  // Profile saving now handled by Firebase during user operations
+  // Save to localStorage for session persistence
+  try {
+    localStorage.setItem('userProfile', JSON.stringify({
+      id: userProfile.id,
+      name: userProfile.name,
+      role: userProfile.role
+    }));
+  } catch (error) {
+    console.warn('Failed to save user profile to localStorage:', error);
+  }
 }
 
 function loadUserScores(): void {
@@ -1119,7 +1139,7 @@ async function playUserLevel(level: UserLevelEntry): Promise<void> {
 
 // Edit a user level (if owner/admin)
 async function editUserLevel(level: UserLevelEntry): Promise<void> {
-  const isOwner = level.author === userProfile?.name;
+  const isOwner = (level.author || '').toLowerCase() === (userProfile?.name || '').toLowerCase();
   const isAdmin = userProfile?.role === 'admin';
   
   if (!isOwner && !isAdmin) {
@@ -1140,7 +1160,7 @@ async function editUserLevel(level: UserLevelEntry): Promise<void> {
 
 // Delete a user level (if owner/admin)
 async function deleteUserLevel(level: UserLevelEntry): Promise<void> {
-  const isOwner = level.author === userProfile?.name;
+  const isOwner = (level.author || '').toLowerCase() === (userProfile?.name || '').toLowerCase();
   const isAdmin = userProfile?.role === 'admin';
   
   if (!isOwner && !isAdmin) {
@@ -3418,7 +3438,7 @@ function draw() {
         const level = userLevelsList[i];
         const y = listY + (i - startIndex) * itemHeight;
         const isSelected = i === selectedUserLevelIndex;
-        const isOwner = level.author === userProfile?.name;
+        const isOwner = (level.author || '').toLowerCase() === (userProfile?.name || '').toLowerCase();
         const isAdmin = userProfile?.role === 'admin';
         const canEdit = isOwner || isAdmin;
         
@@ -4436,10 +4456,14 @@ function preloadLevelByIndex(i: number): void {
     .then((res) => res.json())
     .then((lvl: Level) => { levelCache.set(path, lvl); })
     .catch(() => {});
+
 }
 
 // Attempt to load course definition first; fallback to static list
 async function boot() {
+  // Load user profile first to ensure user ID persists between sessions
+  loadUserProfile();
+  
   try {
     const res = await fetch('/levels/course.json');
     if (res.ok) {

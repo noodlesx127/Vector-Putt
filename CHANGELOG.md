@@ -24,6 +24,9 @@ All notable changes to this project will be documented in this file.
 - Fixed Level Editor level loading issue where canvas dimensions weren't updated after loading saved levels
 - Fixed Level Editor Firebase integration to use getAllLevels API (same as User Made Levels picker)
 - Fixed level saving to properly set title in metadata for Firebase persistence
+- Fixed Level Editor loading crash when level data missing arrays (bridges, decorations, etc.)
+- Fixed user ID consistency between Level Editor and User Made Levels picker for Firebase operations
+- Made user system case insensitive for username comparisons in level ownership checks
 
 ### Technical
 - Added type adapters to handle polygon format differences between Firebase and main app

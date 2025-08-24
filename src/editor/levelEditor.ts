@@ -1764,7 +1764,7 @@ class LevelEditorImpl implements LevelEditor {
       // Load from Firebase using the same API as User Made Levels picker
       const firebaseManager = (await import('../firebase')).default;
       const globalState = this.env.getGlobalState();
-      const userId = globalState.userProfile?.id || username;
+      const userId = this.env.getUserId(); // Use same getUserId function as main app
       
       let allLevels: Array<{name: string; data: any; source: string}> = [];
       
@@ -1919,8 +1919,7 @@ class LevelEditorImpl implements LevelEditor {
         // Save to Firebase as fallback
         try {
           const firebaseManager = (await import('../firebase')).default;
-          const globalState = this.env!.getGlobalState();
-          const userId = globalState.userProfile?.id;
+          const userId = this.env!.getUserId(); // Use same getUserId function as main app
           
           if (userId && this.editorLevelData) {
             await firebaseManager.levels.saveLevel(this.editorLevelData, filename, userId);
@@ -2081,19 +2080,19 @@ class LevelEditorImpl implements LevelEditor {
       gs.levelCanvas.height = this.editorLevelData.canvas.height;
     }
     
-    // Update global state with editor level data
+    // Update global state with editor level data (with safe defaults for missing arrays)
     gs.ball = { x: this.editorLevelData.tee.x, y: this.editorLevelData.tee.y, vx: 0, vy: 0, moving: false };
     gs.hole = { x: this.editorLevelData.cup.x, y: this.editorLevelData.cup.y, r: this.editorLevelData.cup.r };
-    gs.walls = [...this.editorLevelData.walls];
-    gs.polyWalls = [...this.editorLevelData.wallsPoly];
-    gs.posts = [...this.editorLevelData.posts];
-    gs.bridges = [...this.editorLevelData.bridges];
-    gs.waters = [...this.editorLevelData.water];
-    gs.watersPoly = [...this.editorLevelData.waterPoly];
-    gs.sands = [...this.editorLevelData.sand];
-    gs.sandsPoly = [...this.editorLevelData.sandPoly];
-    gs.hills = [...this.editorLevelData.hills];
-    gs.decorations = [...this.editorLevelData.decorations];
+    gs.walls = [...(this.editorLevelData.walls || [])];
+    gs.polyWalls = [...(this.editorLevelData.wallsPoly || [])];
+    gs.posts = [...(this.editorLevelData.posts || [])];
+    gs.bridges = [...(this.editorLevelData.bridges || [])];
+    gs.waters = [...(this.editorLevelData.water || [])];
+    gs.watersPoly = [...(this.editorLevelData.waterPoly || [])];
+    gs.sands = [...(this.editorLevelData.sand || [])];
+    gs.sandsPoly = [...(this.editorLevelData.sandPoly || [])];
+    gs.hills = [...(this.editorLevelData.hills || [])];
+    gs.decorations = [...(this.editorLevelData.decorations || [])];
     env.setGlobalState(gs);
   }
 

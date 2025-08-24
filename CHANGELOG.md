@@ -36,6 +36,11 @@ All notable changes to this project will be documented in this file.
 - Fix: Updated TypeScript build configuration for Node.js compatibility; added `.js` extensions to imports and Node module resolution for cleanup CLI
 - Fix: Removed Firebase Analytics import from config to prevent browser module loading failures; analytics now loads conditionally in browser environment only
 
+### Tests
+- Fix: Hardened error handling in `src/__tests__/FirebaseConnection.test.ts` for strict TypeScript.
+  - Introduced `getErrorMessage(err: unknown)` helper and replaced direct `error.message` access and substring checks.
+  - Resolves TS18046 errors under `--strict`/`--noErrorTruncation` by properly narrowing unknown errors.
+
 ### Added
 - **Firebase Realtime Database Integration**: Complete migration from localStorage to Firebase Realtime Database
   - User management, level persistence, settings, and scores now stored in Firebase

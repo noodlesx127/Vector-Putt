@@ -4,7 +4,7 @@
 
 # Project Progress — Vector Putt
 
-Updated: 2025-01-27 (local) — Firebase integration issues resolved: Fixed duplicate user creation and missing back button in admin users menu. All Firebase persistence features working correctly with proper UI navigation.
+Updated: 2025-08-23 (local) — Fixed strict TypeScript errors in `src/__tests__/FirebaseConnection.test.ts` by adding a safe `getErrorMessage(err: unknown)` helper; type-check is clean.
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 

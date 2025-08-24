@@ -1,5 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 
+// Helper to safely extract an error message from unknown
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error && typeof err.message === 'string') return err.message;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
 // Connection test for Firebase - tests actual connectivity and basic operations
 // This test can be run against a real Firebase instance to verify connectivity
 
@@ -41,14 +51,15 @@ describe('Firebase Connection Verification', () => {
         connectionTestPassed = true;
         expect(connectionTestPassed).toBe(true);
       } catch (error) {
-        console.log('❌ Firebase connection failed:', error.message);
+        const msg = getErrorMessage(error);
+        console.log('❌ Firebase connection failed:', msg);
         
         // Check if it's a configuration issue vs network issue
-        if (error.message.includes('network') || error.message.includes('timeout')) {
+        if (msg.includes('network') || msg.includes('timeout')) {
           console.log('🌐 Network connectivity issue detected');
-        } else if (error.message.includes('auth') || error.message.includes('permission')) {
+        } else if (msg.includes('auth') || msg.includes('permission')) {
           console.log('🔐 Authentication/permission issue detected');
-        } else if (error.message.includes('config')) {
+        } else if (msg.includes('config')) {
           console.log('⚙️ Configuration issue detected');
         }
         
@@ -73,7 +84,7 @@ describe('Firebase Connection Verification', () => {
         
         console.log('✅ All Firebase services are accessible');
       } catch (error) {
-        console.log('❌ Service verification failed:', error.message);
+        console.log('❌ Service verification failed:', getErrorMessage(error));
         expect(true).toBe(true);
       }
     });
@@ -96,7 +107,7 @@ describe('Firebase Connection Verification', () => {
         
         console.log(`✅ Database read successful - found ${levels.length} levels`);
       } catch (error) {
-        console.log('❌ Database read failed:', error.message);
+        console.log('❌ Database read failed:', getErrorMessage(error));
         expect(true).toBe(true);
       }
     });
@@ -149,16 +160,17 @@ describe('Firebase Connection Verification', () => {
           await firebaseManager.levels.deleteLevel(levelId, 'connection-test-user');
           console.log('✅ Test level cleanup successful');
         } catch (cleanupError) {
-          console.log('⚠️ Test level cleanup failed (non-critical):', cleanupError.message);
+          console.log('⚠️ Test level cleanup failed (non-critical):', getErrorMessage(cleanupError));
         }
         
       } catch (error) {
-        console.log('❌ Database write failed:', error.message);
+        const msg = getErrorMessage(error);
+        console.log('❌ Database write failed:', msg);
         
         // Check for specific error types
-        if (error.message.includes('permission') || error.message.includes('auth')) {
+        if (msg.includes('permission') || msg.includes('auth')) {
           console.log('🔐 Write permission issue - check Firebase security rules');
-        } else if (error.message.includes('quota') || error.message.includes('limit')) {
+        } else if (msg.includes('quota') || msg.includes('limit')) {
           console.log('📊 Database quota/limit issue');
         }
         
@@ -187,7 +199,7 @@ describe('Firebase Connection Verification', () => {
         
         console.log(`✅ Cross-user accessibility verified - User1: ${user1Levels.length} levels, User2: ${user2Levels.length} levels`);
       } catch (error) {
-        console.log('❌ Cross-user accessibility test failed:', error.message);
+        console.log('❌ Cross-user accessibility test failed:', getErrorMessage(error));
         expect(true).toBe(true);
       }
     });
@@ -208,7 +220,7 @@ describe('Firebase Connection Verification', () => {
         
         console.log(`✅ User management accessible - found ${users.length} users`);
       } catch (error) {
-        console.log('❌ User management accessibility test failed:', error.message);
+        console.log('❌ User management accessibility test failed:', getErrorMessage(error));
         expect(true).toBe(true);
       }
     });
@@ -233,7 +245,7 @@ describe('Firebase Connection Verification', () => {
         
         console.log('✅ Settings and scores accessibility verified');
       } catch (error) {
-        console.log('❌ Settings/scores accessibility test failed:', error.message);
+        console.log('❌ Settings/scores accessibility test failed:', getErrorMessage(error));
         expect(true).toBe(true);
       }
     });
@@ -267,7 +279,7 @@ describe('Firebase Connection Verification', () => {
         // Operations should complete within 10 seconds
         expect(duration).toBeLessThan(10000);
       } catch (error) {
-        console.log('❌ Performance test failed:', error.message);
+        console.log('❌ Performance test failed:', getErrorMessage(error));
         expect(true).toBe(true);
       }
     }, 15000);

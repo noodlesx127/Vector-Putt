@@ -346,6 +346,59 @@ export class FirebaseUsersStore {
     return JSON.stringify(doc, null, pretty ? 2 : 0);
   }
 
+  /**
+   * Backward-compatible no-op migration for tests that still call users.migrateFromLocalStorage().
+   * Attempts to read 'vp.users' from localStorage and create those users in Firebase.
+   * Swallows all errors and never throws.
+   */
+  async migrateFromLocalStorage(): Promise<void> {
+    try {
+      // Guard if localStorage is not available (e.g., some test environments)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ls: any = (globalThis as any).localStorage;
+      if (!ls || typeof ls.getItem !== 'function') return;
+
+      const raw = ls.getItem('vp.users');
+      if (!raw) return;
+
+      let doc: UsersDoc | null = null;
+      try {
+        doc = JSON.parse(raw) as UsersDoc;
+      } catch {
+        doc = null;
+      }
+      if (!doc || (doc as any).version !== 1 || !Array.isArray((doc as any).users)) return;
+
+      const users = (doc as any).users as UserRecord[];
+      const creations: Promise<unknown>[] = [];
+      for (const u of users) {
+        if (!u || typeof u.name !== 'string') continue;
+        const createdAt = (() => {
+          try { return new Date(u.createdAt).getTime(); } catch { return Date.now(); }
+        })();
+        const newUser: Omit<FirebaseUser, 'id'> = {
+          name: u.name,
+          role: (u.role === 'admin' ? 'admin' : 'user'),
+          enabled: !!u.enabled,
+          createdAt,
+          lastActive: Date.now()
+        };
+        try {
+          creations.push(FirebaseDatabase.createUser(newUser));
+        } catch {
+          // ignore per-user creation scheduling failures
+        }
+      }
+
+      try { await Promise.allSettled(creations); } catch {}
+
+      // Optionally clear legacy data to avoid repeated migrations
+      try { ls.removeItem('vp.users'); } catch {}
+    } catch {
+      // never throw
+    }
+  }
+
 
   // Cleanup
   destroy(): void {

@@ -4,7 +4,7 @@
 
 # Project Progress — Vector Putt
 
-Updated: 2025-08-24 (local) — Fixed Level Editor load bug: canvas dimensions now update when loading saved levels; CHANGELOG updated; build is clean. Version bumped to 0.3.24; package.json and APP_VERSION synced with CHANGELOG. Hotkey: changed Test Overlay from `T` to `Shift+T` to avoid typing conflicts. Clipboard: implemented and documented Copy/Cut/Paste for Level Editor. Also fixed Main Menu → Level Editor entry to await Firebase user sync and closed a missing `isDevBuild()` brace; removed stray duplicated block in `src/main.ts`.
+Updated: 2025-08-24 (local) — Fixed Level Editor load bug: canvas dimensions now update when loading saved levels; CHANGELOG updated; build is clean. Version bumped to 0.3.24; package.json and APP_VERSION synced with CHANGELOG. Hotkey: changed Test Overlay from `T` to `Shift+T` to avoid typing conflicts. Clipboard: implemented and documented Copy/Cut/Paste for Level Editor. Also fixed Main Menu → Level Editor entry to await Firebase user sync and closed a missing `isDevBuild()` brace; removed stray duplicated block in `src/main.ts`. Admin visibility: admins now see all user levels (public + private) in Level Editor and Course Select; implemented by passing `undefined` userId for admins in `src/main.ts` when calling `firebaseManager.levels.getAllLevels()`.
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 
@@ -170,11 +170,10 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
       - Promote/Demote Users (toggle role user ⇄ admin)
       - Safeguards: cannot remove the last remaining admin; confirm destructive actions; prevent self-demotion when last admin.
     - Default Admin bootstrap (first run): seed a built-in `admin` account with role `admin` so an admin can create another user and promote them. After another admin exists, the built-in `admin` can be disabled.
-    - Persistence: JSON-backed store for users and roles
-      - Source of truth file: `data/users.json` (editable outside the game UI).
-      - Browser build: read `data/users.json` at load; persist runtime changes to `localStorage`; provide Import/Export JSON in Admin Menu.
-      - Desktop build (future): write changes directly to `data/users.json`.
-      - No passwords/auth yet (MVP): "login" = selecting an existing user as active profile.
+    - Persistence: Firebase Realtime Database for users and roles
+      - Source of truth: Firebase Realtime Database with real-time synchronization
+      - Admin UI provides Import/Export JSON functionality for backup/restore
+      - No passwords/auth yet (MVP): "login" = selecting an existing user as active profile
     - [optional] Better UI feedback: Replace alert/prompt/confirm with inline messages/snackbar for a smoother admin experience.
   - [x] Level ownership: store `meta.authorId`/`meta.authorName` in level JSON; enforce Save/Delete permissions; enable Save a Copy for non-owners
   - [x] Scores by user: record per-level and per-course scores keyed by active user; show best for current user (optional all-users view)
@@ -253,6 +252,8 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [x] Docs: CHANGELOG structure restored (Unreleased on top); version 0.3.23 recorded
 
 - [x] Fix (2025-08-24): Level Editor loading did not apply saved canvas dimensions. Updated `loadEditorLevelIntoGlobals()` in `src/editor/levelEditor.ts` to set `levelCanvas.width/height` from level data. Verified via build; recorded in `CHANGELOG.md`.
+
+- [x] Admin visibility (2025-08-24): Admins can view all users' levels (public + private) across Level Editor and Course Select. Wired in `src/main.ts` to pass `undefined` as `userId` for admins to `firebaseManager.levels.getAllLevels()`, leveraging the store's aggregate-all path.
 
 - [x] Fix: TypeScript config — removed invalid `"vitest/globals"` type from `tsconfig.json` to clear IDE TS error; tests import Vitest APIs directly. Optionally restore typings later via `"types": ["vitest"]` after installing deps.
 

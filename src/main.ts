@@ -299,7 +299,7 @@ async function readLevelsDoc(): Promise<LevelsDocV1> {
   if (!firebaseReady) return { version: 1, levels: [] };
   
   try {
-    const userId = getUserId();
+    const userId = (userProfile.role === 'admin') ? undefined : getUserId();
     const levelEntries = await firebaseManager.levels.getAllLevels(userId);
     const savedLevels: SavedLevelV1[] = levelEntries.map(entry => ({
       id: entry.name,
@@ -480,7 +480,7 @@ async function getAllLevels(): Promise<LevelEntry[]> {
   // Get Firebase levels
   if (firebaseReady) {
     try {
-      const userId = getUserId();
+      const userId = (userProfile.role === 'admin') ? undefined : getUserId();
       const firebaseLevels = await firebaseManager.levels.getAllLevels(userId);
       for (const levelEntry of firebaseLevels) {
         allLevels.push({

@@ -109,6 +109,23 @@ export class FirebaseDatabase {
     return Object.keys(levels).map(id => ({ id, ...levels[id] }));
   }
 
+  // Admin helper: fetch all user levels across all users
+  static async getAllUserLevels(): Promise<FirebaseLevel[]> {
+    const snapshot = await get(ref(database, PATHS.userLevels));
+    if (!snapshot.exists()) return [];
+
+    const byUser = snapshot.val();
+    const result: FirebaseLevel[] = [];
+    Object.keys(byUser).forEach((userId) => {
+      const levels = byUser[userId];
+      Object.keys(levels).forEach((levelId) => {
+        result.push({ id: levelId, ...levels[levelId] });
+      });
+    });
+
+    return result;
+  }
+
   static async getLevel(levelId: string, userId?: string): Promise<FirebaseLevel | null> {
     // Try user levels first if userId provided
     if (userId) {
@@ -255,9 +272,4 @@ export class FirebaseDatabase {
     }
   }
 
-  // Migration helpers
-  static async migrateFromLocalStorage(): Promise<void> {
-    // This will be implemented to migrate existing localStorage data
-    console.log('Migration from localStorage not yet implemented');
-  }
 }

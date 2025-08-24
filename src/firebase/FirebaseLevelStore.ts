@@ -50,7 +50,7 @@ export class FirebaseLevelStore {
 
     try {
       console.log('FirebaseLevelStore.getAllLevels called with userId:', currentUserId);
-      
+
       // Get public levels
       const publicLevels = await FirebaseDatabase.getLevels();
       console.log('Public levels from Firebase:', publicLevels.length, publicLevels);
@@ -61,33 +61,39 @@ export class FirebaseLevelStore {
           author: level.authorName || 'Unknown',
           data: level.data,
           source: 'firebase',
-          lastModified: level.lastModified
+          lastModified: level.lastModified,
         });
       }
 
-      // Get user levels if userId provided
+      // User levels
+      let userLevelsCombined: FirebaseLevel[] = [];
       if (currentUserId) {
-        const userLevels = await FirebaseDatabase.getUserLevels(currentUserId);
-        console.log('User levels from Firebase for', currentUserId, ':', userLevels.length, userLevels);
-        for (const level of userLevels) {
-          allLevels.push({
-            name: level.id,
-            title: level.title || 'Untitled Level',
-            author: level.authorName || 'Unknown',
-            data: level.data,
-            source: 'firebase',
-            lastModified: level.lastModified
-          });
-        }
+        userLevelsCombined = await FirebaseDatabase.getUserLevels(currentUserId);
+        console.log('User levels from Firebase for', currentUserId, ':', userLevelsCombined.length, userLevelsCombined);
+      } else {
+        // Admin mode (call site passes undefined): include all user levels
+        userLevelsCombined = await FirebaseDatabase.getAllUserLevels();
+        console.log('All user levels from Firebase (admin):', userLevelsCombined.length, userLevelsCombined);
       }
-      
+
+      for (const level of userLevelsCombined) {
+        allLevels.push({
+          name: level.id,
+          title: level.title || 'Untitled Level',
+          author: level.authorName || 'Unknown',
+          data: level.data,
+          source: 'firebase',
+          lastModified: level.lastModified,
+        });
+      }
+
       console.log('FirebaseLevelStore.getAllLevels returning', allLevels.length, 'total levels');
 
-      // Cache the results
-      for (const level of [...publicLevels, ...(currentUserId ? await FirebaseDatabase.getUserLevels(currentUserId) : [])]) {
+      // Cache the results (public + whichever user levels we loaded)
+      const toCache = [...publicLevels, ...userLevelsCombined];
+      for (const level of toCache) {
         this.cachedLevels.set(level.id, level);
       }
-
     } catch (error) {
       console.error('Failed to load levels from Firebase:', error);
     }

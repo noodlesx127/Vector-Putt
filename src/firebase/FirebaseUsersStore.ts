@@ -346,24 +346,6 @@ export class FirebaseUsersStore {
     return JSON.stringify(doc, null, pretty ? 2 : 0);
   }
 
-  // Migration helper
-  async migrateFromLocalStorage(): Promise<void> {
-    try {
-      const LS_KEY = 'vp.users';
-      const localData = localStorage.getItem(LS_KEY);
-      
-      if (localData) {
-        console.log('Migrating users from localStorage to Firebase...');
-        await this.importFromJsonString(localData);
-        
-        // Clear localStorage after successful migration
-        localStorage.removeItem(LS_KEY);
-        console.log('User migration completed successfully');
-      }
-    } catch (error) {
-      console.error('Failed to migrate users from localStorage:', error);
-    }
-  }
 
   // Cleanup
   destroy(): void {

@@ -1759,15 +1759,28 @@ class LevelEditorImpl implements LevelEditor {
       const { loadLevelsFromFilesystem, importLevelFromFile } = await import('./filesystem');
       const username = this.env.getGlobalState().userProfile?.name || 'DefaultUser';
       
-      // Load from Firebase instead of filesystem/localStorage
+      // Load from multiple sources: Firebase user levels + dev levels
       const firebaseManager = (await import('../firebase')).default;
       const firebaseLevels = await firebaseManager.levels.getUserLevels(username);
       
-      const allLevels = firebaseLevels.map(entry => ({
-        name: entry.title,
-        data: entry.data,
-        source: 'firebase'
-      }));
+      // Get dev levels from main game state
+      const globalState = this.env.getGlobalState();
+      const devLevels = globalState.devLevels || [];
+      
+      const allLevels = [
+        // User levels from Firebase
+        ...firebaseLevels.map(entry => ({
+          name: `${entry.title} [user]`,
+          data: entry.data,
+          source: 'firebase'
+        })),
+        // Dev levels from bundled content
+        ...devLevels.map((level: any, index: number) => ({
+          name: `${level.course?.title || `Dev Level ${index + 1}`} [dev]`,
+          data: level,
+          source: 'dev'
+        }))
+      ];
       
       if (allLevels.length === 0) {
         // Offer to import a level
@@ -1865,11 +1878,11 @@ class LevelEditorImpl implements LevelEditor {
     this.syncEditorDataFromGlobals(this.env!);
     
     try {
-      // Determine/save title; prompt if missing
+      // Always prompt for title if this is a new level (no saved ID) or if title is empty/untitled
       const currentTitle = this.editorLevelData.course?.title || '';
       let title = currentTitle;
-      if (!title) {
-        const input = window.prompt('Enter level name:', 'Untitled');
+      if (!this.editorCurrentSavedId || !title || title === 'Untitled') {
+        const input = window.prompt('Enter level name:', title || 'My Level');
         if (!input) { this.env?.showToast('Save cancelled'); return; }
         title = input.trim();
         if (!this.editorLevelData.course) this.editorLevelData.course = { index: 1, total: 1, title } as any;

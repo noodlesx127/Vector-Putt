@@ -17,7 +17,52 @@ function isDevBuild(): boolean {
   } catch {
     return false;
   }
-} // Added closing brace here
+}
+
+// Ensure the current profile (by name) is synchronized with Firebase users
+// Sets userProfile.id to the Firebase ID, migrates levels and user data if needed.
+async function ensureUserSyncedWithFirebase(): Promise<void> {
+  try {
+    const name = (userProfile.name || '').trim();
+    if (!name) return;
+    if (!firebaseReady) return;
+
+    const all = firebaseManager.users.getAll();
+    const match = all.find((u: any) => (u.name || '').toLowerCase() === name.toLowerCase());
+    if (match) {
+      // Elevate 'admin' name if needed
+      if (name.toLowerCase() === 'admin' && match.role !== 'admin') {
+        try { await firebaseManager.users.toggleRole(match.id); match.role = 'admin'; } catch {}
+      }
+
+      const oldUserId = userProfile.id;
+      userProfile.role = match.role as any;
+      userProfile.id = match.id;
+      saveUserProfile();
+
+      if (oldUserId && oldUserId !== match.id) {
+        await migrateLevelsToNewUserId(oldUserId, match.id);
+      }
+      await firebaseManager.migrateUserData(match.id);
+    } else {
+      const defaultRole = (name.toLowerCase() === 'admin') ? 'admin' : 'user';
+      const rec = await firebaseManager.users.addUser(name, defaultRole as any);
+
+      const oldUserId = userProfile.id;
+      userProfile.role = rec.role as any;
+      userProfile.id = rec.id;
+      saveUserProfile();
+
+      if (oldUserId && oldUserId !== rec.id) {
+        await migrateLevelsToNewUserId(oldUserId, rec.id);
+      }
+      await firebaseManager.migrateUserData(rec.id);
+    }
+  } catch (e) {
+    console.error('ensureUserSyncedWithFirebase failed:', e);
+  }
+}
+// End ensureUserSyncedWithFirebase
 
 // Multilevel persistence (vp.levels.v1)
 type SavedLevelV1 = { id: string; level: Level };
@@ -1112,6 +1157,8 @@ async function loadUserLevelsList(): Promise<void> {
     
     // Load from Firebase instead of filesystem/localStorage
     if (firebaseReady) {
+      // Ensure we are using the Firebase user ID for this name
+      await ensureUserSyncedWithFirebase();
       const userId = getUserId();
       console.log('User Made Levels: Loading from Firebase for userId:', userId);
       const firebaseLevels = await firebaseManager.levels.getAllLevels(userId);
@@ -1639,49 +1686,8 @@ canvas.addEventListener('mousedown', (e) => {
           const name = (userProfile.name || '').trim();
           if (!name) { /* nothing to sync */ }
           else if (firebaseReady) {
-            const all = firebaseManager.users.getAll();
-            const match = all.find((u: any) => (u.name || '').toLowerCase() === name.toLowerCase());
-            if (match) {
-              // If typed 'admin' but record isn't admin yet, promote it
-              if (name.toLowerCase() === 'admin' && match.role !== 'admin') {
-                try { await firebaseManager.users.toggleRole(match.id); match.role = 'admin'; } catch {}
-              }
-              
-              // Store old ID for level migration
-              const oldUserId = userProfile.id;
-              
-              userProfile.role = match.role as any;
-              userProfile.id = match.id;
-              saveUserProfile();
-              
-              // Migrate levels from old ID to new ID if they differ
-              if (oldUserId && oldUserId !== match.id) {
-                await migrateLevelsToNewUserId(oldUserId, match.id);
-              }
-              
-              // Migrate user-specific data
-              await firebaseManager.migrateUserData(match.id);
-            } else {
-              // Create a new user in the store (admin if name is 'admin')
-              const defaultRole = (name.toLowerCase() === 'admin') ? 'admin' : 'user';
-              const rec = await firebaseManager.users.addUser(name, defaultRole as any);
-              
-              // Store old ID for level migration
-              const oldUserId = userProfile.id;
-              
-              userProfile.role = rec.role as any;
-              userProfile.id = rec.id;
-              saveUserProfile();
-              
-              // Migrate levels from old ID to new ID if they differ
-              if (oldUserId && oldUserId !== rec.id) {
-                await migrateLevelsToNewUserId(oldUserId, rec.id);
-              }
-              
-              // Migrate user-specific data
-              await firebaseManager.migrateUserData(rec.id);
-            }
-            } else {
+            await ensureUserSyncedWithFirebase();
+          } else {
             // Fallback: try reading localStorage users doc (no await)
             try {
               const raw = localStorage.getItem('vp.users');
@@ -1715,83 +1721,80 @@ canvas.addEventListener('mousedown', (e) => {
     // Level Editor button (disabled unless username non-empty)
     const le = getMainLevelEditorRect();
     if (canStart && p.x >= le.x && p.x <= le.x + le.w && p.y >= le.y && p.y <= le.y + le.h) {
-      gameState = 'levelEditor';
-      // Construct EditorEnv and delegate to levelEditor module
-      const editorEnv = {
-        ctx,
-        width: WIDTH,
-        height: HEIGHT,
-        canvasToPlayCoords: (x: number, y: number) => {
-          const pp = canvasToPlayCoords({ x, y });
-          return { x: pp.x, y: pp.y };
-        },
-        worldFromEvent: (ev: MouseEvent) => worldFromEvent(ev),
-        isOverlayActive,
-        renderGlobalOverlays,
-        fairwayRect: () => ({
-          x: COURSE_MARGIN,
-          y: COURSE_MARGIN,
-          w: Math.max(0, Math.min(levelCanvas.width, WIDTH) - COURSE_MARGIN * 2),
-          h: Math.max(0, Math.min(levelCanvas.height, HEIGHT) - COURSE_MARGIN * 2),
-        }),
-        getGridSize: () => 20,
-        setGridSize: (n: number) => { /* delegated to levelEditor */ },
-        getShowGrid: () => false,
-        setShowGrid: (b: boolean) => { /* delegated to levelEditor */ },
-        showToast: (msg: string) => showUiToast(msg),
-        showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
-        showPrompt: (msg: string, def?: string, title?: string) => showUiPrompt(msg, def, title),
-        showList: (title: string, items: Array<{label: string; value: any}>, startIndex?: number) => showUiList(title, items, startIndex),
-        getGlobalState: () => ({
-          WIDTH,
-          HEIGHT,
-          COURSE_MARGIN,
-          ball,
-          hole,
-          levelCanvas,
-          walls,
-          sands,
-          sandsPoly,
-          waters,
-          watersPoly,
-          decorations,
-          hills,
-          bridges,
-          posts,
-          polyWalls,
-          userProfile
-        }),
-        setGlobalState: (state: any) => {
-          if (state.levelCanvas) levelCanvas = state.levelCanvas;
-          if (state.walls) walls = state.walls;
-          if (state.sands) sands = state.sands;
-          if (state.sandsPoly) sandsPoly = state.sandsPoly;
-          if (state.waters) waters = state.waters;
-          if (state.watersPoly) watersPoly = state.watersPoly;
-          if (state.decorations) decorations = state.decorations;
-          if (state.hills) hills = state.hills;
-          if (state.bridges) bridges = state.bridges;
-          if (state.posts) posts = state.posts;
-          if (state.polyWalls) polyWalls = state.polyWalls;
-          if (state.ball) {
-            ball.x = state.ball.x;
-            ball.y = state.ball.y;
-            ball.vx = state.ball.vx;
-            ball.vy = state.ball.vy;
-            ball.moving = state.ball.moving;
-          }
-          if (state.hole) {
-            hole.x = state.hole.x;
-            hole.y = state.hole.y;
-            if (state.hole.r !== undefined) (hole as any).r = state.hole.r;
-          }
-        },
-        getUserId,
-        migrateSingleSlotIfNeeded,
-        exitToMenu: () => { gameState = 'menu'; },
-        testLevel: testLevelFromEditor
-      };
-      levelEditor.init(editorEnv);
+      (async () => {
+        try {
+          if (firebaseReady) await ensureUserSyncedWithFirebase();
+        } catch (e) {
+          console.error('Failed to sync user before entering editor:', e);
+        } finally {
+          gameState = 'levelEditor';
+          const editorEnv = {
+            ctx,
+            width: WIDTH,
+            height: HEIGHT,
+            canvasToPlayCoords: (x: number, y: number) => {
+              const pp = canvasToPlayCoords({ x, y });
+              return { x: pp.x, y: pp.y };
+            },
+            worldFromEvent: (ev: MouseEvent) => worldFromEvent(ev),
+            isOverlayActive,
+            renderGlobalOverlays,
+            fairwayRect: () => ({
+              x: COURSE_MARGIN,
+              y: COURSE_MARGIN,
+              w: Math.max(0, Math.min(levelCanvas.width, WIDTH) - COURSE_MARGIN * 2),
+              h: Math.max(0, Math.min(levelCanvas.height, HEIGHT) - COURSE_MARGIN * 2),
+            }),
+            getGridSize: () => 20,
+            setGridSize: () => {},
+            getShowGrid: () => true,
+            setShowGrid: () => {},
+            showToast: (msg: string) => showUiToast(msg),
+            showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
+            showPrompt: (msg: string, def?: string, title?: string) => showUiPrompt(msg, def, title),
+            showList: (title: string, items: Array<{label: string; value: any}>, startIndex?: number) => showUiList(title, items, startIndex),
+            getGlobalState: () => ({
+              WIDTH,
+              HEIGHT,
+              COURSE_MARGIN,
+              ball,
+              hole,
+              levelCanvas,
+              walls,
+              sands,
+              sandsPoly,
+              waters,
+              watersPoly,
+              decorations,
+              hills,
+              bridges,
+              posts,
+              polyWalls,
+              userProfile
+            }),
+            setGlobalState: (state: any) => {
+              if (state.levelCanvas) levelCanvas = state.levelCanvas;
+              if (state.walls) walls = state.walls;
+              if (state.sands) sands = state.sands;
+              if (state.sandsPoly) sandsPoly = state.sandsPoly;
+              if (state.waters) waters = state.waters;
+              if (state.watersPoly) watersPoly = state.watersPoly;
+              if (state.decorations) decorations = state.decorations;
+              if (state.hills) hills = state.hills;
+              if (state.bridges) bridges = state.bridges;
+              if (state.posts) posts = state.posts;
+              if (state.polyWalls) polyWalls = state.polyWalls;
+              if (state.ball) { ball.x = state.ball.x; ball.y = state.ball.y; ball.vx = state.ball.vx; ball.vy = state.ball.vy; ball.moving = state.ball.moving; }
+              if (state.hole) { hole.x = state.hole.x; hole.y = state.hole.y; if (state.hole.r !== undefined) (hole as any).r = state.hole.r; }
+            },
+            getUserId,
+            migrateSingleSlotIfNeeded,
+            exitToMenu: () => { gameState = 'menu'; },
+            testLevel: testLevelFromEditor
+          };
+          levelEditor.init(editorEnv);
+        }
+      })();
       return;
     }
     const o = getMainOptionsRect();

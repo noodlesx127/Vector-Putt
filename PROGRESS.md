@@ -4,7 +4,7 @@
 
 # Project Progress — Vector Putt
 
-Updated: 2025-08-24 (local) — Fixed Level Editor load bug: canvas dimensions now update when loading saved levels; CHANGELOG updated; build is clean. Version bumped to 0.3.24; package.json and APP_VERSION synced with CHANGELOG. Hotkey: changed Test Overlay from `T` to `Shift+T` to avoid typing conflicts. Clipboard: implemented and documented Copy/Cut/Paste for Level Editor.
+Updated: 2025-08-24 (local) — Fixed Level Editor load bug: canvas dimensions now update when loading saved levels; CHANGELOG updated; build is clean. Version bumped to 0.3.24; package.json and APP_VERSION synced with CHANGELOG. Hotkey: changed Test Overlay from `T` to `Shift+T` to avoid typing conflicts. Clipboard: implemented and documented Copy/Cut/Paste for Level Editor. Also fixed Main Menu → Level Editor entry to await Firebase user sync and closed a missing `isDevBuild()` brace; removed stray duplicated block in `src/main.ts`.
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 
@@ -239,6 +239,8 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 - [x] Level design pass: adjusted `levels/level4.json`–`level6.json` for logical cup/obstacle placement; ensured `level8` polygon water renders visibly.
 
 - [x] Dev-only bank-shot preview toggle fixed: robust dev detection (`isDevBuild()`), canvas focus during drag, broader dev key listeners; DEV watermark/badge and diagnostics for verification.
+
+- [x] Main Menu → Level Editor: await Firebase user synchronization before initializing editor; removed duplicated block and closed missing brace in `src/main.ts`. TypeScript build (`tsconfig.build.json`) is clean.
 
 - [x] Main Menu: username input focus UX — blinking caret, placeholder hides during edit, I-beam cursor while editing; thicker focus border; input nudged down to avoid clipping.
 

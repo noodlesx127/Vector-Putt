@@ -3,6 +3,7 @@ import { FirebaseUsersStore } from './FirebaseUsersStore.js';
 import { FirebaseLevelStore } from './FirebaseLevelStore.js';
 import { FirebaseSettingsStore } from './FirebaseSettingsStore.js';
 import { FirebaseScoreStore } from './FirebaseScoreStore.js';
+import { FirebaseDatabase } from './database.js';
 
 // Create store instances
 export const firebaseUsersStore = new FirebaseUsersStore();
@@ -18,6 +19,11 @@ export class FirebaseManager {
 
     try {
       console.log('Initializing Firebase services...');
+      // Preflight: verify database connectivity (mocks may force rejection in tests)
+      await Promise.all([
+        FirebaseDatabase.getLevels(),
+        FirebaseDatabase.getUsers()
+      ]);
       
       // Initialize all stores
       await Promise.all([

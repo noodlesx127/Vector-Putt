@@ -73,6 +73,15 @@ export class FirebaseSettingsStore {
     }
   }
 
+  // Backward-compatible aliases used by some tests/integration code
+  async saveSettings(userId: string, settings: GameSettings): Promise<void> {
+    return this.saveUserSettings(userId, settings);
+  }
+
+  async getSettings(userId: string): Promise<GameSettings> {
+    return this.loadUserSettings(userId);
+  }
+
   // Update specific setting
   async updateSetting(userId: string, key: string, value: any): Promise<void> {
     try {

@@ -120,7 +120,7 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
     - Shortcuts: Ctrl+Z (Undo), Ctrl+Y (Redo), Shift+Ctrl+Z (alternative Redo)
     - State management: 50-step undo stack with automatic snapshots on all placement, deletion, movement, resize, and rotation operations
     - UI feedback: toast messages showing undo/redo descriptions; menu labels update dynamically
-  - [ ] Clipboard: Copy/Cut/Paste selected objects in Level Editor
+  - [x] Clipboard: Copy/Cut/Paste selected objects in Level Editor
     - Shortcuts: Ctrl+C (Copy), Ctrl+X (Cut), Ctrl+V (Paste)
     - Supports: rects (walls/water/sand/bridges/hills), posts (radius preserved), polygons (translate-only)
     - Paste behavior: place at mouse cursor with grid snapping and fairway clamping; maintain relative offsets for group selections

@@ -32,6 +32,7 @@ All notable changes to this project will be documented in this file.
 - Fixed Firebase test isolation to prevent real database connections during testing
 - Created comprehensive Firebase database cleanup tool with duplicate removal, orphan cleanup, and data validation
 - Fix: Converted `scripts/cleanup-db.js` to ESM `import` to align with `package.json` ("type": "module"); resolves Node v22 require() error when running cleanup scripts
+ - Build fix: added `src/firebase.ts` barrel so `import './firebase'` in `src/main.ts` resolves to `./firebase/index` for Vite/Netlify production builds
 - Fix: Updated TypeScript build configuration for Node.js compatibility; added `.js` extensions to imports and Node module resolution for cleanup CLI
 - Fix: Removed Firebase Analytics import from config to prevent browser module loading failures; analytics now loads conditionally in browser environment only
 

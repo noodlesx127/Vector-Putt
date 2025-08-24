@@ -46,7 +46,7 @@ function newLevelId(): string {
 // ------------------------------
 type UiOverlayKind = 'none' | 'toast' | 'confirm' | 'prompt' | 'list';
 type UiToast = { id: number; message: string; expiresAt: number };
-type UiListItem = { id: string; label: string; disabled?: boolean };
+type UiListItem = { id?: string; label: string; value?: any; disabled?: boolean };
 type UiOverlayState = {
   kind: UiOverlayKind;
   // Shared
@@ -1648,6 +1648,8 @@ canvas.addEventListener('mousedown', (e) => {
         setShowGrid: (b: boolean) => { /* delegated to levelEditor */ },
         showToast: (msg: string) => showUiToast(msg),
         showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
+        showPrompt: (msg: string, def?: string, title?: string) => showUiPrompt(msg, def, title),
+        showList: (title: string, items: Array<{label: string; value: any}>, startIndex?: number) => showUiList(title, items, startIndex),
         getGlobalState: () => ({
           WIDTH,
           HEIGHT,
@@ -2370,6 +2372,8 @@ function handleLevelEditorKeys(e: KeyboardEvent) {
     setShowGrid: () => {},
       showToast: (msg: string) => showUiToast(msg),
       showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
+      showPrompt: (msg: string, def?: string, title?: string) => showUiPrompt(msg, def, title),
+      showList: (title: string, items: Array<{label: string; value: any}>, startIndex?: number) => showUiList(title, items, startIndex),
     getGlobalState: () => ({
       WIDTH,
       HEIGHT,

@@ -120,6 +120,8 @@ export interface EditorEnv {
   // UI feedback
   showToast(message: string): void;
   showConfirm(message: string, title?: string): Promise<boolean>;
+  showPrompt(message: string, defaultValue?: string, title?: string): Promise<string | null>;
+  showList(title: string, items: Array<{label: string; value: any}>, startIndex?: number): Promise<any>;
   renderGlobalOverlays(): void;
   isOverlayActive?(): boolean;
   migrateSingleSlotIfNeeded?(): void;
@@ -1799,15 +1801,16 @@ class LevelEditorImpl implements LevelEditor {
         return;
       }
 
-      // Simple prompt-based picker until overlay picker UI is implemented
-      const list = allLevels
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .map((s, i) => `${i + 1}. ${s.name} [${s.source}]`)
-        .join('\n');
-      const resp = window.prompt(`Load which level?\n${list}\n\nEnter number:`, '1');
-      const idx = resp ? (parseInt(resp, 10) - 1) : -1;
-      if (!(idx >= 0 && idx < allLevels.length)) return;
-      const levelToLoad = allLevels.sort((a, b) => a.name.localeCompare(b.name))[idx];
+      // Use custom UI list picker
+      const sortedLevels = allLevels.sort((a, b) => a.name.localeCompare(b.name));
+      const listItems = sortedLevels.map(level => ({
+        label: level.name,
+        value: level
+      }));
+      
+      const selectedItem = await this.env.showList('Load Level', listItems);
+      if (!selectedItem) return;
+      const levelToLoad = selectedItem.value;
 
       // Confirm if there are unsaved changes
       if (this.editorLevelData) {
@@ -1883,7 +1886,7 @@ class LevelEditorImpl implements LevelEditor {
       const currentTitle = this.editorLevelData.course?.title || '';
       let title = currentTitle;
       if (!this.editorCurrentSavedId || !title || title === 'Untitled') {
-        const input = window.prompt('Enter level name:', title || 'My Level');
+        const input = await this.env!.showPrompt('Enter level name:', title || 'My Level', 'Save Level');
         if (!input) { this.env?.showToast('Save cancelled'); return; }
         title = input.trim();
         if (!this.editorLevelData.course) this.editorLevelData.course = { index: 1, total: 1, title } as any;
@@ -1955,7 +1958,7 @@ class LevelEditorImpl implements LevelEditor {
     this.syncEditorDataFromGlobals(this.env!);
     
     // Ask for a new name
-    const input = window.prompt('Save As - enter new level name:', this.editorLevelData.course?.title || 'Untitled Copy');
+    const input = await this.env!.showPrompt('Save As - enter new level name:', this.editorLevelData.course?.title || 'Untitled Copy', 'Save As');
     if (!input) { this.env?.showToast('Save As cancelled'); return; }
     const title = input.trim();
     if (!this.editorLevelData.course) this.editorLevelData.course = { index: 1, total: 1, title } as any;

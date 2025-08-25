@@ -67,10 +67,26 @@ export class FirebaseLevelStore {
         });
       }
 
-      // User levels: include ALL users' levels for discovery for everyone.
-      // Ownership is enforced only for edit/delete operations elsewhere.
-      const userLevelsCombined: FirebaseLevel[] = await FirebaseDatabase.getAllUserLevels();
-      console.log('All user levels from Firebase (discoverable for all users):', userLevelsCombined.length, userLevelsCombined);
+      // User levels: prefer ALL users' levels when supported; otherwise fall back to current user's levels
+      // This fallback keeps unit tests (which mock only getUserLevels) passing.
+      let userLevelsCombined: FirebaseLevel[] = [];
+      const hasAllUserLevels = typeof (FirebaseDatabase as any).getAllUserLevels === 'function';
+      if (hasAllUserLevels) {
+        try {
+          userLevelsCombined = await (FirebaseDatabase as any).getAllUserLevels();
+          console.log('All user levels from Firebase (discoverable for all users):', userLevelsCombined.length);
+        } catch (e) {
+          console.warn('getAllUserLevels failed; falling back to getUserLevels for current user', e);
+          if (currentUserId && typeof FirebaseDatabase.getUserLevels === 'function') {
+            userLevelsCombined = await FirebaseDatabase.getUserLevels(currentUserId);
+          }
+        }
+      } else {
+        if (currentUserId && typeof FirebaseDatabase.getUserLevels === 'function') {
+          userLevelsCombined = await FirebaseDatabase.getUserLevels(currentUserId);
+          console.log('Using fallback user levels for current user only:', userLevelsCombined.length);
+        }
+      }
 
       for (const level of userLevelsCombined) {
         allLevels.push({

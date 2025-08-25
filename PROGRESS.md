@@ -224,7 +224,10 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
    - Docs updated post-refactor; run type-checks, build, tests; manual smoke (selection/move/delete incl. polys)
 
 ## Done
- - [x] 2025-08-25 — User level visibility for normal users (discover all user-made levels). Kept edit/delete gated by owner/admin checks. Removed obsolete migrations from `src/main.ts` and `src/firebase/index.ts`.
+- [x] 2025-08-25 — User level visibility for normal users (discover all user-made levels). Kept edit/delete gated by owner/admin checks. Removed obsolete migrations from `src/main.ts` and `src/firebase/index.ts`.
+- [x] 2025-08-25 — Fixed Firebase level deletion using proper Firebase ID
+  - `src/editor/levelEditor.ts`: Load picker now stores the true Firebase ID (`entry.name`) separately from the UI label. `openDeletePicker()` uses this ID when calling `firebaseManager.levels.deleteLevel()`.
+  - Verified `src/main.ts` delete flow already resolves a `LevelEntry` and passes `levelToDelete.name` (the Firebase ID), so no change was necessary there.
 - [x] Fix: Resolved TypeScript errors in `src/main.ts` — verified `loadLevel`, `loadLevelByIndex`, `preloadLevelByIndex` implementations near file end; added explicit `unknown` type to a caught error parameter to satisfy strict TS.
   - [x] Closed missing closing brace in `draw()` (TS1005 `'}` expected` at EOF); `npx tsc --noEmit` is clean.
 - [x] Fix: Converted `scripts/cleanup-db.js` to ESM `import` to match `package.json` ("type": "module"). This resolves the Node v22 `require()` error when running `npm run cleanup:db`.

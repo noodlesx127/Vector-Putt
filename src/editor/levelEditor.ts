@@ -2198,6 +2198,7 @@ class LevelEditorImpl implements LevelEditor {
           const allUserLevels = await firebaseManager.levels.getAllLevels(undefined); // undefined = all users
           
           allLevels = allUserLevels.map(entry => ({
+            id: entry.name, // Firebase ID
             name: `${entry.title || 'Untitled Level'} [${entry.author || 'user'}]`,
             data: entry.data,
             source: 'firebase'
@@ -2207,6 +2208,7 @@ class LevelEditorImpl implements LevelEditor {
           const firebaseLevels = await firebaseManager.levels.getAllLevels(userId);
           
           allLevels = firebaseLevels.map(entry => ({
+            id: entry.name, // Firebase ID
             name: `${entry.title || 'Untitled Level'} [${entry.author || 'user'}]`,
             data: entry.data,
             source: 'firebase'
@@ -2253,7 +2255,8 @@ class LevelEditorImpl implements LevelEditor {
       }
 
       this.editorLevelData = levelToLoad.data;
-      this.editorCurrentSavedId = levelToLoad.source === 'firebase' ? levelToLoad.name : null;
+      // Use Firebase ID for saved ID, not the UI label
+      this.editorCurrentSavedId = levelToLoad.source === 'firebase' ? (levelToLoad.id || null) : null;
       this.selectedObjects = [];
 
       // Update global state

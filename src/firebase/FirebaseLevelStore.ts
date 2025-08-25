@@ -44,7 +44,9 @@ export class FirebaseLevelStore {
     this.initialized = true;
   }
 
-  // Get all levels (public + user levels for current user)
+  // Get all levels visible to players
+  // Returns: public levels + ALL user-created levels (read-only for non-owners)
+  // Editing/deleting is still permission-gated via canEditLevel()/canDeleteLevel().
   async getAllLevels(currentUserId?: string): Promise<LevelEntry[]> {
     const allLevels: LevelEntry[] = [];
 
@@ -65,16 +67,10 @@ export class FirebaseLevelStore {
         });
       }
 
-      // User levels
-      let userLevelsCombined: FirebaseLevel[] = [];
-      if (currentUserId) {
-        userLevelsCombined = await FirebaseDatabase.getUserLevels(currentUserId);
-        console.log('User levels from Firebase for', currentUserId, ':', userLevelsCombined.length, userLevelsCombined);
-      } else {
-        // Admin mode (call site passes undefined): include all user levels
-        userLevelsCombined = await FirebaseDatabase.getAllUserLevels();
-        console.log('All user levels from Firebase (admin):', userLevelsCombined.length, userLevelsCombined);
-      }
+      // User levels: include ALL users' levels for discovery for everyone.
+      // Ownership is enforced only for edit/delete operations elsewhere.
+      const userLevelsCombined: FirebaseLevel[] = await FirebaseDatabase.getAllUserLevels();
+      console.log('All user levels from Firebase (discoverable for all users):', userLevelsCombined.length, userLevelsCombined);
 
       for (const level of userLevelsCombined) {
         allLevels.push({

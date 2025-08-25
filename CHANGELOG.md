@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Changed
+- User level visibility: Normal users now see all user-created levels (in addition to public levels). Edit/Delete permissions remain restricted to owners and admins via existing checks.
+
+### Removed
+- Obsolete user data migration flows: removed cross-ID level migration and single-slot migration code paths; removed `migrateUserData()` usage. Startup still performs bundled/public and legacy localStorage level migrations only.
+
 ## v0.3.24 — 2025-08-24
 
 ### Added

@@ -4,7 +4,7 @@
 
 # Project Progress — Vector Putt
 
-Updated: 2025-08-24 (local) — Fixed Level Editor load bug: canvas dimensions now update when loading saved levels; CHANGELOG updated; build is clean. Version bumped to 0.3.24; package.json and APP_VERSION synced with CHANGELOG. Hotkey: changed Test Overlay from `T` to `Shift+T` to avoid typing conflicts. Clipboard: implemented and documented Copy/Cut/Paste for Level Editor. Also fixed Main Menu → Level Editor entry to await Firebase user sync and closed a missing `isDevBuild()` brace; removed stray duplicated block in `src/main.ts`. Admin visibility: admins now see all user levels (public + private) in Level Editor and Course Select; implemented by passing `undefined` userId for admins in `src/main.ts` when calling `firebaseManager.levels.getAllLevels()`.
+Updated: 2025-08-25 (local) — Visibility: normal users now see all user-created levels (read-only if not owner). Cleanup: removed obsolete user-data migrations (cross-ID and single-slot) and `migrateUserData()` usage. CHANGELOG updated. Prior notes retained below.
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 
@@ -224,6 +224,7 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
    - Docs updated post-refactor; run type-checks, build, tests; manual smoke (selection/move/delete incl. polys)
 
 ## Done
+ - [x] 2025-08-25 — User level visibility for normal users (discover all user-made levels). Kept edit/delete gated by owner/admin checks. Removed obsolete migrations from `src/main.ts` and `src/firebase/index.ts`.
 - [x] Fix: Resolved TypeScript errors in `src/main.ts` — verified `loadLevel`, `loadLevelByIndex`, `preloadLevelByIndex` implementations near file end; added explicit `unknown` type to a caught error parameter to satisfy strict TS.
   - [x] Closed missing closing brace in `draw()` (TS1005 `'}` expected` at EOF); `npx tsc --noEmit` is clean.
 - [x] Fix: Converted `scripts/cleanup-db.js` to ESM `import` to match `package.json` ("type": "module"). This resolves the Node v22 `require()` error when running `npm run cleanup:db`.

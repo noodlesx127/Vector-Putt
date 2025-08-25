@@ -33,9 +33,8 @@ export class FirebaseManager {
         firebaseScoreStore.init()
       ]);
 
-      // Perform migrations
-      console.log('Performing data migrations...');
-      // Users are Firebase-only now; migrate levels and bundled content
+      // Perform level migrations only (bundled/public and legacy localStorage levels)
+      console.log('Performing level migrations...');
       await firebaseLevelStore.migrateFromLocalStorage();
       await firebaseLevelStore.migrateBundledLevels();
 
@@ -48,17 +47,7 @@ export class FirebaseManager {
     }
   }
 
-  async migrateUserData(userId: string): Promise<void> {
-    try {
-      await Promise.all([
-        firebaseSettingsStore.migrateFromLocalStorage(userId),
-        firebaseScoreStore.migrateFromLocalStorage(userId)
-      ]);
-      console.log(`User data migration completed for user: ${userId}`);
-    } catch (error) {
-      console.error('Failed to migrate user data:', error);
-    }
-  }
+  // Note: per policy, user data migration has been removed.
 
   // Getters for stores
   get users() { return firebaseUsersStore; }

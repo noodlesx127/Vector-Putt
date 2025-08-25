@@ -1256,23 +1256,23 @@ class LevelEditorImpl implements LevelEditor {
         if (menuItem.item.kind === 'action') {
           switch (menuItem.item.action) {
             case 'undo':
-              displayLabel = `Undo ${this.canUndo() ? '(Ctrl+Z)' : '(disabled)'}`;
+              displayLabel = this.canUndo() ? 'Undo (Ctrl+Z)' : 'Undo';
               isDisabled = !this.canUndo();
               break;
             case 'redo':
-              displayLabel = `Redo ${this.canRedo() ? '(Ctrl+Y)' : '(disabled)'}`;
+              displayLabel = this.canRedo() ? 'Redo (Ctrl+Y)' : 'Redo';
               isDisabled = !this.canRedo();
               break;
             case 'copy':
-              displayLabel = `Copy ${this.selectedObjects.length > 0 ? '(Ctrl+C)' : '(disabled)'}`;
+              displayLabel = this.selectedObjects.length > 0 ? 'Copy (Ctrl+C)' : 'Copy';
               isDisabled = this.selectedObjects.length === 0;
               break;
             case 'cut':
-              displayLabel = `Cut ${this.selectedObjects.length > 0 ? '(Ctrl+X)' : '(disabled)'}`;
+              displayLabel = this.selectedObjects.length > 0 ? 'Cut (Ctrl+X)' : 'Cut';
               isDisabled = this.selectedObjects.length === 0;
               break;
             case 'paste':
-              displayLabel = `Paste ${this.clipboard.length > 0 ? '(Ctrl+V)' : '(disabled)'}`;
+              displayLabel = this.clipboard.length > 0 ? 'Paste (Ctrl+V)' : 'Paste';
               isDisabled = this.clipboard.length === 0;
               break;
             case 'gridToggle':

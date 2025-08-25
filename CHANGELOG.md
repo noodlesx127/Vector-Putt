@@ -6,12 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - User level visibility: Normal users now see all user-created levels (in addition to public levels). Edit/Delete permissions remain restricted to owners and admins via existing checks.
+ - User Made Levels UI: added full mouse click support for list items and action buttons (Play/Edit/Delete/Duplicate); redesigned entries with card-style layout, color-coded source badges, clearer button layout, and permission hints. Improved scrollbar styling and hit detection to match the new layout.
 
 ### Removed
 - Obsolete user data migration flows: removed cross-ID level migration and single-slot migration code paths; removed `migrateUserData()` usage. Startup still performs bundled/public and legacy localStorage level migrations only.
 
 ### Fixed
 - Level deletion: Fixed invalid Firebase path during delete by ensuring the Firebase level ID is used everywhere. `src/editor/levelEditor.ts` now stores the real Firebase ID when loading a level (not the UI label), so `openDeletePicker()` passes a valid ID to `FirebaseLevelStore.deleteLevel()`.
+ - Level Editor Decorations: fixed decorations placement schema (use `kind` instead of `type`; include `w`/`h` dimensions; added missing `defaultRadius` variable) so Flowers/Trees/Rocks/Bushes place and render correctly.
 
 ## v0.3.24 — 2025-08-24
 

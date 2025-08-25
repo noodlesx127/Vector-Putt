@@ -224,6 +224,14 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
    - Docs updated post-refactor; run type-checks, build, tests; manual smoke (selection/move/delete incl. polys)
 
 ## Done
+- [x] 2025-08-25 — User Made Levels UI: mouse click support and redesign
+  - Added full mouse click support for list items and action buttons (Play/Edit/Delete/Duplicate)
+  - Redesigned entries with card-style layout, color-coded source badges, permission hints, and modern scrollbar
+  - Updated hit detection to match new button layout and positions
+- [x] 2025-08-25 — Level Editor Decorations fix
+  - Corrected placement schema for decorations to use `kind` (not `type`) and include `w`/`h` dimensions
+  - Added missing `defaultRadius` variable to resolve TypeScript errors
+  - Verified decorations (Flowers/Trees/Rocks/Bushes) place and render correctly
 - [x] 2025-08-25 — User level visibility for normal users (discover all user-made levels). Kept edit/delete gated by owner/admin checks. Removed obsolete migrations from `src/main.ts` and `src/firebase/index.ts`.
 - [x] 2025-08-25 — Fixed Firebase level deletion using proper Firebase ID
   - `src/editor/levelEditor.ts`: Load picker now stores the true Firebase ID (`entry.name`) separately from the UI label. `openDeletePicker()` uses this ID when calling `firebaseManager.levels.deleteLevel()`.

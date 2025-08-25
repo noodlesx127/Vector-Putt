@@ -1820,6 +1820,83 @@ canvas.addEventListener('mousedown', (e) => {
       gameState = 'course';
       return;
     }
+    
+    // Handle level list clicks
+    if (userLevelsList.length > 0) {
+      const listY = 120;
+      const itemHeight = 32;
+      const maxVisible = 12;
+      const startIndex = Math.max(0, selectedUserLevelIndex - Math.floor(maxVisible / 2));
+      const endIndex = Math.min(userLevelsList.length, startIndex + maxVisible);
+      
+      for (let i = startIndex; i < endIndex; i++) {
+        const y = listY + (i - startIndex) * itemHeight;
+        const itemRect = { x: 50, y: y - 2, w: WIDTH - 100, h: itemHeight - 4 };
+        
+        if (p.x >= itemRect.x && p.x <= itemRect.x + itemRect.w && 
+            p.y >= itemRect.y && p.y <= itemRect.y + itemRect.h) {
+          
+          if (i === selectedUserLevelIndex) {
+            // Double-click behavior: play the level
+            void playUserLevel(userLevelsList[i]);
+          } else {
+            // Single click: select the level
+            selectedUserLevelIndex = i;
+          }
+          return;
+        }
+      }
+      
+      // Handle action button clicks when a level is selected
+      if (selectedUserLevelIndex >= startIndex && selectedUserLevelIndex < endIndex) {
+        const level = userLevelsList[selectedUserLevelIndex];
+        const isOwner = (level.author || '').toLowerCase() === (userProfile?.name || '').toLowerCase();
+        const isAdmin = userProfile?.role === 'admin';
+        const canEdit = isOwner || isAdmin;
+        
+        const selectedY = listY + (selectedUserLevelIndex - startIndex) * itemHeight;
+        const buttonY = selectedY + 6;
+        const buttonH = 12;
+        const cardX = 40, cardW = WIDTH - 80;
+        let buttonX = cardX + cardW - 12;
+        
+        // Play button (always available)
+        const playW = 40;
+        buttonX -= playW;
+        if (p.x >= buttonX && p.x <= buttonX + playW && p.y >= buttonY && p.y <= buttonY + buttonH) {
+          void playUserLevel(level);
+          return;
+        }
+        
+        // Duplicate button
+        const dupW = 35;
+        buttonX -= dupW + 4;
+        if (p.x >= buttonX && p.x <= buttonX + dupW && p.y >= buttonY && p.y <= buttonY + buttonH) {
+          void duplicateUserLevel(level);
+          return;
+        }
+        
+        // Edit button (if can edit)
+        if (canEdit) {
+          const editW = 30;
+          buttonX -= editW + 4;
+          if (p.x >= buttonX && p.x <= buttonX + editW && p.y >= buttonY && p.y <= buttonY + buttonH) {
+            void editUserLevel(level);
+            return;
+          }
+        }
+        
+        // Delete button (if can edit)
+        if (canEdit) {
+          const delW = 30;
+          buttonX -= delW + 4;
+          if (p.x >= buttonX && p.x <= buttonX + delW && p.y >= buttonY && p.y <= buttonY + buttonH) {
+            void deleteUserLevel(level);
+            return;
+          }
+        }
+      }
+    }
   }
   // Handle Level Editor interactions - delegate to levelEditor module
   if (gameState === 'levelEditor') {
@@ -3464,19 +3541,30 @@ function draw() {
     ctx.fillText('User Made Levels', WIDTH/2, 60);
     
     if (userLevelsList.length === 0) {
-      ctx.font = '16px system-ui, sans-serif';
-      ctx.fillText('No user levels found', WIDTH/2, 150);
-      ctx.font = '14px system-ui, sans-serif';
-      ctx.fillText('Create levels in the Level Editor', WIDTH/2, 180);
-    } else {
-      // Instructions
-      ctx.font = '14px system-ui, sans-serif';
-      ctx.fillText('↑↓ Navigate • Enter Play • E Edit • Del Delete • D Duplicate • Esc Back', WIDTH/2, 86);
+      // Empty state with better styling
+      ctx.fillStyle = 'rgba(255,255,255,0.1)';
+      ctx.fillRect(WIDTH/2 - 200, 140, 400, 120);
+      ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(WIDTH/2 - 200, 140, 400, 120);
       
-      // Level list
-      const listY = 120;
-      const itemHeight = 32;
-      const maxVisible = 12;
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '18px system-ui, sans-serif';
+      ctx.fillText('No user levels found', WIDTH/2, 170);
+      ctx.font = '14px system-ui, sans-serif';
+      ctx.fillStyle = '#cccccc';
+      ctx.fillText('Create levels in the Level Editor to see them here', WIDTH/2, 200);
+      ctx.fillText('Click Level Editor from the main menu to get started', WIDTH/2, 220);
+    } else {
+      // Instructions with better styling
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.fillStyle = '#cccccc';
+      ctx.fillText('Click to select • Double-click to play • Keyboard: ↑↓ Navigate • Enter Play • E Edit • Del Delete • D Duplicate', WIDTH/2, 86);
+      
+      // Level list with improved design
+      const listY = 110;
+      const itemHeight = 40;
+      const maxVisible = 10;
       const startIndex = Math.max(0, selectedUserLevelIndex - Math.floor(maxVisible / 2));
       const endIndex = Math.min(userLevelsList.length, startIndex + maxVisible);
       
@@ -3488,50 +3576,110 @@ function draw() {
         const isAdmin = userProfile?.role === 'admin';
         const canEdit = isOwner || isAdmin;
         
-        // Background
-        if (isSelected) {
-          ctx.fillStyle = 'rgba(255,255,255,0.2)';
-          ctx.fillRect(50, y - 2, WIDTH - 100, itemHeight - 4);
-        }
+        // Card-style background
+        const cardX = 40, cardW = WIDTH - 80;
+        ctx.fillStyle = isSelected ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.05)';
+        ctx.fillRect(cardX, y, cardW, itemHeight - 2);
+        
+        // Border
+        ctx.strokeStyle = isSelected ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.1)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(cardX, y, cardW, itemHeight - 2);
         
         // Level name
         ctx.fillStyle = '#ffffff';
         ctx.font = '16px system-ui, sans-serif';
-        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-        ctx.fillText(level.name, 70, y + itemHeight/2);
+        ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+        ctx.fillText(level.name, cardX + 12, y + 6);
         
-        // Author and source
+        // Author and source with better formatting
         ctx.font = '12px system-ui, sans-serif';
-        ctx.fillStyle = '#cccccc';
-        const sourceLabel = level.source === 'bundled' ? '[bundled]' : 
-                           level.source === 'filesystem' ? '[user]' : '[local]';
-        ctx.fillText(`by ${level.author} ${sourceLabel}`, 70, y + itemHeight/2 + 14);
+        ctx.fillStyle = '#aaaaaa';
+        const sourceLabel = level.source === 'bundled' ? 'bundled' : 
+                           level.source === 'filesystem' ? 'user' : 'local';
+        const sourceColor = level.source === 'bundled' ? '#4CAF50' : 
+                           level.source === 'filesystem' ? '#2196F3' : '#FF9800';
         
-        // Actions (if selected)
+        ctx.fillText(`by ${level.author}`, cardX + 12, y + 22);
+        
+        // Source badge
+        const badgeX = cardX + 12 + ctx.measureText(`by ${level.author} `).width;
+        ctx.fillStyle = sourceColor;
+        ctx.fillRect(badgeX, y + 20, ctx.measureText(sourceLabel).width + 8, 14);
+        ctx.fillStyle = '#000000';
+        ctx.font = '10px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(sourceLabel, badgeX + (ctx.measureText(sourceLabel).width + 8) / 2, y + 30);
+        
+        // Action buttons (if selected)
         if (isSelected) {
-          ctx.textAlign = 'right';
-          ctx.fillStyle = canEdit ? '#ffffff' : '#666666';
-          ctx.fillText(canEdit ? 'E Edit' : 'E Edit (disabled)', WIDTH - 240, y + itemHeight/2 - 10);
-          ctx.fillStyle = canEdit ? '#ffffff' : '#666666';
-          ctx.fillText(canEdit ? 'Del Delete' : 'Del Delete (disabled)', WIDTH - 240, y + itemHeight/2 + 4);
+          const buttonY = y + 6;
+          const buttonH = 12;
+          let buttonX = cardX + cardW - 12;
+          
+          // Play button (always available)
+          const playW = 40;
+          buttonX -= playW;
+          ctx.fillStyle = 'rgba(76, 175, 80, 0.8)';
+          ctx.fillRect(buttonX, buttonY, playW, buttonH);
           ctx.fillStyle = '#ffffff';
-          ctx.fillText('D Duplicate', WIDTH - 120, y + itemHeight/2 - 3);
-          ctx.fillText('Enter Play', WIDTH - 70, y + itemHeight/2 + 10);
+          ctx.font = '10px system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('PLAY', buttonX + playW/2, buttonY + buttonH - 2);
+          
+          // Duplicate button
+          const dupW = 35;
+          buttonX -= dupW + 4;
+          ctx.fillStyle = 'rgba(255, 152, 0, 0.8)';
+          ctx.fillRect(buttonX, buttonY, dupW, buttonH);
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText('DUP', buttonX + dupW/2, buttonY + buttonH - 2);
+          
+          // Edit button (if can edit)
+          if (canEdit) {
+            const editW = 30;
+            buttonX -= editW + 4;
+            ctx.fillStyle = 'rgba(33, 150, 243, 0.8)';
+            ctx.fillRect(buttonX, buttonY, editW, buttonH);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText('EDIT', buttonX + editW/2, buttonY + buttonH - 2);
+          }
+          
+          // Delete button (if can edit)
+          if (canEdit) {
+            const delW = 30;
+            buttonX -= delW + 4;
+            ctx.fillStyle = 'rgba(244, 67, 54, 0.8)';
+            ctx.fillRect(buttonX, buttonY, delW, buttonH);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText('DEL', buttonX + delW/2, buttonY + buttonH - 2);
+          }
+          
+          // Permission hint for non-owners
+          if (!canEdit) {
+            ctx.textAlign = 'right';
+            ctx.fillStyle = '#666666';
+            ctx.font = '10px system-ui, sans-serif';
+            ctx.fillText('(owner/admin only)', cardX + cardW - 12, y + 30);
+          }
         }
       }
       
-      // Scroll indicator
+      // Modern scroll indicator
       if (userLevelsList.length > maxVisible) {
-        const scrollBarHeight = 200;
-        const scrollBarY = 120;
-        const scrollBarX = WIDTH - 20;
+        const scrollBarHeight = maxVisible * itemHeight;
+        const scrollBarY = listY;
+        const scrollBarX = WIDTH - 16;
         const thumbHeight = Math.max(20, scrollBarHeight * maxVisible / userLevelsList.length);
         const thumbY = scrollBarY + (selectedUserLevelIndex / userLevelsList.length) * (scrollBarHeight - thumbHeight);
         
-        ctx.fillStyle = 'rgba(255,255,255,0.3)';
-        ctx.fillRect(scrollBarX, scrollBarY, 4, scrollBarHeight);
-        ctx.fillStyle = 'rgba(255,255,255,0.8)';
-        ctx.fillRect(scrollBarX, thumbY, 4, thumbHeight);
+        // Track
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        ctx.fillRect(scrollBarX, scrollBarY, 6, scrollBarHeight);
+        
+        // Thumb
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.fillRect(scrollBarX, thumbY, 6, thumbHeight);
       }
     }
     

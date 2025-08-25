@@ -1504,6 +1504,7 @@ class LevelEditorImpl implements LevelEditor {
       if (inFairway && (this.selectedTool === 'tee' || this.selectedTool === 'cup' || this.selectedTool === 'post' || this.selectedTool === 'decoration')) {
         this.pushUndoSnapshot(`Place ${this.selectedTool === 'decoration' ? this.selectedDecoration : this.selectedTool}`);
         const gs = env.getGlobalState();
+        const defaultRadius = 12;
         
         if (this.selectedTool === 'tee') {
           gs.ball.x = px; gs.ball.y = py;
@@ -1512,7 +1513,6 @@ class LevelEditorImpl implements LevelEditor {
           gs.hole.x = px; gs.hole.y = py;
           if (this.editorLevelData) { this.editorLevelData.cup.x = px; this.editorLevelData.cup.y = py; }
         } else if (this.selectedTool === 'post') {
-          const defaultRadius = 12;
           const post = { x: px, y: py, r: defaultRadius };
           gs.posts.push(post);
           if (this.editorLevelData) this.editorLevelData.posts.push(post);
@@ -1520,9 +1520,9 @@ class LevelEditorImpl implements LevelEditor {
           const decoration = { 
             x: px, 
             y: py, 
-            type: this.selectedDecoration,
-            scale: 1.0,
-            rotation: 0
+            w: 32,
+            h: 32,
+            kind: this.selectedDecoration
           };
           gs.decorations.push(decoration);
           if (this.editorLevelData) this.editorLevelData.decorations.push(decoration);
@@ -1530,7 +1530,6 @@ class LevelEditorImpl implements LevelEditor {
         
         if (this.selectedTool === 'post') {
           // Show radius picker for the new post
-          const defaultRadius = 12;
           this.postRadiusPicker = { 
             x: px, 
             y: py, 

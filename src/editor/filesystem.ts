@@ -211,12 +211,13 @@ async function loadUserLevels(username: string): Promise<LevelFile[]> {
   return levels;
 }
 
-// Import level from file upload
+// Import level from file upload with validation
 export async function importLevelFromFile(): Promise<any | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json';
+    input.multiple = false;
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) {
@@ -227,11 +228,75 @@ export async function importLevelFromFile(): Promise<any | null> {
       try {
         const text = await file.text();
         const data = JSON.parse(text);
+        
+        // Validate the level data
+        const validation = validateLevelData(data);
+        if (!validation.valid) {
+          console.error('Invalid level data:', validation.errors);
+          alert(`Invalid level file:\n${validation.errors.join('\n')}`);
+          resolve(null);
+          return;
+        }
+        
         resolve(data);
       } catch (error) {
         console.error('Failed to import level:', error);
+        alert('Failed to import level: Invalid JSON file');
         resolve(null);
       }
+    };
+    input.click();
+  });
+}
+
+// Import multiple levels from file upload with validation
+export async function importMultipleLevelsFromFiles(): Promise<Array<{name: string, data: any, source: string}> | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.multiple = true;
+    input.onchange = async (e) => {
+      const files = Array.from((e.target as HTMLInputElement).files || []);
+      if (files.length === 0) {
+        resolve(null);
+        return;
+      }
+      
+      const results: Array<{name: string, data: any, source: string}> = [];
+      const errors: string[] = [];
+      
+      for (const file of files) {
+        try {
+          const text = await file.text();
+          const data = JSON.parse(text);
+          
+          // Validate the level data
+          const validation = validateLevelData(data);
+          if (!validation.valid) {
+            errors.push(`${file.name}: ${validation.errors.join(', ')}`);
+            continue;
+          }
+          
+          // Apply automatic fix-ups
+          const fixedData = applyLevelDataFixups(data);
+          
+          results.push({
+            name: file.name.replace('.json', ''),
+            data: fixedData,
+            source: 'import'
+          });
+        } catch (error) {
+          errors.push(`${file.name}: Invalid JSON file`);
+        }
+      }
+      
+      if (errors.length > 0) {
+        console.warn('Import errors:', errors);
+        alert(`Import completed with errors:\n${errors.join('\n')}`);
+      }
+      
+      resolve(results.length > 0 ? results : null);
     };
     input.click();
   });
@@ -268,4 +333,56 @@ export function validateLevelData(data: any): { valid: boolean; errors: string[]
   }
   
   return { valid: errors.length === 0, errors };
+}
+
+// Apply automatic fix-ups to level data where safe
+export function applyLevelDataFixups(data: any): any {
+  const fixed = JSON.parse(JSON.stringify(data)); // Deep clone
+  
+  // Ensure all required arrays exist
+  const arrayFields = ['walls', 'wallsPoly', 'posts', 'bridges', 'water', 'waterPoly', 'sand', 'sandPoly', 'hills', 'decorations'];
+  for (const field of arrayFields) {
+    if (!fixed[field]) {
+      fixed[field] = [];
+    }
+  }
+  
+  // Ensure canvas dimensions are valid
+  if (!fixed.canvas) {
+    fixed.canvas = { width: 800, height: 600 };
+  }
+  if (typeof fixed.canvas.width !== 'number' || fixed.canvas.width <= 0) {
+    fixed.canvas.width = 800;
+  }
+  if (typeof fixed.canvas.height !== 'number' || fixed.canvas.height <= 0) {
+    fixed.canvas.height = 600;
+  }
+  
+  // Ensure par is valid
+  if (typeof fixed.par !== 'number' || fixed.par <= 0) {
+    fixed.par = 3;
+  }
+  
+  // Ensure course metadata exists
+  if (!fixed.course) {
+    fixed.course = { index: 1, total: 1 };
+  }
+  if (typeof fixed.course.index !== 'number') {
+    fixed.course.index = 1;
+  }
+  if (typeof fixed.course.total !== 'number') {
+    fixed.course.total = 1;
+  }
+  
+  // Ensure meta object exists for author tracking
+  if (!fixed.meta) {
+    fixed.meta = {};
+  }
+  
+  // Set lastModified if not present
+  if (!fixed.meta.lastModified) {
+    fixed.meta.lastModified = Date.now();
+  }
+  
+  return fixed;
 }

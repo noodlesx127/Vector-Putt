@@ -11,9 +11,11 @@
 import { 
   loadLevelsFromFilesystem, 
   importLevelFromFile, 
+  importMultipleLevelsFromFiles,
   saveLevelToFilesystem, 
   isFileSystemAccessSupported, 
-  saveLevelAsDownload 
+  saveLevelAsDownload,
+  applyLevelDataFixups 
 } from './filesystem';
 
 // Local palette for the editor module (matches docs/PALETTE.md and main.ts)
@@ -58,10 +60,10 @@ type SelectableObject =
   | { type: 'hill'; object: Slope; index: number };
 
 export type EditorTool =
-  | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'sand' | 'sandPoly' | 'hill';
+  | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'sand' | 'sandPoly' | 'hill' | 'decoration';
 
 export type EditorAction =
-  | 'save' | 'saveAs' | 'load' | 'export' | 'new' | 'delete' | 'test' | 'gridToggle' | 'gridMinus' | 'gridPlus' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste';
+  | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'gridToggle' | 'gridMinus' | 'gridPlus' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste';
 
 export type EditorMenuId = 'file' | 'objects' | 'decorations' | 'tools';
 
@@ -176,6 +178,7 @@ type EditorSnapshot = {
 class LevelEditorImpl implements LevelEditor {
   // Editor state
   private selectedTool: EditorTool = 'select';
+  private selectedDecoration: string = 'flowers';
   private openEditorMenu: EditorMenuId | null = null;
   private uiHotspots: EditorHotspot[] = [];
   private showGrid: boolean = true;
@@ -528,7 +531,10 @@ class LevelEditorImpl implements LevelEditor {
         { label: 'Save', item: { kind: 'action', action: 'save' } },
         { label: 'Save As', item: { kind: 'action', action: 'saveAs' } },
         { label: 'Level Load', item: { kind: 'action', action: 'load' } },
+        { label: 'Import', item: { kind: 'action', action: 'import' } },
         { label: 'Export', item: { kind: 'action', action: 'export' } },
+        { label: 'Metadata', item: { kind: 'action', action: 'metadata' } },
+        { label: 'Suggest Par', item: { kind: 'action', action: 'suggestPar' } },
         { label: 'Test Level', item: { kind: 'action', action: 'test' }, separator: true },
         { label: 'Delete', item: { kind: 'action', action: 'delete' } },
         { label: 'Back/Exit', item: { kind: 'action', action: 'back' }, separator: true }
@@ -553,7 +559,10 @@ class LevelEditorImpl implements LevelEditor {
     decorations: {
       title: 'Decorations',
       items: [
-        { label: 'Flowers', item: { kind: 'decoration', decoration: 'flowers' } }
+        { label: 'Flowers', item: { kind: 'decoration', decoration: 'flowers' } },
+        { label: 'Trees', item: { kind: 'decoration', decoration: 'trees' } },
+        { label: 'Rocks', item: { kind: 'decoration', decoration: 'rocks' } },
+        { label: 'Bushes', item: { kind: 'decoration', decoration: 'bushes' } }
       ]
     },
     tools: {
@@ -1388,6 +1397,12 @@ class LevelEditorImpl implements LevelEditor {
             this.openEditorMenu = null;
             return;
           }
+          if (item.kind === 'decoration') {
+            this.selectedDecoration = item.decoration;
+            this.selectedTool = 'decoration';
+            this.openEditorMenu = null;
+            return;
+          }
           if (item.kind === 'action') {
             if (item.action === 'gridToggle') {
               try { env.setShowGrid?.(!env.getShowGrid()); } catch {}
@@ -1403,8 +1418,14 @@ class LevelEditorImpl implements LevelEditor {
               void this.saveAs();
             } else if (item.action === 'load') {
               void this.openLoadPicker();
+            } else if (item.action === 'import') {
+              void this.importLevel();
             } else if (item.action === 'export') {
               void this.exportLevel();
+            } else if (item.action === 'metadata') {
+              void this.editMetadata();
+            } else if (item.action === 'suggestPar') {
+              void this.suggestPar();
             } else if (item.action === 'test') {
               void this.testLevel();
             } else if (item.action === 'delete') {
@@ -1479,9 +1500,9 @@ class LevelEditorImpl implements LevelEditor {
         }
       }
       
-      // Point placement for tee/cup/post
-      if (inFairway && (this.selectedTool === 'tee' || this.selectedTool === 'cup' || this.selectedTool === 'post')) {
-        this.pushUndoSnapshot(`Place ${this.selectedTool}`);
+      // Point placement for tee/cup/post/decoration
+      if (inFairway && (this.selectedTool === 'tee' || this.selectedTool === 'cup' || this.selectedTool === 'post' || this.selectedTool === 'decoration')) {
+        this.pushUndoSnapshot(`Place ${this.selectedTool === 'decoration' ? this.selectedDecoration : this.selectedTool}`);
         const gs = env.getGlobalState();
         
         if (this.selectedTool === 'tee') {
@@ -1495,8 +1516,21 @@ class LevelEditorImpl implements LevelEditor {
           const post = { x: px, y: py, r: defaultRadius };
           gs.posts.push(post);
           if (this.editorLevelData) this.editorLevelData.posts.push(post);
-          
+        } else if (this.selectedTool === 'decoration') {
+          const decoration = { 
+            x: px, 
+            y: py, 
+            type: this.selectedDecoration,
+            scale: 1.0,
+            rotation: 0
+          };
+          gs.decorations.push(decoration);
+          if (this.editorLevelData) this.editorLevelData.decorations.push(decoration);
+        }
+        
+        if (this.selectedTool === 'post') {
           // Show radius picker for the new post
+          const defaultRadius = 12;
           this.postRadiusPicker = { 
             x: px, 
             y: py, 
@@ -2014,6 +2048,7 @@ class LevelEditorImpl implements LevelEditor {
     if (e.code === 'KeyP' && !e.ctrlKey) { this.selectedTool = 'post'; return; }
     if (e.code === 'KeyB' && !e.ctrlKey) { this.selectedTool = 'bridge'; return; }
     if (e.code === 'KeyH' && !e.ctrlKey) { this.selectedTool = 'hill'; return; }
+    if (e.code === 'KeyD' && !e.ctrlKey) { this.selectedTool = 'decoration'; return; }
 
     // Test Level shortcut
     if (e.ctrlKey && e.code === 'KeyT') {
@@ -2397,6 +2432,302 @@ class LevelEditorImpl implements LevelEditor {
       this.editorCurrentSavedId = oldId;
       throw error;
     }
+  }
+
+  async importLevel(): Promise<void> {
+    if (!this.env) return;
+
+    try {
+      // Show confirmation if there are unsaved changes
+      if (this.editorLevelData && this.editorCurrentSavedId === null) {
+        const proceed = await this.env.showConfirm(
+          'You have unsaved changes. Import will replace the current level. Continue?',
+          'Import Level'
+        );
+        if (!proceed) return;
+      }
+
+      // Use the improved import function with validation
+      const importedData = await importLevelFromFile();
+      if (!importedData) {
+        this.env.showToast('Import cancelled');
+        return;
+      }
+
+      // Apply automatic fix-ups
+      const fixedData = applyLevelDataFixups(importedData);
+
+      // Prompt for title and author metadata
+      const currentUsername = this.env.getGlobalState().userProfile?.name || 'DefaultUser';
+      const suggestedTitle = fixedData.course?.title || fixedData.meta?.title || 'Imported Level';
+      const suggestedAuthor = fixedData.meta?.authorName || currentUsername;
+
+      const title = await this.env.showPrompt('Level Title:', suggestedTitle);
+      if (!title) {
+        this.env.showToast('Import cancelled');
+        return;
+      }
+
+      const author = await this.env.showPrompt('Author Name:', suggestedAuthor);
+      if (!author) {
+        this.env.showToast('Import cancelled');
+        return;
+      }
+
+      // Update metadata
+      if (!fixedData.meta) fixedData.meta = {};
+      if (!fixedData.course) fixedData.course = { index: 1, total: 1 };
+      
+      fixedData.course.title = title;
+      fixedData.meta.authorName = author;
+      fixedData.meta.authorId = author;
+      fixedData.meta.lastModified = Date.now();
+
+      // Load the imported level into the editor
+      this.editorLevelData = fixedData;
+      this.editorCurrentSavedId = null; // Mark as unsaved
+      this.selectedObjects = [];
+      this.clipboard = [];
+      
+      // Clear undo/redo history for imported level
+      this.undoStack = [];
+      this.redoStack = [];
+
+      // Load into global state
+      this.loadEditorLevelIntoGlobals(this.env);
+
+      this.env.showToast(`Imported: ${title}`);
+      console.log('Level imported successfully:', title);
+
+    } catch (error) {
+      console.error('Failed to import level:', error);
+      this.env?.showToast('Import failed: Invalid level file');
+    }
+  }
+
+  async editMetadata(): Promise<void> {
+    if (!this.editorLevelData || !this.env) {
+      this.env?.showToast('No level data to edit');
+      return;
+    }
+
+    try {
+      // Ensure metadata objects exist
+      if (!this.editorLevelData.meta) this.editorLevelData.meta = {};
+      if (!this.editorLevelData.course) this.editorLevelData.course = { index: 1, total: 1 };
+
+      // Get current values
+      const currentTitle = this.editorLevelData.course.title || 'Untitled';
+      const currentAuthor = this.editorLevelData.meta.authorName || this.env.getGlobalState().userProfile?.name || 'DefaultUser';
+      const currentPar = this.editorLevelData.par || 3;
+
+      // Prompt for title
+      const newTitle = await this.env.showPrompt('Level Title:', currentTitle);
+      if (newTitle === null) return; // User cancelled
+
+      // Prompt for author
+      const newAuthor = await this.env.showPrompt('Author Name:', currentAuthor);
+      if (newAuthor === null) return; // User cancelled
+
+      // Prompt for par
+      const parStr = await this.env.showPrompt('Par (1-9):', currentPar.toString());
+      if (parStr === null) return; // User cancelled
+
+      const newPar = parseInt(parStr, 10);
+      if (isNaN(newPar) || newPar < 1 || newPar > 9) {
+        this.env.showToast('Invalid par value. Must be 1-9.');
+        return;
+      }
+
+      // Create undo snapshot before making changes
+      this.pushUndoSnapshot('Edit Metadata');
+
+      // Update metadata
+      this.editorLevelData.course.title = newTitle.trim() || 'Untitled';
+      this.editorLevelData.meta.authorName = newAuthor.trim() || 'DefaultUser';
+      this.editorLevelData.meta.authorId = newAuthor.trim() || 'DefaultUser';
+      this.editorLevelData.par = newPar;
+      this.editorLevelData.meta.lastModified = Date.now();
+
+      // Mark as unsaved if this was a saved level
+      if (this.editorCurrentSavedId !== null) {
+        this.editorCurrentSavedId = null;
+      }
+
+      this.env.showToast(`Metadata updated: ${this.editorLevelData.course.title}`);
+      console.log('Level metadata updated:', {
+        title: this.editorLevelData.course.title,
+        author: this.editorLevelData.meta.authorName,
+        par: this.editorLevelData.par
+      });
+
+    } catch (error) {
+      console.error('Failed to edit metadata:', error);
+      this.env?.showToast('Failed to edit metadata');
+    }
+  }
+
+  async suggestPar(): Promise<void> {
+    if (!this.editorLevelData || !this.env) {
+      this.env?.showToast('No level data to analyze');
+      return;
+    }
+
+    try {
+      // Sync current editor state
+      this.syncEditorDataFromGlobals(this.env);
+
+      const analysis = this.analyzeLevelDifficulty();
+      const suggestedPar = this.calculateParFromAnalysis(analysis);
+      
+      const currentPar = this.editorLevelData.par || 3;
+      const message = `Current Par: ${currentPar}\nSuggested Par: ${suggestedPar}\n\nAnalysis:\n${analysis.summary}\n\nApply suggested par?`;
+      
+      const apply = await this.env.showConfirm(message, 'Par Suggestion');
+      if (apply) {
+        // Create undo snapshot before making changes
+        this.pushUndoSnapshot('Apply Par Suggestion');
+        
+        this.editorLevelData.par = suggestedPar;
+        if (!this.editorLevelData.meta) this.editorLevelData.meta = {};
+        this.editorLevelData.meta.lastModified = Date.now();
+        
+        // Mark as unsaved
+        if (this.editorCurrentSavedId !== null) {
+          this.editorCurrentSavedId = null;
+        }
+        
+        this.env.showToast(`Par updated to ${suggestedPar}`);
+      }
+
+    } catch (error) {
+      console.error('Failed to suggest par:', error);
+      this.env?.showToast('Failed to analyze level');
+    }
+  }
+
+  private analyzeLevelDifficulty(): { 
+    distance: number; 
+    obstacles: number; 
+    bankShots: number; 
+    complexity: number; 
+    summary: string 
+  } {
+    if (!this.editorLevelData) {
+      return { distance: 0, obstacles: 0, bankShots: 0, complexity: 1, summary: 'No level data' };
+    }
+
+    // Calculate direct distance from tee to cup
+    const tee = this.editorLevelData.tee;
+    const cup = this.editorLevelData.cup;
+    const directDistance = Math.sqrt(Math.pow(cup.x - tee.x, 2) + Math.pow(cup.y - tee.y, 2));
+
+    // Count obstacles that affect ball path
+    const walls = (this.editorLevelData.walls || []).length + (this.editorLevelData.wallsPoly || []).length;
+    const posts = (this.editorLevelData.posts || []).length;
+    const water = (this.editorLevelData.waters || []).length + (this.editorLevelData.watersPoly || []).length;
+    const sand = (this.editorLevelData.sands || []).length + (this.editorLevelData.sandsPoly || []).length;
+    const hills = (this.editorLevelData.hills || []).length;
+    
+    const totalObstacles = walls + posts + water + sand + hills;
+
+    // Analyze potential bank shots (walls near the direct path)
+    let bankShotOpportunities = 0;
+    const pathWalls = this.editorLevelData.walls || [];
+    for (const wall of pathWalls) {
+      // Check if wall is positioned to enable bank shots
+      const wallCenter = { x: wall.x + wall.w / 2, y: wall.y + wall.h / 2 };
+      const distanceToPath = this.distanceToLineSegment(wallCenter, tee, cup);
+      if (distanceToPath < 100) { // Wall is close to direct path
+        bankShotOpportunities++;
+      }
+    }
+
+    // Calculate complexity score
+    let complexity = 1;
+    
+    // Distance factor (longer = harder)
+    if (directDistance > 400) complexity += 1;
+    if (directDistance > 600) complexity += 1;
+    
+    // Obstacle factor
+    if (totalObstacles > 3) complexity += 1;
+    if (totalObstacles > 6) complexity += 1;
+    if (totalObstacles > 10) complexity += 1;
+    
+    // Water/sand penalty (more punishing than walls)
+    if (water > 0) complexity += 1;
+    if (sand > 2) complexity += 1;
+    
+    // Bank shot opportunities (require skill)
+    if (bankShotOpportunities > 1) complexity += 1;
+    if (bankShotOpportunities > 3) complexity += 1;
+
+    // Hills add elevation complexity
+    if (hills > 0) complexity += 1;
+
+    const summary = [
+      `Distance: ${Math.round(directDistance)}px`,
+      `Obstacles: ${totalObstacles} (${walls} walls, ${posts} posts, ${water} water, ${sand} sand, ${hills} hills)`,
+      `Bank opportunities: ${bankShotOpportunities}`,
+      `Complexity: ${complexity}/7`
+    ].join('\n');
+
+    return {
+      distance: directDistance,
+      obstacles: totalObstacles,
+      bankShots: bankShotOpportunities,
+      complexity,
+      summary
+    };
+  }
+
+  private calculateParFromAnalysis(analysis: { distance: number; obstacles: number; bankShots: number; complexity: number }): number {
+    // Base par calculation
+    let par = 2; // Minimum par
+    
+    // Distance-based par
+    if (analysis.distance > 200) par = 3;
+    if (analysis.distance > 400) par = 4;
+    if (analysis.distance > 600) par = 5;
+    
+    // Complexity adjustments
+    if (analysis.complexity >= 5) par += 1;
+    if (analysis.complexity >= 7) par += 1;
+    
+    // Obstacle adjustments
+    if (analysis.obstacles > 5) par += 1;
+    if (analysis.obstacles > 10) par += 1;
+    
+    // Bank shot bonus (skilled players can use these)
+    if (analysis.bankShots > 2 && analysis.complexity < 4) {
+      par = Math.max(par - 1, 2); // Reduce par if bank shots make it easier
+    }
+    
+    // Clamp to valid range
+    return Math.max(1, Math.min(9, par));
+  }
+
+  private distanceToLineSegment(point: { x: number; y: number }, lineStart: { x: number; y: number }, lineEnd: { x: number; y: number }): number {
+    const A = point.x - lineStart.x;
+    const B = point.y - lineStart.y;
+    const C = lineEnd.x - lineStart.x;
+    const D = lineEnd.y - lineStart.y;
+
+    const dot = A * C + B * D;
+    const lenSq = C * C + D * D;
+    
+    if (lenSq === 0) return Math.sqrt(A * A + B * B);
+    
+    let param = dot / lenSq;
+    param = Math.max(0, Math.min(1, param));
+    
+    const xx = lineStart.x + param * C;
+    const yy = lineStart.y + param * D;
+    
+    const dx = point.x - xx;
+    const dy = point.y - yy;
+    return Math.sqrt(dx * dx + dy * dy);
   }
 
   async exportLevel(): Promise<void> {

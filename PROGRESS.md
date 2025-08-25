@@ -125,12 +125,12 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
     - Supports: rects (walls/water/sand/bridges/hills), posts (radius preserved), polygons (translate-only)
     - Paste behavior: place at mouse cursor with grid snapping and fairway clamping; maintain relative offsets for group selections
     - Cross-level: allow pasting into another level within the same editor session
-  - [ ] Import: Proper Import flow to complement Export
+  - [x] Import: Proper Import flow to complement Export
     - UI: in-game overlay with file picker and list (supports multi-select); clear source labels [FS]/[User]
     - Validation: full schema validation with readable error reporting; automatic fix-ups where safe
     - Metadata: set/confirm authorName/authorId and lastModified; title prompt with conflict resolution (rename/overwrite/cancel)
     - Sources: filesystem (File System Access API) and browser builds (file upload)
-  - [ ] Course Select: add "User Made Levels" category; list Title — Author; Play; owner/admin Edit/Delete; permissions gating; no regression
+  - [x] Course Select: add "User Made Levels" category; list Title — Author; Play; owner/admin Edit/Delete; permissions gating; no regression
   - [x] Level Editor file system integration:
     - [x] Load any level from existing `levels/*.json` directory for editing
     - [x] Save levels to filesystem via File System Access API or download fallback
@@ -153,9 +153,9 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
     - All previous `alert()/prompt()/confirm()` call sites in `src/main.ts` migrated to overlays
     - Rendering integration: Overlays and toasts are now drawn at the end of `draw()` so they appear above all UI layers; `overlayHotspots` rebuilt each frame while overlays are active; overlay mouse clicks are swallowed to prevent click-through; toasts render as a top-right stack with auto-expire.
     - Fix: Added inline `renderGlobalOverlays()` calls in `draw()` for `course`, `options`, and `changelog` states (previously returned early), so overlays render on these screens too.
-  - [ ] Tool palette: Tee, Cup, Walls/WallsPoly, Posts, Bridges, Water/WaterPoly, Sand/SandPoly, Hills, decorations (full authoring behaviors)
-  - [ ] Metadata editor: Level title and Author (persist in JSON)
-  - [ ] Par/Birdie suggestion engine based on path analysis and bank heuristics
+  - [x] Tool palette: Tee, Cup, Walls/WallsPoly, Posts, Bridges, Water/WaterPoly, Sand/SandPoly, Hills, decorations (full authoring behaviors)
+  - [x] Metadata editor for level title and author (persist in JSON)
+  - [x] Par/Birdie suggestion engine based on path analysis and bank heuristics
 
 - [x] User System
   - [x] Local profiles: create/select active user; persist name and role (admin/user)

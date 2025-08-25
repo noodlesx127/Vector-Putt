@@ -14,6 +14,24 @@ All notable changes to this project will be documented in this file.
  - **Level Editor Clipboard**: Copy, Cut, Paste for selected objects with Ctrl+C / Ctrl+X / Ctrl+V
    - Supports rectangles (walls, water, sand, bridges, hills), posts (radius preserved), and polygons (`wallsPoly`, `waterPoly`, `sandPoly`, translate-only)
    - Paste at mouse cursor with grid snapping and fairway clamping; retains relative offsets for multi-select groups
+- **Level Editor Import**: Proper Import flow with file picker and validation
+   - Import menu item in File menu with keyboard shortcut support
+   - Full schema validation with readable error reporting and automatic fix-ups
+   - Metadata prompts for title and author with conflict resolution
+   - Unsaved changes confirmation and undo/redo history reset
+- **Level Editor Metadata**: Metadata editor for level title, author, and par
+   - Metadata menu item in File menu for editing level properties
+   - Prompts for title, author name, and par value (1-9) with validation
+   - Undo/redo integration and automatic lastModified timestamp updates
+- **Level Editor Tool Palette**: Complete tool palette with full authoring behaviors
+   - Enhanced decoration tools: Flowers, Trees, Rocks, Bushes with placement system
+   - Decoration tool with keyboard shortcut (D key) and menu integration
+   - All tools now support full authoring workflow with proper state management
+- **Par/Birdie Suggestion Engine**: Intelligent par calculation based on level analysis
+   - Analyzes distance, obstacles, bank shot opportunities, and complexity
+   - Considers walls, posts, water, sand, hills, and elevation changes
+   - Provides detailed analysis summary with suggested par value
+   - Accessible via File → Suggest Par menu with confirmation dialog
 
 ### Changed
 - Migrated from localStorage to Firebase Realtime Database

@@ -99,7 +99,7 @@ Notes:
   - [x] Tool palette UI (initial): render tool buttons, hover pointer, click to select (`selectedEditorTool`)
   - [x] Tee & Cup placement (editor): 20px grid snapping, clamped to fairway bounds, updates editor level data
   - [x] Editor persistence (multi-level): Save, Save As, Load, New, Delete using `localStorage` key `vp.levels.v1`; track current saved ID for overwrite semantics
-  - [ ] Replace temporary prompt-based Save/Save As/Load with in-game overlay dialogs (List/Prompt) for naming and selection
+  - [x] Replace temporary prompt-based Save/Save As/Load with in-game overlay dialogs (List/Prompt) for naming and selection
   - [x] Migrate persistence off localStorage to filesystem per policy (`User_Levels/<Username>/*.json`) and provide Import/Export for browser-only builds
     - [x] File System Access API implementation for direct file read/write
     - [x] User_Levels/<Username>/ directory structure with automatic creation
@@ -144,8 +144,8 @@ Notes:
   - Tests: hover/click open-close behavior; action dispatch correctness
   - [x] Refactor: delegate all Level Editor keyboard handling from `src/main.ts` to `levelEditor.handleKeyDown(editorEnv)`; remove legacy unreachable code in `main.ts` referencing old editor globals.
   - [ ] Standardize level schema: keep both rectangular and polygon variants (walls/water/sand). Ensure Editor supports full selection/move/delete on both; no migration of existing levels.
-  - [ ] Undo/Redo in Level Editor: toolbar buttons and shortcuts (Ctrl+Z/Ctrl+Y); snapshot editor state on placements and actions (Save/Load/New/Delete)
-  - [ ] Tool palette: Tee, Cup, Walls, WallsPoly, Posts, Bridges, Water, WaterPoly, Sand, SandPoly, Hill, decorations
+  - [x] Undo/Redo in Level Editor: toolbar buttons and shortcuts (Ctrl+Z/Ctrl+Y); snapshot editor state on placements and actions (Save/Load/New/Delete)
+  - [x] Tool palette: Tee, Cup, Walls, WallsPoly, Posts, Bridges, Water, WaterPoly, Sand, SandPoly, Hill, decorations
  - [ ] Selection tools: select/move/duplicate/delete; vertex edit for polygons; rotate/scale where applicable
   - Done: select, multi-select, move, delete; scale (resize) for rect items with grid snap and bounds clamp; rotate for rect items including multi-select group rotation (Shift = 15° snap)
   - Pending: duplicate; polygon vertex edit
@@ -159,7 +159,7 @@ Notes:
  - [ ] Delete selected item(s) via existing Delete button in the toolbar UI
  - [x] Grid snapping and nudge controls (arrow keys); configurable grid size
  - [x] Main Menu: add "Level Editor" entry to launch editor mode
-  - [ ] Course Select: add "User Made Levels" category; list by Level Title — Author; load+play selected
+  - [x] Course Select: add "User Made Levels" category; list by Level Title — Author; load+play selected
 
 {{ ... }}
   - [ ] Create/select active user; store display name and role (admin/user)
@@ -169,7 +169,7 @@ Notes:
   - [ ] Normal user: edit/delete own levels; duplicate existing levels to create user-owned copies
  - [x] Level ownership
   - [x] Persist `meta.authorId` and `meta.authorName` in level JSON
-  - [ ] Show Title — Author in lists (Course Select "User Made Levels")
+  - [x] Show Title — Author in lists (Course Select "User Made Levels")
   - [x] Editor: restrict Save/Delete to owner or admin; allow "Save a Copy" for non-owners
 - [ ] Scores per user
   - [ ] Track per-level and per-course scores keyed by user

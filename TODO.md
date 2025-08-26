@@ -28,7 +28,7 @@ Notes:
 - [x] Add project README with run/build instructions
 - [ ] Add license and CONTRIBUTING
 - [ ] Configure version control (Git LFS for binary assets)
-- [ ] Setup CI for builds (per target platform)
+- [x] Setup CI for builds (per target platform)
 - [ ] Add code style/linting and pre-commit hooks
 - [ ] Define build targets (desktop/web/mobile) and packaging
 
@@ -87,15 +87,15 @@ Notes:
 - [x] L2: add doorway into box and place cup inside; reachable sand
 
 - [ ] Level Editor & Browser (authoring and discovery)
-  - [ ] In-app (or web) level editor to place walls/terrain/hills/decorations
+  - [x] In-app (or web) level editor to place walls/terrain/hills/decorations
   - [ ] Grid snapping, keyboard nudges, and alignment helpers
-  - [ ] Load/Save `levels/*.json` with schema-aware validation
+  - [x] Load/Save `levels/*.json` with schema-aware validation
   - [ ] Course builder to add/remove/reorder holes, set titles and par
   - [ ] Level browser: scan `levels/` and list levels; searchable and filterable
   - [ ] Preview thumbnails and quick-play from the browser
-  - [ ] Open/edit existing `levels/*.json` (load, modify, validate) and Save/Save As
-  - [ ] Create new level workflow (canvas size, par, initial metadata)
-  - [ ] Metadata editor: Level title and author name (persisted in JSON)
+  - [x] Open/edit existing `levels/*.json` (load, modify, validate) and Save/Save As
+  - [x] Create new level workflow (canvas size, par, initial metadata)
+  - [x] Metadata editor: Level title and author name (persisted in JSON)
   - [x] Tool palette UI (initial): render tool buttons, hover pointer, click to select (`selectedEditorTool`)
   - [x] Tee & Cup placement (editor): 20px grid snapping, clamped to fairway bounds, updates editor level data
   - [x] Editor persistence (multi-level): Save, Save As, Load, New, Delete using `localStorage` key `vp.levels.v1`; track current saved ID for overwrite semantics
@@ -143,7 +143,7 @@ Notes:
   - Back/Exit wiring: File→Back/Exit prompts via in-game Confirm and calls `env.exitToMenu()`; Escape key path uses the same confirm-and-exit flow and is disabled while overlays/menus are open
   - Tests: hover/click open-close behavior; action dispatch correctness
   - [x] Refactor: delegate all Level Editor keyboard handling from `src/main.ts` to `levelEditor.handleKeyDown(editorEnv)`; remove legacy unreachable code in `main.ts` referencing old editor globals.
-  - [ ] Standardize level schema: keep both rectangular and polygon variants (walls/water/sand). Ensure Editor supports full selection/move/delete on both; no migration of existing levels.
+  - [x] Standardize level schema: keep both rectangular and polygon variants (walls/water/sand). Ensure Editor supports full selection/move/delete on both; no migration of existing levels.
   - [x] Undo/Redo in Level Editor: toolbar buttons and shortcuts (Ctrl+Z/Ctrl+Y); snapshot editor state on placements and actions (Save/Load/New/Delete)
   - [x] Tool palette: Tee, Cup, Walls, WallsPoly, Posts, Bridges, Water, WaterPoly, Sand, SandPoly, Hill, decorations
  - [ ] Selection tools: select/move/duplicate/delete; vertex edit for polygons; rotate/scale where applicable
@@ -156,24 +156,23 @@ Notes:
   - Grid snapping and fairway-bounds clamping on move/resize/rotate; min size = 1 grid step; no negative sizes
   - Applies to rect items (walls/bridges/water/sand/hills); Posts: resize radius; Tee/Cup: move-only; multi-select transforms apply to all selected; rotation restricted to rect-like items; polygons are translate-only and hide rotation handles when selected
   - Progress: selection + multi-select + move complete; 8-point resize implemented for rectangles; rotation complete for rect-like items, including multi-select group rotation with 15° snapping (Shift)
- - [ ] Delete selected item(s) via existing Delete button in the toolbar UI
+ - [x] Delete selected item(s) via existing Delete button in the toolbar UI
  - [x] Grid snapping and nudge controls (arrow keys); configurable grid size
  - [x] Main Menu: add "Level Editor" entry to launch editor mode
   - [x] Course Select: add "User Made Levels" category; list by Level Title — Author; load+play selected
 
 {{ ... }}
-  - [ ] Create/select active user; store display name and role (admin/user)
-  - [ ] Persist users to local storage or file (JSON); simple migration/versioning plan
+  - [x] Create/select active user; store display name and role (admin/user)
 {{ ... }}
-  - [ ] Admin (Super User): edit/delete any level; manage users
-  - [ ] Normal user: edit/delete own levels; duplicate existing levels to create user-owned copies
+  - [x] Admin (Super User): edit/delete any level; manage users
+  - [x] Normal user: edit/delete own levels; duplicate existing levels to create user-owned copies
  - [x] Level ownership
   - [x] Persist `meta.authorId` and `meta.authorName` in level JSON
   - [x] Show Title — Author in lists (Course Select "User Made Levels")
   - [x] Editor: restrict Save/Delete to owner or admin; allow "Save a Copy" for non-owners
-- [ ] Scores per user
-  - [ ] Track per-level and per-course scores keyed by user
-  - [ ] Course summary: show best scores for the active user; optional all-users leaderboard
+- [x] Scores per user
+  - [x] Track per-level and per-course scores keyed by user
+  - [x] Course summary: show best scores for the active user; optional all-users leaderboard
 - [ ] UI integration
   - [x] Main Menu: username input field between the graphic and the Start button; Start disabled until a non-empty username is entered; persist and prefill last user
 
@@ -225,7 +224,7 @@ Notes:
   - [x] SFX volume and mute controls in Options/Pause
 - [x] Pause menu overlay with info/shortcuts/version (P/Escape)
   - [x] Buttons: Replay, Close, Back to Main Menu
-  - [ ] Add Options to Pause menu (open in-game Options; Back/Esc returns to Pause/Game)
+  - [x] Add Options to Pause menu (open in-game Options; Back/Esc returns to Pause/Game)
 - [x] Restart hole (R) and Next level (N)
   - [x] Robust transitions (no double-advance); cached/preloaded next level for snappier switches
   - [x] Loading state before first play; prefetch first two levels
@@ -311,7 +310,7 @@ Implementation follow-ups:
 - [ ] Iteration sessions with telemetry of strokes per hole
 
 ## Persistence
-- [ ] Save best scores per hole/course (local storage or file)
+- [x] Save best scores per hole/course (local storage or file)
 - [ ] Config persistence (audio volumes, last course)
 
 ## Testing & QA
@@ -328,7 +327,7 @@ Implementation follow-ups:
 - [ ] Dev build pipeline (fast iterate)
 - [ ] Release build pipeline (minify/strip symbols)
 - [ ] Platform packaging (Web: itch.io/Pages; Desktop: Win/macOS installers)
-- [ ] Versioning and changelog
+- [x] Versioning and changelog
 
 ## Documentation
 - [ ] Update `docs/Design_Doc.md` with any scope changes

@@ -1064,10 +1064,14 @@ interface UserLevelEntry {
   source: 'filesystem' | 'localStorage' | 'bundled' | 'firebase';
   path?: string;
   lastModified?: number;
+  thumbnailImage?: HTMLImageElement;
 }
 let userLevelsList: UserLevelEntry[] = [];
+let filteredUserLevelsList: UserLevelEntry[] = [];
 let selectedUserLevelIndex = 0;
 let hoverUserLevelsBack = false;
+let levelSearchQuery = '';
+let levelFilterSource = 'all'; // 'all', 'bundled', 'filesystem', 'localStorage'
 
 // Load user levels list from Firebase
 async function loadUserLevelsList(): Promise<void> {
@@ -1125,9 +1129,201 @@ async function loadUserLevelsList(): Promise<void> {
       if (timeA !== timeB) return timeB - timeA;
       return a.name.localeCompare(b.name);
     });
+    
+    // Apply initial filtering
+    applyLevelFilters();
   } catch (error) {
     console.error('Failed to load user levels list:', error);
     userLevelsList = [];
+    filteredUserLevelsList = [];
+  }
+}
+
+// Apply search and filter to user levels list
+function applyLevelFilters(): void {
+  let filtered = [...userLevelsList];
+  
+  // Apply source filter
+  if (levelFilterSource !== 'all') {
+    filtered = filtered.filter(level => level.source === levelFilterSource);
+  }
+  
+  // Apply search query
+  if (levelSearchQuery.trim()) {
+    const query = levelSearchQuery.toLowerCase().trim();
+    filtered = filtered.filter(level => 
+      level.name.toLowerCase().includes(query) || 
+      level.author.toLowerCase().includes(query)
+    );
+  }
+  
+  filteredUserLevelsList = filtered;
+  
+  // Adjust selection if needed
+  if (selectedUserLevelIndex >= filteredUserLevelsList.length) {
+    selectedUserLevelIndex = Math.max(0, filteredUserLevelsList.length - 1);
+  }
+}
+
+// Generate a thumbnail for a level
+function generateLevelThumbnail(levelData: any, width: number = 120, height: number = 80): string {
+  // Create an off-screen canvas for thumbnail generation
+  const thumbCanvas = document.createElement('canvas');
+  thumbCanvas.width = width;
+  thumbCanvas.height = height;
+  const thumbCtx = thumbCanvas.getContext('2d')!;
+  
+  // Parse level data
+  const fairway = levelData.fairway || { x: 0, y: 0, w: 800, h: 600 };
+  const tee = levelData.tee || { x: 100, y: 300, r: 15 };
+  const hole = levelData.hole || { x: 700, y: 300, r: 12 };
+  const walls = levelData.walls || [];
+  const polyWalls = levelData.polyWalls || [];
+  const waters = levelData.waters || [];
+  const polyWaters = levelData.polyWaters || [];
+  const sands = levelData.sands || [];
+  const polySands = levelData.polySands || [];
+  const hills = levelData.hills || [];
+  const bridges = levelData.bridges || [];
+  const posts = levelData.posts || [];
+  const decorations = levelData.decorations || [];
+  
+  // Calculate scale to fit the fairway in the thumbnail
+  const scaleX = width / fairway.w;
+  const scaleY = height / fairway.h;
+  const scale = Math.min(scaleX, scaleY) * 0.9; // Leave some padding
+  
+  // Center the level in the thumbnail
+  const offsetX = (width - fairway.w * scale) / 2 - fairway.x * scale;
+  const offsetY = (height - fairway.h * scale) / 2 - fairway.y * scale;
+  
+  thumbCtx.save();
+  thumbCtx.scale(scale, scale);
+  thumbCtx.translate(offsetX / scale, offsetY / scale);
+  
+  // Background
+  thumbCtx.fillStyle = COLORS.table;
+  thumbCtx.fillRect(fairway.x - 20, fairway.y - 20, fairway.w + 40, fairway.h + 40);
+  
+  // Fairway
+  thumbCtx.fillStyle = COLORS.fairway;
+  thumbCtx.fillRect(fairway.x, fairway.y, fairway.w, fairway.h);
+  thumbCtx.strokeStyle = COLORS.fairwayLine;
+  thumbCtx.lineWidth = 2;
+  thumbCtx.strokeRect(fairway.x, fairway.y, fairway.w, fairway.h);
+  
+  // Water areas
+  for (const w of waters) {
+    thumbCtx.fillStyle = COLORS.waterFill;
+    thumbCtx.fillRect(w.x, w.y, w.w, w.h);
+  }
+  for (const pw of polyWaters) {
+    if (pw.points && pw.points.length >= 6) {
+      thumbCtx.fillStyle = COLORS.waterFill;
+      thumbCtx.beginPath();
+      thumbCtx.moveTo(pw.points[0], pw.points[1]);
+      for (let i = 2; i < pw.points.length; i += 2) {
+        thumbCtx.lineTo(pw.points[i], pw.points[i + 1]);
+      }
+      thumbCtx.closePath();
+      thumbCtx.fill();
+    }
+  }
+  
+  // Sand areas
+  for (const s of sands) {
+    thumbCtx.fillStyle = COLORS.sandFill;
+    thumbCtx.fillRect(s.x, s.y, s.w, s.h);
+  }
+  for (const ps of polySands) {
+    if (ps.points && ps.points.length >= 6) {
+      thumbCtx.fillStyle = COLORS.sandFill;
+      thumbCtx.beginPath();
+      thumbCtx.moveTo(ps.points[0], ps.points[1]);
+      for (let i = 2; i < ps.points.length; i += 2) {
+        thumbCtx.lineTo(ps.points[i], ps.points[i + 1]);
+      }
+      thumbCtx.closePath();
+      thumbCtx.fill();
+    }
+  }
+  
+  // Hills (simplified)
+  for (const h of hills) {
+    thumbCtx.fillStyle = 'rgba(255,255,255,0.1)';
+    thumbCtx.fillRect(h.x, h.y, h.w, h.h);
+  }
+  
+  // Bridges
+  for (const b of bridges) {
+    thumbCtx.fillStyle = COLORS.fairway;
+    thumbCtx.fillRect(b.x, b.y, b.w, b.h);
+  }
+  
+  // Walls
+  for (const w of walls) {
+    thumbCtx.fillStyle = COLORS.wallFill;
+    thumbCtx.fillRect(w.x, w.y, w.w, w.h);
+  }
+  for (const pw of polyWalls) {
+    if (pw.points && pw.points.length >= 6) {
+      thumbCtx.fillStyle = COLORS.wallFill;
+      thumbCtx.beginPath();
+      thumbCtx.moveTo(pw.points[0], pw.points[1]);
+      for (let i = 2; i < pw.points.length; i += 2) {
+        thumbCtx.lineTo(pw.points[i], pw.points[i + 1]);
+      }
+      thumbCtx.closePath();
+      thumbCtx.fill();
+    }
+  }
+  
+  // Posts
+  for (const p of posts) {
+    thumbCtx.fillStyle = COLORS.wallFill;
+    thumbCtx.beginPath();
+    thumbCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    thumbCtx.fill();
+  }
+  
+  // Tee (start position)
+  thumbCtx.fillStyle = '#90EE90';
+  thumbCtx.beginPath();
+  thumbCtx.arc(tee.x, tee.y, tee.r, 0, Math.PI * 2);
+  thumbCtx.fill();
+  
+  // Hole (cup)
+  thumbCtx.fillStyle = COLORS.holeFill;
+  thumbCtx.beginPath();
+  thumbCtx.arc(hole.x, hole.y, hole.r, 0, Math.PI * 2);
+  thumbCtx.fill();
+  thumbCtx.strokeStyle = COLORS.holeRim;
+  thumbCtx.lineWidth = 1;
+  thumbCtx.stroke();
+  
+  thumbCtx.restore();
+  
+  return thumbCanvas.toDataURL();
+}
+
+// Cache for level thumbnails
+const levelThumbnailCache = new Map<string, string>();
+
+// Get or generate thumbnail for a level
+function getLevelThumbnail(level: UserLevelEntry): string {
+  const cacheKey = `${level.source}-${level.name}-${level.author}`;
+  
+  if (levelThumbnailCache.has(cacheKey)) {
+    return levelThumbnailCache.get(cacheKey)!;
+  }
+  
+  try {
+    const thumbnail = generateLevelThumbnail(level.data);
+    levelThumbnailCache.set(cacheKey, thumbnail);
+    return thumbnail;
+  } catch (error) {
+    console.warn('Failed to generate thumbnail for level:', level.name, error);
+    return ''; // Return empty string if thumbnail generation fails
   }
 }
 
@@ -1190,7 +1386,14 @@ async function duplicateUserLevel(level: UserLevelEntry): Promise<void> {
     const trimmedName = newName.trim();
     
     // Create a copy of the level data
-    const duplicatedLevel = JSON.parse(JSON.stringify(level.data));
+    let duplicatedLevel;
+    try {
+      duplicatedLevel = JSON.parse(JSON.stringify(level.data));
+    } catch (error) {
+      console.error('Failed to clone level data:', error);
+      showUiToast('Failed to duplicate level - invalid data format');
+      return;
+    }
     
     // Update metadata for the new level
     if (!duplicatedLevel.meta) duplicatedLevel.meta = {};
@@ -1821,24 +2024,64 @@ canvas.addEventListener('mousedown', (e) => {
       return;
     }
     
+    // Handle search bar clicks
+    const searchBarX = WIDTH/2 - 200;
+    const searchBarY = 70;
+    const searchBarW = 300;
+    const searchBarH = 24;
+    
+    if (p.x >= searchBarX && p.x <= searchBarX + searchBarW && p.y >= searchBarY && p.y <= searchBarY + searchBarH) {
+      // Focus search bar - show prompt for search input
+      (async () => {
+        const query = await showUiPrompt('Search levels by name or author:', levelSearchQuery, 'Search Levels');
+        if (query !== null) {
+          levelSearchQuery = query;
+          applyLevelFilters();
+        }
+      })();
+      return;
+    }
+    
+    // Handle filter button clicks
+    const filterY = searchBarY;
+    const filterButtonW = 60;
+    const filterButtonH = 24;
+    const filterSpacing = 4;
+    let filterX = searchBarX + searchBarW + 20;
+    
+    const filterOptions = [
+      { id: 'all', label: 'All' },
+      { id: 'bundled', label: 'Built-in' },
+      { id: 'filesystem', label: 'User' },
+      { id: 'localStorage', label: 'Local' }
+    ];
+    
+    for (const filter of filterOptions) {
+      if (p.x >= filterX && p.x <= filterX + filterButtonW && p.y >= filterY && p.y <= filterY + filterButtonH) {
+        levelFilterSource = filter.id;
+        applyLevelFilters();
+        return;
+      }
+      filterX += filterButtonW + filterSpacing;
+    }
+
     // Handle level list clicks
-    if (userLevelsList.length > 0) {
-      const listY = 120;
-      const itemHeight = 32;
-      const maxVisible = 12;
+    if (filteredUserLevelsList.length > 0) {
+      const listY = 130;
+      const itemHeight = 60; // Updated to match rendering
+      const maxVisible = 7; // Updated to match rendering
       const startIndex = Math.max(0, selectedUserLevelIndex - Math.floor(maxVisible / 2));
-      const endIndex = Math.min(userLevelsList.length, startIndex + maxVisible);
+      const endIndex = Math.min(filteredUserLevelsList.length, startIndex + maxVisible);
       
       for (let i = startIndex; i < endIndex; i++) {
         const y = listY + (i - startIndex) * itemHeight;
-        const itemRect = { x: 50, y: y - 2, w: WIDTH - 100, h: itemHeight - 4 };
+        const cardX = 40, cardW = WIDTH - 80;
         
-        if (p.x >= itemRect.x && p.x <= itemRect.x + itemRect.w && 
-            p.y >= itemRect.y && p.y <= itemRect.y + itemRect.h) {
+        if (p.x >= cardX && p.x <= cardX + cardW && p.y >= y && p.y <= y + itemHeight) {
           
           if (i === selectedUserLevelIndex) {
             // Double-click behavior: play the level
-            void playUserLevel(userLevelsList[i]);
+            void playUserLevel(filteredUserLevelsList[i]);
           } else {
             // Single click: select the level
             selectedUserLevelIndex = i;
@@ -1849,7 +2092,7 @@ canvas.addEventListener('mousedown', (e) => {
       
       // Handle action button clicks when a level is selected
       if (selectedUserLevelIndex >= startIndex && selectedUserLevelIndex < endIndex) {
-        const level = userLevelsList[selectedUserLevelIndex];
+        const level = filteredUserLevelsList[selectedUserLevelIndex];
         const isOwner = (level.author || '').toLowerCase() === (userProfile?.name || '').toLowerCase();
         const isAdmin = userProfile?.role === 'admin';
         const canEdit = isOwner || isAdmin;
@@ -3538,9 +3781,68 @@ function draw() {
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     ctx.font = '28px system-ui, sans-serif';
-    ctx.fillText('User Made Levels', WIDTH/2, 60);
+    ctx.fillText('Level Browser', WIDTH/2, 40);
     
-    if (userLevelsList.length === 0) {
+    // Search bar
+    const searchBarX = WIDTH/2 - 200;
+    const searchBarY = 70;
+    const searchBarW = 300;
+    const searchBarH = 24;
+    
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.fillRect(searchBarX, searchBarY, searchBarW, searchBarH);
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(searchBarX, searchBarY, searchBarW, searchBarH);
+    
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const searchText = levelSearchQuery || 'Search levels...';
+    const searchColor = levelSearchQuery ? '#ffffff' : '#888888';
+    ctx.fillStyle = searchColor;
+    ctx.fillText(searchText, searchBarX + 8, searchBarY + searchBarH/2);
+    
+    // Filter buttons
+    const filterY = searchBarY;
+    const filterButtonW = 60;
+    const filterButtonH = 24;
+    const filterSpacing = 4;
+    let filterX = searchBarX + searchBarW + 20;
+    
+    const filterOptions = [
+      { id: 'all', label: 'All' },
+      { id: 'bundled', label: 'Built-in' },
+      { id: 'filesystem', label: 'User' },
+      { id: 'localStorage', label: 'Local' }
+    ];
+    
+    for (const filter of filterOptions) {
+      const isActive = levelFilterSource === filter.id;
+      
+      ctx.fillStyle = isActive ? 'rgba(33, 150, 243, 0.8)' : 'rgba(255,255,255,0.1)';
+      ctx.fillRect(filterX, filterY, filterButtonW, filterButtonH);
+      ctx.strokeStyle = isActive ? 'rgba(33, 150, 243, 1)' : 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(filterX, filterY, filterButtonW, filterButtonH);
+      
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(filter.label, filterX + filterButtonW/2, filterY + filterButtonH/2);
+      
+      filterX += filterButtonW + filterSpacing;
+    }
+    
+    // Results count
+    ctx.fillStyle = '#cccccc';
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${filteredUserLevelsList.length} of ${userLevelsList.length} levels`, WIDTH/2, 104);
+    
+    if (filteredUserLevelsList.length === 0) {
       // Empty state with better styling
       ctx.fillStyle = 'rgba(255,255,255,0.1)';
       ctx.fillRect(WIDTH/2 - 200, 140, 400, 120);
@@ -3550,26 +3852,36 @@ function draw() {
       
       ctx.fillStyle = '#ffffff';
       ctx.font = '18px system-ui, sans-serif';
-      ctx.fillText('No user levels found', WIDTH/2, 170);
-      ctx.font = '14px system-ui, sans-serif';
-      ctx.fillStyle = '#cccccc';
-      ctx.fillText('Create levels in the Level Editor to see them here', WIDTH/2, 200);
-      ctx.fillText('Click Level Editor from the main menu to get started', WIDTH/2, 220);
+      const emptyMessage = levelSearchQuery || levelFilterSource !== 'all' 
+        ? 'No levels match your search/filter'
+        : 'No user levels found';
+      ctx.fillText(emptyMessage, WIDTH/2, 170);
+      
+      if (!levelSearchQuery && levelFilterSource === 'all') {
+        ctx.font = '14px system-ui, sans-serif';
+        ctx.fillStyle = '#cccccc';
+        ctx.fillText('Create levels in the Level Editor to see them here', WIDTH/2, 200);
+        ctx.fillText('Click Level Editor from the main menu to get started', WIDTH/2, 220);
+      } else {
+        ctx.font = '14px system-ui, sans-serif';
+        ctx.fillStyle = '#cccccc';
+        ctx.fillText('Try adjusting your search terms or filters', WIDTH/2, 200);
+      }
     } else {
       // Instructions with better styling
       ctx.font = '12px system-ui, sans-serif';
       ctx.fillStyle = '#cccccc';
-      ctx.fillText('Click to select • Double-click to play • Keyboard: ↑↓ Navigate • Enter Play • E Edit • Del Delete • D Duplicate', WIDTH/2, 86);
+      ctx.fillText('Click to select • Double-click to play • Keyboard: ↑↓ Navigate • Enter Play • E Edit • Del Delete • D Duplicate • / Search', WIDTH/2, 118);
       
-      // Level list with improved design
-      const listY = 110;
-      const itemHeight = 40;
-      const maxVisible = 10;
+      // Level list with improved design and thumbnails
+      const listY = 130;
+      const itemHeight = 60; // Increased height for thumbnails
+      const maxVisible = 7; // Reduced to fit larger items
       const startIndex = Math.max(0, selectedUserLevelIndex - Math.floor(maxVisible / 2));
-      const endIndex = Math.min(userLevelsList.length, startIndex + maxVisible);
+      const endIndex = Math.min(filteredUserLevelsList.length, startIndex + maxVisible);
       
       for (let i = startIndex; i < endIndex; i++) {
-        const level = userLevelsList[i];
+        const level = filteredUserLevelsList[i];
         const y = listY + (i - startIndex) * itemHeight;
         const isSelected = i === selectedUserLevelIndex;
         const isOwner = (level.author || '').toLowerCase() === (userProfile?.name || '').toLowerCase();
@@ -3586,11 +3898,69 @@ function draw() {
         ctx.lineWidth = 1;
         ctx.strokeRect(cardX, y, cardW, itemHeight - 2);
         
-        // Level name
+        // Thumbnail
+        const thumbnailSize = 48;
+        const thumbnailX = cardX + 8;
+        const thumbnailY = y + (itemHeight - thumbnailSize) / 2;
+        
+        try {
+          const thumbnailDataUrl = getLevelThumbnail(level);
+          if (thumbnailDataUrl) {
+            // Create image element if not cached
+            if (!level.thumbnailImage) {
+              level.thumbnailImage = new Image();
+              level.thumbnailImage.src = thumbnailDataUrl;
+            }
+            
+            // Draw thumbnail if image is loaded
+            if (level.thumbnailImage.complete) {
+              ctx.save();
+              ctx.beginPath();
+              ctx.rect(thumbnailX, thumbnailY, thumbnailSize, thumbnailSize);
+              ctx.clip();
+              ctx.drawImage(level.thumbnailImage, thumbnailX, thumbnailY, thumbnailSize, thumbnailSize);
+              ctx.restore();
+              
+              // Thumbnail border
+              ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+              ctx.lineWidth = 1;
+              ctx.strokeRect(thumbnailX, thumbnailY, thumbnailSize, thumbnailSize);
+            } else {
+              // Loading placeholder
+              ctx.fillStyle = 'rgba(255,255,255,0.1)';
+              ctx.fillRect(thumbnailX, thumbnailY, thumbnailSize, thumbnailSize);
+              ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+              ctx.lineWidth = 1;
+              ctx.strokeRect(thumbnailX, thumbnailY, thumbnailSize, thumbnailSize);
+              ctx.fillStyle = '#888888';
+              ctx.font = '10px system-ui, sans-serif';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText('...', thumbnailX + thumbnailSize/2, thumbnailY + thumbnailSize/2);
+            }
+          } else {
+            // No thumbnail available
+            ctx.fillStyle = 'rgba(255,255,255,0.05)';
+            ctx.fillRect(thumbnailX, thumbnailY, thumbnailSize, thumbnailSize);
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(thumbnailX, thumbnailY, thumbnailSize, thumbnailSize);
+          }
+        } catch (error) {
+          // Error placeholder
+          ctx.fillStyle = 'rgba(255,0,0,0.1)';
+          ctx.fillRect(thumbnailX, thumbnailY, thumbnailSize, thumbnailSize);
+          ctx.strokeStyle = 'rgba(255,0,0,0.3)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(thumbnailX, thumbnailY, thumbnailSize, thumbnailSize);
+        }
+        
+        // Level name (moved right to accommodate thumbnail)
+        const textX = thumbnailX + thumbnailSize + 12;
         ctx.fillStyle = '#ffffff';
         ctx.font = '16px system-ui, sans-serif';
         ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-        ctx.fillText(level.name, cardX + 12, y + 6);
+        ctx.fillText(level.name, textX, y + 8);
         
         // Author and source with better formatting
         ctx.font = '12px system-ui, sans-serif';
@@ -3600,16 +3970,24 @@ function draw() {
         const sourceColor = level.source === 'bundled' ? '#4CAF50' : 
                            level.source === 'filesystem' ? '#2196F3' : '#FF9800';
         
-        ctx.fillText(`by ${level.author}`, cardX + 12, y + 22);
+        ctx.fillText(`by ${level.author}`, textX, y + 28);
         
         // Source badge
-        const badgeX = cardX + 12 + ctx.measureText(`by ${level.author} `).width;
+        const badgeX = textX + ctx.measureText(`by ${level.author} `).width;
         ctx.fillStyle = sourceColor;
-        ctx.fillRect(badgeX, y + 20, ctx.measureText(sourceLabel).width + 8, 14);
+        ctx.fillRect(badgeX, y + 26, ctx.measureText(sourceLabel).width + 8, 14);
         ctx.fillStyle = '#000000';
         ctx.font = '10px system-ui, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(sourceLabel, badgeX + (ctx.measureText(sourceLabel).width + 8) / 2, y + 30);
+        ctx.fillText(sourceLabel, badgeX + (ctx.measureText(sourceLabel).width + 8) / 2, y + 36);
+        
+        // Quick-play indicator
+        if (isSelected) {
+          ctx.fillStyle = '#4CAF50';
+          ctx.font = '10px system-ui, sans-serif';
+          ctx.textAlign = 'left';
+          ctx.fillText('Double-click to quick-play', textX, y + 44);
+        }
         
         // Action buttons (if selected)
         if (isSelected) {
@@ -3666,12 +4044,12 @@ function draw() {
       }
       
       // Modern scroll indicator
-      if (userLevelsList.length > maxVisible) {
+      if (filteredUserLevelsList.length > maxVisible) {
         const scrollBarHeight = maxVisible * itemHeight;
         const scrollBarY = listY;
         const scrollBarX = WIDTH - 16;
-        const thumbHeight = Math.max(20, scrollBarHeight * maxVisible / userLevelsList.length);
-        const thumbY = scrollBarY + (selectedUserLevelIndex / userLevelsList.length) * (scrollBarHeight - thumbHeight);
+        const thumbHeight = Math.max(20, scrollBarHeight * maxVisible / filteredUserLevelsList.length);
+        const thumbY = scrollBarY + (selectedUserLevelIndex / filteredUserLevelsList.length) * (scrollBarHeight - thumbHeight);
         
         // Track
         ctx.fillStyle = 'rgba(255,255,255,0.1)';
@@ -4709,23 +5087,34 @@ window.addEventListener('keydown', (e) => {
       e.preventDefault();
     }
     if (e.code === 'ArrowDown') {
-      selectedUserLevelIndex = Math.min(userLevelsList.length - 1, selectedUserLevelIndex + 1);
+      selectedUserLevelIndex = Math.min(filteredUserLevelsList.length - 1, selectedUserLevelIndex + 1);
       e.preventDefault();
     }
-    if (e.code === 'Enter' && userLevelsList.length > 0) {
-      void playUserLevel(userLevelsList[selectedUserLevelIndex]);
+    if (e.code === 'Enter' && filteredUserLevelsList.length > 0) {
+      void playUserLevel(filteredUserLevelsList[selectedUserLevelIndex]);
       e.preventDefault();
     }
-    if (e.code === 'KeyE' && userLevelsList.length > 0) {
-      void editUserLevel(userLevelsList[selectedUserLevelIndex]);
+    if (e.code === 'KeyE' && filteredUserLevelsList.length > 0) {
+      void editUserLevel(filteredUserLevelsList[selectedUserLevelIndex]);
       e.preventDefault();
     }
-    if (e.code === 'Delete' && userLevelsList.length > 0) {
-      void deleteUserLevel(userLevelsList[selectedUserLevelIndex]);
+    if (e.code === 'Delete' && filteredUserLevelsList.length > 0) {
+      void deleteUserLevel(filteredUserLevelsList[selectedUserLevelIndex]);
       e.preventDefault();
     }
-    if (e.code === 'KeyD' && userLevelsList.length > 0) {
-      void duplicateUserLevel(userLevelsList[selectedUserLevelIndex]);
+    if (e.code === 'KeyD' && filteredUserLevelsList.length > 0) {
+      void duplicateUserLevel(filteredUserLevelsList[selectedUserLevelIndex]);
+      e.preventDefault();
+    }
+    if (e.code === 'Slash') {
+      // Open search prompt
+      (async () => {
+        const query = await showUiPrompt('Search levels by name or author:', levelSearchQuery, 'Search Levels');
+        if (query !== null) {
+          levelSearchQuery = query;
+          applyLevelFilters();
+        }
+      })();
       e.preventDefault();
     }
     if (e.code === 'Escape') {

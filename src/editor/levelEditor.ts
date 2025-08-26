@@ -63,7 +63,7 @@ export type EditorTool =
   | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'sand' | 'sandPoly' | 'hill' | 'decoration';
 
 export type EditorAction =
-  | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'gridToggle' | 'gridMinus' | 'gridPlus' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste';
+  | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'gridToggle' | 'gridMinus' | 'gridPlus' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate';
 
 export type EditorMenuId = 'file' | 'objects' | 'decorations' | 'tools';
 
@@ -220,6 +220,10 @@ class LevelEditorImpl implements LevelEditor {
   // Polygon creation state
   private polygonInProgress: { tool: EditorTool; points: number[] } | null = null;
   
+  // Polygon vertex dragging state
+  private isVertexDragging: boolean = false;
+  private vertexDrag: { obj: SelectableObject; vertexIndex: number } | null = null;
+  
   // Hill direction control state
   private hillDirectionPicker: { x: number; y: number; visible: boolean; selectedDir: string } | null = null;
   
@@ -299,6 +303,8 @@ class LevelEditorImpl implements LevelEditor {
     this.groupResizeOriginals = null;
     this.groupRotateOriginals = null;
     this.dragMoveStart = null;
+    this.isVertexDragging = false;
+    this.vertexDrag = null;
   }
 
   private canUndo(): boolean {
@@ -443,6 +449,14 @@ class LevelEditorImpl implements LevelEditor {
     this.selectedObjects = newSelection;
     
     this.env.showToast(`Pasted ${newSelection.length} object(s)`);
+  }
+
+  private duplicateSelectedObjects(): void {
+    if (!this.env) return;
+    if (this.selectedObjects.length === 0) return;
+    // Copy current selection and paste at last mouse position (uses snapping/clamping inside paste)
+    this.copySelectedObjects();
+    this.pasteObjects(this.lastMousePosition.x, this.lastMousePosition.y);
   }
 
   private deleteSelectedObjects(): void {
@@ -745,6 +759,7 @@ class LevelEditorImpl implements LevelEditor {
         { label: 'Copy (Ctrl+C)', item: { kind: 'action', action: 'copy' }, separator: true },
         { label: 'Cut (Ctrl+X)', item: { kind: 'action', action: 'cut' } },
         { label: 'Paste (Ctrl+V)', item: { kind: 'action', action: 'paste' } },
+        { label: 'Duplicate (Ctrl+D)', item: { kind: 'action', action: 'duplicate' } },
         { label: 'Grid Toggle', item: { kind: 'action', action: 'gridToggle' }, separator: true },
         { label: 'Grid -', item: { kind: 'action', action: 'gridMinus' } },
         { label: 'Grid +', item: { kind: 'action', action: 'gridPlus' } }
@@ -1286,7 +1301,7 @@ class LevelEditorImpl implements LevelEditor {
         ctx.strokeRect(displayBounds.x, displayBounds.y, displayBounds.w, displayBounds.h);
 
         if (this.selectedObjects.length === 1 && obj === this.selectedObjects[0] && (
-          obj.type === 'wall' || obj.type === 'water' || obj.type === 'sand' || obj.type === 'bridge' || obj.type === 'hill'
+          obj.type === 'wall' || obj.type === 'water' || obj.type === 'sand' || obj.type === 'bridge' || obj.type === 'hill' || obj.type === 'decoration'
         )) {
           const handles = this.getResizeHandles(displayBounds);
           ctx.setLineDash([]);
@@ -1309,6 +1324,25 @@ class LevelEditorImpl implements LevelEditor {
             ctx.arc(rotHandle.x + rotHandle.w / 2, rotHandle.y + rotHandle.h / 2, rotHandle.w / 2, 0, Math.PI * 2);
             ctx.stroke();
           }
+          ctx.setLineDash([4, 4]);
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = '#00aaff';
+        } else if (this.selectedObjects.length === 1 && obj === this.selectedObjects[0] && (
+          obj.type === 'wallsPoly' || obj.type === 'waterPoly' || obj.type === 'sandPoly'
+        )) {
+          // Draw vertex handles for selected polygon
+          const pts: number[] = (obj.object as any).points || [];
+          ctx.setLineDash([]);
+          for (let i = 0; i < pts.length; i += 2) {
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(pts[i], pts[i + 1], 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
+          // Restore dashed selection outline style
           ctx.setLineDash([4, 4]);
           ctx.lineWidth = 2;
           ctx.strokeStyle = '#00aaff';
@@ -1725,6 +1759,7 @@ class LevelEditorImpl implements LevelEditor {
         for (const rh of rotHandles) {
           if (p.x >= rh.x && p.x <= rh.x + rh.w && p.y >= rh.y && p.y <= rh.y + rh.h) {
             // Begin group rotation
+            this.pushUndoSnapshot('Group rotate');
             this.isRotating = true;
             const cx = selBounds.x + selBounds.w / 2, cy = selBounds.y + selBounds.h / 2;
             this.rotationCenter = { x: cx, y: cy };
@@ -1747,6 +1782,7 @@ class LevelEditorImpl implements LevelEditor {
         for (let i = 0; i < handles.length; i++) {
           const h = handles[i];
           if (p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h) {
+            this.pushUndoSnapshot('Group resize');
             this.isGroupResizing = true;
             this.resizeHandleIndex = i;
             this.resizeStartBounds = { ...selBounds };
@@ -1769,6 +1805,7 @@ class LevelEditorImpl implements LevelEditor {
         for (const rh of rotHandles) {
           if (p.x >= rh.x && p.x <= rh.x + rh.w && p.y >= rh.y && p.y <= rh.y + rh.h) {
             // Begin rotation
+            this.pushUndoSnapshot('Rotate object');
             this.isRotating = true;
             const cx = bounds.x + bounds.w / 2, cy = bounds.y + bounds.h / 2;
             this.rotationCenter = { x: cx, y: cy };
@@ -1786,7 +1823,8 @@ class LevelEditorImpl implements LevelEditor {
         const h = handles[i];
         if (p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h) {
           // Begin resize for rect-like objects only
-          if (obj.type === 'wall' || obj.type === 'water' || obj.type === 'sand' || obj.type === 'bridge' || obj.type === 'hill') {
+          if (obj.type === 'wall' || obj.type === 'water' || obj.type === 'sand' || obj.type === 'bridge' || obj.type === 'hill' || obj.type === 'decoration') {
+            this.pushUndoSnapshot('Resize object');
             this.isResizing = true;
             this.resizeHandleIndex = i;
             this.resizeStartBounds = { ...this.getObjectBounds(obj) };
@@ -1794,6 +1832,23 @@ class LevelEditorImpl implements LevelEditor {
             return;
           }
         }
+      }
+    }
+
+    // Polygon vertex drag start (before general hit-test)
+    if (this.selectedTool === 'select') {
+      const vertexHit = this.findPolygonVertexAtPoint(px, py, env);
+      if (vertexHit) {
+        // Ensure the polygon is selected
+        const isSame = (a: SelectableObject, b: SelectableObject) => a.type === b.type && (a as any).index === (b as any).index;
+        if (!this.selectedObjects.some(o => isSame(o, vertexHit.obj))) {
+          this.selectedObjects = [vertexHit.obj];
+        }
+        // Snapshot BEFORE modifying points during drag
+        this.pushUndoSnapshot('Move polygon vertex');
+        this.isVertexDragging = true;
+        this.vertexDrag = vertexHit;
+        return;
       }
     }
 
@@ -1809,6 +1864,7 @@ class LevelEditorImpl implements LevelEditor {
           this.selectedObjects = [hit];
         }
         // Begin drag-move
+        this.pushUndoSnapshot('Move selection');
         this.isDragMoving = true;
         this.dragMoveStart = { x: px, y: py };
         this.dragMoveOffset = { x: 0, y: 0 };
@@ -1839,6 +1895,20 @@ class LevelEditorImpl implements LevelEditor {
     // Update drag placement preview
     if (this.isEditorDragging && this.editorDragTool) {
       this.editorDragCurrent = { x: px, y: py };
+      return;
+    }
+
+    // Vertex dragging for polygon points
+    if (this.isVertexDragging && this.vertexDrag) {
+      const { obj, vertexIndex } = this.vertexDrag;
+      const poly: any = obj.object as any;
+      if (Array.isArray(poly.points)) {
+        const i = vertexIndex * 2;
+        if (i >= 0 && i + 1 < poly.points.length) {
+          poly.points[i] = px;
+          poly.points[i + 1] = py;
+        }
+      }
       return;
     }
 
@@ -1952,7 +2022,7 @@ class LevelEditorImpl implements LevelEditor {
       for (const rec of this.groupResizeOriginals) {
         const o: any = rec.snap;
         const objType = rec.obj.type;
-        if (objType === 'wall' || objType === 'water' || objType === 'sand' || objType === 'bridge' || objType === 'hill' || objType === 'post') {
+        if (objType === 'wall' || objType === 'water' || objType === 'sand' || objType === 'bridge' || objType === 'hill' || objType === 'post' || objType === 'decoration') {
           const relX = o.x - baseX;
           const relY = o.y - baseY;
           (rec.obj.object as any).x = bx + relX * scaleX;
@@ -1980,75 +2050,82 @@ class LevelEditorImpl implements LevelEditor {
       this.dragMoveOffset = { x: px - this.selectionBoxStart.x, y: py - this.selectionBoxStart.y };
       return;
     }
-  }
 
   handleMouseUp(e: MouseEvent, env: EditorEnv): void {
-    void e;
     const p = env.worldFromEvent(e);
     const { x: fairX, y: fairY, w: fairW, h: fairH } = env.fairwayRect();
-    const clampX = (x: number) => Math.max(fairX, Math.min(fairX + fairW, x));
-    const clampY = (y: number) => Math.max(fairY, Math.min(fairY + fairH, y));
-    const snap = (n: number) => { try { if (this.showGrid && env.getShowGrid()) { const g = env.getGridSize(); return Math.round(n / g) * g; } } catch {} return n; };
-    const px = snap(clampX(p.x));
-    const py = snap(clampY(p.y));
+    const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+    const snap = (n: number) => {
+      try { if (this.showGrid && env.getShowGrid()) { const g = env.getGridSize(); return Math.round(n / g) * g; } } catch {}
+      return n;
+    };
+    const px = snap(clamp(p.x, fairX, fairX + fairW));
+    const py = snap(clamp(p.y, fairY, fairY + fairH));
 
-    // Commit rectangle placement
-    if (this.isEditorDragging && this.editorDragTool) {
-      const x0 = this.editorDragStart.x, y0 = this.editorDragStart.y;
-      const x1 = px, y1 = py;
-      const rx = Math.min(x0, x1), ry = Math.min(y0, y1);
-      const rw = Math.abs(x1 - x0), rh = Math.abs(y1 - y0);
-      if (rw > 0 && rh > 0) {
-        this.pushUndoSnapshot(`Place ${this.editorDragTool}`);
-        const gs = env.getGlobalState();
-        const rect = { x: rx, y: ry, w: rw, h: rh } as any;
-        if (this.editorDragTool === 'wall') (gs.walls as any[]).push(rect);
-        else if (this.editorDragTool === 'bridge') (gs.bridges as any[]).push(rect);
-        else if (this.editorDragTool === 'water') (gs.waters as any[]).push(rect);
-        else if (this.editorDragTool === 'sand') (gs.sands as any[]).push(rect);
-        else if (this.editorDragTool === 'hill') {
-          const hill = { ...rect, dir: 'S' };
-          (gs.hills as any[]).push(hill);
-          // Show direction picker for the new hill
-          this.hillDirectionPicker = { 
-            x: rect.x + rect.w / 2, 
-            y: rect.y + rect.h / 2, 
-            visible: true, 
-            selectedDir: 'S' 
-          };
-        }
-        this.syncEditorDataFromGlobals(env);
+    // Finish editor rectangle placement (wall/bridge/water/sand/hill)
+    if (this.isEditorDragging && this.editorDragTool && this.editorDragStart && this.editorDragCurrent) {
+      const sx = Math.min(this.editorDragStart.x, this.editorDragCurrent.x);
+      const sy = Math.min(this.editorDragStart.y, this.editorDragCurrent.y);
+      const sw = Math.max(1, Math.abs(this.editorDragCurrent.x - this.editorDragStart.x));
+      const sh = Math.max(1, Math.abs(this.editorDragCurrent.y - this.editorDragStart.y));
+      this.pushUndoSnapshot(`Place ${this.editorDragTool}`);
+      const gs = env.getGlobalState();
+      if (this.editorDragTool === 'wall') {
+        const o: any = { x: sx, y: sy, w: sw, h: sh, rot: 0 };
+        (gs.walls as any[]).push(o);
+        if (this.editorLevelData) (this.editorLevelData.walls as any[]).push(o);
+      } else if (this.editorDragTool === 'bridge') {
+        const o: any = { x: sx, y: sy, w: sw, h: sh, rot: 0 };
+        (gs.bridges as any[]).push(o);
+        if (this.editorLevelData) (this.editorLevelData.bridges as any[]).push(o);
+      } else if (this.editorDragTool === 'water') {
+        const o: any = { x: sx, y: sy, w: sw, h: sh, rot: 0 };
+        (gs.waters as any[]).push(o);
+        if (this.editorLevelData) (this.editorLevelData.water as any[]).push(o);
+      } else if (this.editorDragTool === 'sand') {
+        const o: any = { x: sx, y: sy, w: sw, h: sh, rot: 0 };
+        (gs.sands as any[]).push(o);
+        if (this.editorLevelData) (this.editorLevelData.sand as any[]).push(o);
+      } else if (this.editorDragTool === 'hill') {
+        const o: any = { x: sx, y: sy, w: sw, h: sh, rot: 0, dir: 'N' };
+        (gs.hills as any[]).push(o);
+        if (this.editorLevelData) (this.editorLevelData.hills as any[]).push(o);
+        // open hill direction picker near the center
+        const cx = sx + sw / 2, cy = sy + sh / 2;
+        this.hillDirectionPicker = { x: cx, y: cy, visible: true, selectedDir: 'N' as any } as any;
       }
-      this.isEditorDragging = false; this.editorDragTool = null;
+      env.setGlobalState(gs);
+      this.isEditorDragging = false;
+      this.editorDragTool = null;
+      this.editorDragStart = null;
+      this.editorDragCurrent = null;
+      this.syncEditorDataFromGlobals(env);
       return;
     }
 
-    // Commit rotation
+    // Commit polygon vertex drag (snapshot was taken on mouse down)
+    if (this.isVertexDragging) {
+      this.isVertexDragging = false;
+      this.vertexDrag = null;
+      this.syncEditorDataFromGlobals(env);
+      return;
+    }
+
+    // Finish rotations
     if (this.isRotating) {
-      this.pushUndoSnapshot('Rotate object(s)');
       this.isRotating = false;
       this.rotationCenter = null;
       this.rotationStartMouse = null;
-      this.groupRotateOriginals = null;
+      this.rotationStartAngle = 0;
       this.groupRotationStartAngle = 0;
+      this.groupRotateOriginals = null;
       this.syncEditorDataFromGlobals(env);
       return;
     }
 
-    // Commit resize (single)
-    if (this.isResizing) {
-      this.pushUndoSnapshot('Resize object');
+    // Finish single/group resize
+    if (this.isResizing || this.isGroupResizing) {
       this.isResizing = false;
-      this.resizeHandleIndex = null;
-      this.resizeStartBounds = null;
-      this.resizeStartMouse = null;
-      this.syncEditorDataFromGlobals(env);
-      return;
-    }
-
-    // Commit group resize
-    if (this.isGroupResizing) {
-      this.pushUndoSnapshot('Resize group');
       this.isGroupResizing = false;
       this.resizeHandleIndex = null;
       this.resizeStartBounds = null;
@@ -2058,76 +2135,66 @@ class LevelEditorImpl implements LevelEditor {
       return;
     }
 
-    // Commit drag-move
-    if (this.isDragMoving) {
+    // Finish drag-move by applying accumulated offset
+    if (this.isDragMoving && this.dragMoveStart) {
       const dx = this.dragMoveOffset.x;
       const dy = this.dragMoveOffset.y;
-      if (Math.abs(dx) > 0 || Math.abs(dy) > 0) {
-        this.pushUndoSnapshot(`Move ${this.selectedObjects.length} object(s)`);
-        const gs = env.getGlobalState();
-        for (const obj of this.selectedObjects) {
-          if (obj.type === 'tee') {
-            // Update editor data tee and preview ball
-            if (this.editorLevelData) {
-              this.editorLevelData.tee.x = clampX(this.editorLevelData.tee.x + dx);
-              this.editorLevelData.tee.y = clampY(this.editorLevelData.tee.y + dy);
-            }
-            env.setGlobalState({ ball: { x: clampX(gs.ball.x + dx), y: clampY(gs.ball.y + dy), vx: 0, vy: 0, moving: false } });
-          } else if (obj.type === 'cup') {
-            if (this.editorLevelData) {
-              this.editorLevelData.cup.x = clampX(this.editorLevelData.cup.x + dx);
-              this.editorLevelData.cup.y = clampY(this.editorLevelData.cup.y + dy);
-            }
-            env.setGlobalState({ hole: { x: clampX(gs.hole.x + dx), y: clampY(gs.hole.y + dy), r: (gs.hole as any).r || 8 } });
-          } else if (obj.type === 'post') {
-            const o: any = obj.object; o.x = clampX(o.x + dx); o.y = clampY(o.y + dy);
-          } else if (obj.type === 'wall' || obj.type === 'water' || obj.type === 'sand' || obj.type === 'bridge' || obj.type === 'hill') {
-            const o: any = obj.object; o.x = clampX(o.x + dx); o.y = clampY(o.y + dy);
-          } else if (obj.type === 'wallsPoly' || obj.type === 'waterPoly' || obj.type === 'sandPoly') {
-            const poly: any = obj.object; const pts: number[] = poly.points || [];
-            for (let i = 0; i < pts.length; i += 2) { pts[i] = clampX(pts[i] + dx); pts[i + 1] = clampY(pts[i + 1] + dy); }
-          } else if (obj.type === 'decoration') {
-            const d: any = obj.object; d.x = clampX(d.x + dx); d.y = clampY(d.y + dy);
+      if (dx !== 0 || dy !== 0) {
+        for (const so of this.selectedObjects) {
+          const t = so.type as any;
+          const o: any = so.object as any;
+          if (t === 'wallsPoly' || t === 'waterPoly' || t === 'sandPoly') {
+            const pts: number[] = Array.isArray(o.points) ? o.points : [];
+            for (let i = 0; i + 1 < pts.length; i += 2) { pts[i] += dx; pts[i + 1] += dy; }
+          } else if (t === 'tee' || t === 'cup' || t === 'post' || t === 'wall' || t === 'water' || t === 'sand' || t === 'bridge' || t === 'hill' || t === 'decoration') {
+            if (typeof o.x === 'number') o.x += dx;
+            if (typeof o.y === 'number') o.y += dy;
           }
         }
       }
       this.isDragMoving = false;
       this.dragMoveStart = null;
       this.dragMoveOffset = { x: 0, y: 0 };
+      this.syncEditorDataFromGlobals(env);
       return;
     }
 
-    // Commit selection box
+    // Finish selection box
     if (this.isSelectionDragging && this.selectionBoxStart) {
-      const x0 = Math.min(this.selectionBoxStart.x, px);
-      const y0 = Math.min(this.selectionBoxStart.y, py);
-      const x1 = Math.max(this.selectionBoxStart.x, px);
-      const y1 = Math.max(this.selectionBoxStart.y, py);
-      const box = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+      const boxX = Math.min(this.selectionBoxStart.x, this.selectionBoxStart.x + this.dragMoveOffset.x);
+      const boxY = Math.min(this.selectionBoxStart.y, this.selectionBoxStart.y + this.dragMoveOffset.y);
+      const boxW = Math.abs(this.dragMoveOffset.x);
+      const boxH = Math.abs(this.dragMoveOffset.y);
+      const box = { x: boxX, y: boxY, w: boxW, h: boxH };
+      const inBox = (b: { x: number; y: number; w: number; h: number }) => !(b.x + b.w < box.x || b.y + b.h < box.y || b.x > box.x + box.w || b.y > box.y + box.h);
+
       const gs = env.getGlobalState();
-      const inBox: SelectableObject[] = [];
+      const newlySelected: SelectableObject[] = [] as any;
+      const pushIf = (obj: SelectableObject) => { const b = this.getObjectBounds(obj); if (inBox(b)) newlySelected.push(obj); };
 
-      // Tee
-      if (this.rectsIntersect(box, this.getObjectBounds({ type: 'tee', object: { x: gs.ball.x, y: gs.ball.y } } as any))) {
-        inBox.push({ type: 'tee', object: gs.ball } as any);
-      }
-      // Cup
-      if (this.rectsIntersect(box, this.getObjectBounds({ type: 'cup', object: { x: gs.hole.x, y: gs.hole.y, r: (gs.hole as any).r || 8 } } as any))) {
-        inBox.push({ type: 'cup', object: { x: gs.hole.x, y: gs.hole.y, r: (gs.hole as any).r || 8 } } as any);
-      }
-      const pushIf = (obj: SelectableObject) => { if (this.rectsIntersect(box, this.getObjectBounds(obj))) inBox.push(obj); };
-      for (let i = 0; i < (gs.posts as any[]).length; i++) pushIf({ type: 'post', object: (gs.posts as any[])[i], index: i } as any);
-      for (let i = 0; i < (gs.walls as any[]).length; i++) pushIf({ type: 'wall', object: (gs.walls as any[])[i], index: i } as any);
-      for (let i = 0; i < (gs.polyWalls as any[]).length; i++) pushIf({ type: 'wallsPoly', object: (gs.polyWalls as any[])[i], index: i } as any);
-      for (let i = 0; i < (gs.waters as any[]).length; i++) pushIf({ type: 'water', object: (gs.waters as any[])[i], index: i } as any);
-      for (let i = 0; i < (gs.watersPoly as any[]).length; i++) pushIf({ type: 'waterPoly', object: (gs.watersPoly as any[])[i], index: i } as any);
-      for (let i = 0; i < (gs.sands as any[]).length; i++) pushIf({ type: 'sand', object: (gs.sands as any[])[i], index: i } as any);
-      for (let i = 0; i < (gs.sandsPoly as any[]).length; i++) pushIf({ type: 'sandPoly', object: (gs.sandsPoly as any[])[i], index: i } as any);
-      for (let i = 0; i < (gs.bridges as any[]).length; i++) pushIf({ type: 'bridge', object: (gs.bridges as any[])[i], index: i } as any);
-      for (let i = 0; i < (gs.hills as any[]).length; i++) pushIf({ type: 'hill', object: (gs.hills as any[])[i], index: i } as any);
-      for (let i = 0; i < (gs.decorations as any[]).length; i++) pushIf({ type: 'decoration', object: (gs.decorations as any[])[i], index: i } as any);
+      // Tee and Cup
+      pushIf({ type: 'tee', object: { x: gs.ball.x, y: gs.ball.y, r: (gs.ball as any).r || 8 } } as any);
+      pushIf({ type: 'cup', object: { x: gs.hole.x, y: gs.hole.y, r: (gs.hole as any).r || 8 } } as any);
+      // Arrays
+      (gs.posts as any[]).forEach((o, i) => pushIf({ type: 'post', object: o, index: i } as any));
+      (gs.walls as any[]).forEach((o, i) => pushIf({ type: 'wall', object: o, index: i } as any));
+      (gs.polyWalls as any[]).forEach((o, i) => pushIf({ type: 'wallsPoly', object: o, index: i } as any));
+      (gs.waters as any[]).forEach((o, i) => pushIf({ type: 'water', object: o, index: i } as any));
+      (gs.watersPoly as any[]).forEach((o, i) => pushIf({ type: 'waterPoly', object: o, index: i } as any));
+      (gs.sands as any[]).forEach((o, i) => pushIf({ type: 'sand', object: o, index: i } as any));
+      (gs.sandsPoly as any[]).forEach((o, i) => pushIf({ type: 'sandPoly', object: o, index: i } as any));
+      (gs.bridges as any[]).forEach((o, i) => pushIf({ type: 'bridge', object: o, index: i } as any));
+      (gs.hills as any[]).forEach((o, i) => pushIf({ type: 'hill', object: o, index: i } as any));
+      (gs.decorations as any[]).forEach((o, i) => pushIf({ type: 'decoration', object: o, index: i } as any));
 
-      if (inBox.length > 0) this.selectedObjects = e.shiftKey ? [...this.selectedObjects, ...inBox] : inBox;
+      if (e.shiftKey) {
+        // Union
+        const set = new Set(this.selectedObjects);
+        for (const o of newlySelected) set.add(o);
+        this.selectedObjects = Array.from(set);
+      } else {
+        this.selectedObjects = newlySelected;
+      }
 
       this.isSelectionDragging = false;
       this.selectionBoxStart = null;
@@ -2136,1014 +2203,44 @@ class LevelEditorImpl implements LevelEditor {
     }
   }
 
-  handleKeyDown(e: KeyboardEvent, env: EditorEnv): void {
-    if (env.isOverlayActive?.()) return;
-    
-    // Enter/Escape for polygon completion/cancellation
-    if (this.polygonInProgress) {
-      if (e.code === 'Enter') {
-        this.finishPolygon(env);
-        e.preventDefault();
-        return;
-      } else if (e.code === 'Escape') {
-        this.polygonInProgress = null;
-        e.preventDefault();
-        return;
-      }
-    }
-    
-    // Delete key - remove selected objects
-    if (e.code === 'Delete' || e.code === 'Backspace') {
-      if (this.selectedObjects.length > 0) {
-        this.pushUndoSnapshot(`Delete ${this.selectedObjects.length} object(s)`);
-        const gs = env.getGlobalState();
-        for (const obj of this.selectedObjects) {
-          if (obj.type === 'wall') {
-            const idx = obj.index;
-            if (idx >= 0 && idx < gs.walls.length) gs.walls.splice(idx, 1);
-          } else if (obj.type === 'post') {
-            const idx = obj.index;
-            if (idx >= 0 && idx < gs.posts.length) gs.posts.splice(idx, 1);
-          } else if (obj.type === 'water') {
-            const idx = obj.index;
-            if (idx >= 0 && idx < gs.waters.length) gs.waters.splice(idx, 1);
-          } else if (obj.type === 'sand') {
-            const idx = obj.index;
-            if (idx >= 0 && idx < gs.sands.length) gs.sands.splice(idx, 1);
-          } else if (obj.type === 'bridge') {
-            const idx = obj.index;
-            if (idx >= 0 && idx < gs.bridges.length) gs.bridges.splice(idx, 1);
-          } else if (obj.type === 'hill') {
-            const idx = obj.index;
-            if (idx >= 0 && idx < gs.hills.length) gs.hills.splice(idx, 1);
-          } else if (obj.type === 'decoration') {
-            const idx = obj.index;
-            if (idx >= 0 && idx < gs.decorations.length) gs.decorations.splice(idx, 1);
-          } else if (obj.type === 'wallsPoly') {
-            const idx = obj.index;
-            if (idx >= 0 && idx < gs.polyWalls.length) gs.polyWalls.splice(idx, 1);
-          } else if (obj.type === 'waterPoly') {
-            const idx = obj.index;
-            if (idx >= 0 && idx < gs.watersPoly.length) gs.watersPoly.splice(idx, 1);
-          } else if (obj.type === 'sandPoly') {
-            const idx = obj.index;
-            if (idx >= 0 && idx < gs.sandsPoly.length) gs.sandsPoly.splice(idx, 1);
-          }
-        }
-        this.selectedObjects = [];
-        this.syncEditorDataFromGlobals(env);
-      }
-      return;
-    }
-
-    // Grid controls
-    if (e.code === 'KeyG') {
-      try { env.setShowGrid?.(!env.getShowGrid()); } catch {}
-      return;
-    }
-    if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
-      try { const g = Math.max(2, env.getGridSize() - 2); env.setGridSize?.(g); } catch {}
-      return;
-    }
-    if (e.code === 'Equal' || e.code === 'NumpadAdd') {
-      try { const g = Math.max(2, env.getGridSize() + 2); env.setGridSize?.(g); } catch {}
-      return;
-    }
-
-    // Tool shortcuts (only when Ctrl is not pressed to avoid conflicts)
-    if (e.code === 'KeyS' && !e.ctrlKey) { this.selectedTool = 'select'; return; }
-    if (e.code === 'KeyT' && !e.ctrlKey) { this.selectedTool = 'tee'; return; }
-    if (e.code === 'KeyC' && !e.ctrlKey) { this.selectedTool = 'cup'; return; }
-    if (e.code === 'KeyW' && !e.ctrlKey) { this.selectedTool = 'wall'; return; }
-    if (e.code === 'KeyP' && !e.ctrlKey) { this.selectedTool = 'post'; return; }
-    if (e.code === 'KeyB' && !e.ctrlKey) { this.selectedTool = 'bridge'; return; }
-    if (e.code === 'KeyH' && !e.ctrlKey) { this.selectedTool = 'hill'; return; }
-    if (e.code === 'KeyD' && !e.ctrlKey) { this.selectedTool = 'decoration'; return; }
-
-    // Test Level shortcut
-    if (e.ctrlKey && e.code === 'KeyT') {
-      e.preventDefault();
-      void this.testLevel();
-      return;
-    }
-
-    // Undo/Redo shortcuts
-    if (e.ctrlKey && e.code === 'KeyZ' && !e.shiftKey) {
-      e.preventDefault();
-      this.performUndo();
-      return;
-    }
-    if (e.ctrlKey && (e.code === 'KeyY' || (e.code === 'KeyZ' && e.shiftKey))) {
-      e.preventDefault();
-      this.performRedo();
-      return;
-    }
-
-    // Clipboard shortcuts
-    if (e.ctrlKey && e.code === 'KeyC' && !e.altKey) {
-      e.preventDefault();
-      this.copySelectedObjects();
-      return;
-    }
-    if (e.ctrlKey && e.code === 'KeyX') {
-      e.preventDefault();
-      this.cutSelectedObjects();
-      return;
-    }
-    if (e.ctrlKey && e.code === 'KeyV') {
-      e.preventDefault();
-      this.pasteObjects(this.lastMousePosition.x, this.lastMousePosition.y);
-      return;
-    }
-
-    // Save shortcuts
-    if (e.ctrlKey && e.code === 'KeyS') {
-      e.preventDefault();
-      if (e.shiftKey) {
-        void this.saveAs();
-      } else {
-        void this.save();
-      }
-      return;
-    }
-
-    // Load shortcut
-    if (e.ctrlKey && e.code === 'KeyO') {
-      e.preventDefault();
-      void this.openLoadPicker();
-      return;
-    }
-
-    // New level shortcut
-    if (e.ctrlKey && e.code === 'KeyN') {
-      e.preventDefault();
-      void this.newLevel();
-      return;
-    }
-
-    // Arrow key nudging for selected objects
-    if (this.selectedObjects.length > 0 && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
-      e.preventDefault();
-      this.nudgeSelectedObjects(e.code, e.shiftKey, env);
-      return;
-    }
-
-    // Alignment shortcuts (Ctrl + arrow keys)
-    if (e.ctrlKey && this.selectedObjects.length > 1 && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
-      e.preventDefault();
-      this.alignSelectedObjects(e.code, env);
-      return;
-    }
-
-    // Escape: offer to exit editor when no overlays/menus are active
-    if (e.key === 'Escape' && !(env.isOverlayActive?.() ?? false) && !this.openEditorMenu) {
-      (async () => {
-        const ok = await env.showConfirm('Exit Level Editor and return to Main Menu? Unsaved changes will be lost.', 'Exit Editor');
-        if (ok) env.exitToMenu();
-      })();
-      try { e.preventDefault(); } catch {}
-      return;
-    }
-  }
-
-  async newLevel(): Promise<void> {
-    // Confirm if there are unsaved changes
-    if (this.editorLevelData && this.env) {
-      const confirmed = await this.env.showConfirm('Create new level? Unsaved changes will be lost.', 'New Level');
-      if (!confirmed) return;
-    }
-
-    const gs = this.getDefaultGlobalState();
-    this.editorLevelData = {
-      canvas: { width: gs.WIDTH, height: gs.HEIGHT },
-      course: { index: 1, total: 1, title: 'Untitled' },
-      par: 3,
-      tee: { x: gs.COURSE_MARGIN + 60, y: Math.floor(gs.HEIGHT / 2) },
-      cup: { x: gs.WIDTH - gs.COURSE_MARGIN - 60, y: Math.floor(gs.HEIGHT / 2), r: 8 },
-      walls: [],
-      wallsPoly: [],
-      posts: [],
-      bridges: [],
-      water: [],
-      waterPoly: [],
-      sand: [],
-      sandPoly: [],
-      hills: [],
-      decorations: []
-    };
-    this.editorCurrentSavedId = null;
-    this.selectedObjects = [];
-    
-    // Update global state to reflect new level
-    if (this.env) {
-      const newGlobalState = {
-        ball: { x: this.editorLevelData.tee.x, y: this.editorLevelData.tee.y, vx: 0, vy: 0, moving: false },
-        hole: { x: this.editorLevelData.cup.x, y: this.editorLevelData.cup.y, r: this.editorLevelData.cup.r },
-        walls: [],
-        polyWalls: [],
-        posts: [],
-        bridges: [],
-        waters: [],
-        watersPoly: [],
-        sands: [],
-        sandsPoly: [],
-        hills: [],
-        decorations: []
-      };
-      this.env.setGlobalState(newGlobalState);
-      this.env.showToast('New level created');
-    }
-  }
-
-  async openLoadPicker(): Promise<void> {
-    if (!this.env) {
-      console.warn('No environment available for load picker');
-      return;
-    }
-
-    try {
-      const username = this.env.getGlobalState().userProfile?.name || 'DefaultUser';
-      
-      // Load from Firebase using the same API as User Made Levels picker
-      const firebaseManager = (await import('../firebase')).default;
-      const globalState = this.env.getGlobalState();
-      const userId = this.env.getUserId(); // Use same getUserId function as main app
-      
-      let allLevels: Array<{name: string; data: any; source: string}> = [];
-      
-      try {
-        // Check if user is admin - if so, load ALL levels from all users
-        const userProfile = globalState.userProfile;
-        const isAdmin = userProfile?.role === 'admin';
-        
-        if (isAdmin) {
-          // Admin users see all levels from all users
-          console.log('Level Editor: Loading all levels for admin user');
-          const allUserLevels = await firebaseManager.levels.getAllLevels(undefined); // undefined = all users
-          
-          allLevels = allUserLevels.map(entry => ({
-            id: entry.name, // Firebase ID
-            name: `${entry.title || 'Untitled Level'} [${entry.author || 'user'}]`,
-            data: entry.data,
-            source: 'firebase'
-          }));
-        } else {
-          // Regular users only see their own levels
-          const firebaseLevels = await firebaseManager.levels.getAllLevels(userId);
-          
-          allLevels = firebaseLevels.map(entry => ({
-            id: entry.name, // Firebase ID
-            name: `${entry.title || 'Untitled Level'} [${entry.author || 'user'}]`,
-            data: entry.data,
-            source: 'firebase'
-          }));
-        }
-        
-        console.log(`Level Editor: Loaded ${allLevels.length} levels from Firebase (admin: ${isAdmin})`);
-      } catch (error) {
-        console.error('Level Editor: Failed to load levels from Firebase:', error);
-        allLevels = [];
-      }
-      
-      if (allLevels.length === 0) {
-        // Offer to import a level
-        const importLevel = await this.env.showConfirm('No saved levels found. Import a level file?', 'Import Level');
-        if (importLevel) {
-          const imported = await importLevelFromFile();
-          if (imported) {
-            this.editorLevelData = imported;
-            this.editorCurrentSavedId = null;
-            this.selectedObjects = [];
-            this.loadEditorLevelIntoGlobals(this.env!);
-            this.env.showToast('Level imported successfully');
-          }
-        }
-        return;
-      }
-
-      // Use custom UI list picker
-      const sortedLevels = allLevels.sort((a, b) => a.name.localeCompare(b.name));
-      const listItems = sortedLevels.map(level => ({
-        label: level.name,
-        value: level
-      }));
-      
-      const selectedItem = await this.env.showList('Load Level', listItems);
-      if (!selectedItem) return;
-      const levelToLoad = selectedItem.value;
-
-      // Confirm if there are unsaved changes
-      if (this.editorLevelData) {
-        const confirmed = await this.env.showConfirm(`Load "${levelToLoad.name}"? Unsaved changes will be lost.`, 'Load Level');
-        if (!confirmed) return;
-      }
-
-      this.editorLevelData = levelToLoad.data;
-      // Use Firebase ID for saved ID, not the UI label
-      this.editorCurrentSavedId = levelToLoad.source === 'firebase' ? (levelToLoad.id || null) : null;
-      this.selectedObjects = [];
-
-      // Update global state
-      this.loadEditorLevelIntoGlobals(this.env!);
-      this.env.showToast(`Loaded: ${levelToLoad.name}`);
-
-    } catch (error) {
-      console.error('Failed to load level:', error);
-      this.env.showToast('Failed to load level');
-    }
-  }
-
-  async openDeletePicker(): Promise<void> {
-    if (!this.env) {
-      console.warn('No environment available for delete picker');
-      return;
-    }
-
-    try {
-      if (!this.editorCurrentSavedId) {
-        this.env.showToast('No level selected for deletion');
-        return;
-      }
-      
-      // Check permissions for delete
-      const globalState = this.env.getGlobalState();
-      const userProfile = globalState.userProfile;
-      const isOwner = this.editorLevelData?.meta?.authorId === userProfile?.id;
-      const isAdmin = userProfile?.role === 'admin';
-      
-      if (!isOwner && !isAdmin) {
-        this.env.showToast('Permission denied: You can only delete your own levels.');
-        return;
-      }
-      
-      const levelTitle = this.editorLevelData?.course?.title || this.editorCurrentSavedId;
-      
-      const confirmed = await this.env.showConfirm(
-        `Delete "${levelTitle}"?\n\nThis action cannot be undone.`,
-        'Delete Level'
-      );
-      
-      if (confirmed) {
-        const firebaseManager = (await import('../firebase')).default;
-        const userId = globalState.userProfile?.id;
-        
-        if (userId) {
-          await firebaseManager.levels.deleteLevel(this.editorCurrentSavedId, userId);
-          this.env.showToast(`Deleted: ${levelTitle}`);
-          
-          // Create new level after deletion
-          await this.newLevel();
-        } else {
-          this.env.showToast('User not authenticated');
-        }
-      }
-    } catch (error) {
-      console.error('Failed to delete level:', error);
-      this.env?.showToast('Failed to delete level');
-    }
-  }
-
-  async save(): Promise<void> {
-    if (!this.editorLevelData) {
-      console.warn('No level data to save');
-      return;
-    }
-
-    // Check permissions for overwrite if this is an existing level
-    if (this.editorCurrentSavedId) {
-      const globalState = this.env!.getGlobalState();
-      const userProfile = globalState.userProfile;
-      const isOwner = this.editorLevelData.meta?.authorId === userProfile?.id;
-      const isAdmin = userProfile?.role === 'admin';
-      
-      if (!isOwner && !isAdmin) {
-        this.env?.showToast('Permission denied: You can only save your own levels. Use "Save As" to create a copy.');
-        return;
-      }
-    }
-
-    // Sync current editor state to level data
-    this.syncEditorDataFromGlobals(this.env!);
-    
-    try {
-      // Always prompt for title if this is a new level (no saved ID) or if title is empty/untitled
-      const currentTitle = this.editorLevelData.course?.title || '';
-      let title = currentTitle;
-      if (!this.editorCurrentSavedId || !title || title === 'Untitled') {
-        const input = await this.env!.showPrompt('Enter level name:', title || 'My Level', 'Save Level');
-        if (!input) { this.env?.showToast('Save cancelled'); return; }
-        title = input.trim();
-        if (!this.editorLevelData.course) this.editorLevelData.course = { index: 1, total: 1, title } as any;
-        else this.editorLevelData.course.title = title;
-      }
-
-      // Add metadata
-      const username = this.env!.getGlobalState().userProfile?.name || 'DefaultUser';
-      if (!this.editorLevelData.meta) this.editorLevelData.meta = {};
-      this.editorLevelData.meta.title = title; // Set title in metadata for Firebase
-      this.editorLevelData.meta.authorName = username;
-      this.editorLevelData.meta.authorId = username;
-      this.editorLevelData.meta.lastModified = Date.now();
-
-      const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `level-${Date.now()}`;
-      const filename = this.editorCurrentSavedId || slug;
-      
-      // Try filesystem save first
-      
-      let saved = false;
-      if (isFileSystemAccessSupported()) {
-        // Save to User_Levels/<username>/ directory
-        saved = await saveLevelToFilesystem(this.editorLevelData, filename, {
-          username,
-          useUserDirectory: true
-        });
-      }
-      
-      if (!saved) {
-        // Save to Firebase as fallback
-        try {
-          const firebaseManager = (await import('../firebase')).default;
-          const userId = this.env!.getUserId(); // Use same getUserId function as main app
-          
-          if (userId && this.editorLevelData) {
-            await firebaseManager.levels.saveLevel(this.editorLevelData, filename, userId);
-            saved = true;
-            console.log('Saved to Firebase as fallback');
-          }
-        } catch (error) {
-          console.error('Firebase fallback save failed:', error);
-        }
-      }
-
-      if (!this.editorCurrentSavedId) {
-        this.editorCurrentSavedId = filename;
-      }
-
-      // Show success feedback
-      this.env?.showToast(`Saved: ${title}`);
-      console.log('Level saved:', filename, saved ? '(filesystem/firebase)' : '(failed)');
-    } catch (error) {
-      console.error('Failed to save level:', error);
-      if (this.env) {
-        this.env.showToast('Failed to save level');
-      }
-    }
-  }
-
-
-  async saveAs(): Promise<void> {
-    if (!this.editorLevelData) {
-      console.warn('No level data to save');
-      return;
-    }
-
-    // Sync current editor state
-    this.syncEditorDataFromGlobals(this.env!);
-    
-    // Ask for a new name
-    const input = await this.env!.showPrompt('Save As - enter new level name:', this.editorLevelData.course?.title || 'Untitled Copy', 'Save As');
-    if (!input) { this.env?.showToast('Save As cancelled'); return; }
-    const title = input.trim();
-    if (!this.editorLevelData.course) this.editorLevelData.course = { index: 1, total: 1, title } as any;
-    else this.editorLevelData.course.title = title;
-
-    // Force new save ID to create a copy
-    const oldId = this.editorCurrentSavedId;
-    this.editorCurrentSavedId = null;
-
-    try {
-      await this.save();
-      this.env?.showToast(`Saved As: ${title}`);
-    } catch (error) {
-      // Restore old ID on failure
-      this.editorCurrentSavedId = oldId;
-      throw error;
-    }
-  }
-
-  async importLevel(): Promise<void> {
-    if (!this.env) return;
-
-    try {
-      // Show confirmation if there are unsaved changes
-      if (this.editorLevelData && this.editorCurrentSavedId === null) {
-        const proceed = await this.env.showConfirm(
-          'You have unsaved changes. Import will replace the current level. Continue?',
-          'Import Level'
-        );
-        if (!proceed) return;
-      }
-
-      // Use the improved import function with validation
-      const importedData = await importLevelFromFile();
-      if (!importedData) {
-        this.env.showToast('Import cancelled');
-        return;
-      }
-
-      // Apply automatic fix-ups
-      const fixedData = applyLevelDataFixups(importedData);
-
-      // Prompt for title and author metadata
-      const currentUsername = this.env.getGlobalState().userProfile?.name || 'DefaultUser';
-      const suggestedTitle = fixedData.course?.title || fixedData.meta?.title || 'Imported Level';
-      const suggestedAuthor = fixedData.meta?.authorName || currentUsername;
-
-      const title = await this.env.showPrompt('Level Title:', suggestedTitle);
-      if (!title) {
-        this.env.showToast('Import cancelled');
-        return;
-      }
-
-      const author = await this.env.showPrompt('Author Name:', suggestedAuthor);
-      if (!author) {
-        this.env.showToast('Import cancelled');
-        return;
-      }
-
-      // Update metadata
-      if (!fixedData.meta) fixedData.meta = {};
-      if (!fixedData.course) fixedData.course = { index: 1, total: 1 };
-      
-      fixedData.course.title = title;
-      fixedData.meta.authorName = author;
-      fixedData.meta.authorId = author;
-      fixedData.meta.lastModified = Date.now();
-
-      // Load the imported level into the editor
-      this.editorLevelData = fixedData;
-      this.editorCurrentSavedId = null; // Mark as unsaved
-      this.selectedObjects = [];
-      this.clipboard = [];
-      
-      // Clear undo/redo history for imported level
-      this.undoStack = [];
-      this.redoStack = [];
-
-      // Load into global state
-      this.loadEditorLevelIntoGlobals(this.env);
-
-      this.env.showToast(`Imported: ${title}`);
-      console.log('Level imported successfully:', title);
-
-    } catch (error) {
-      console.error('Failed to import level:', error);
-      this.env?.showToast('Import failed: Invalid level file');
-    }
-  }
-
-  async editMetadata(): Promise<void> {
-    if (!this.editorLevelData || !this.env) {
-      this.env?.showToast('No level data to edit');
-      return;
-    }
-
-    try {
-      // Ensure metadata objects exist
-      if (!this.editorLevelData.meta) this.editorLevelData.meta = {};
-      if (!this.editorLevelData.course) this.editorLevelData.course = { index: 1, total: 1 };
-
-      // Get current values
-      const currentTitle = this.editorLevelData.course.title || 'Untitled';
-      const currentAuthor = this.editorLevelData.meta.authorName || this.env.getGlobalState().userProfile?.name || 'DefaultUser';
-      const currentPar = this.editorLevelData.par || 3;
-
-      // Prompt for title
-      const newTitle = await this.env.showPrompt('Level Title:', currentTitle);
-      if (newTitle === null) return; // User cancelled
-
-      // Prompt for author
-      const newAuthor = await this.env.showPrompt('Author Name:', currentAuthor);
-      if (newAuthor === null) return; // User cancelled
-
-      // Prompt for par
-      const parStr = await this.env.showPrompt('Par (1-9):', currentPar.toString());
-      if (parStr === null) return; // User cancelled
-
-      const newPar = parseInt(parStr, 10);
-      if (isNaN(newPar) || newPar < 1 || newPar > 9) {
-        this.env.showToast('Invalid par value. Must be 1-9.');
-        return;
-      }
-
-      // Create undo snapshot before making changes
-      this.pushUndoSnapshot('Edit Metadata');
-
-      // Update metadata
-      this.editorLevelData.course.title = newTitle.trim() || 'Untitled';
-      this.editorLevelData.meta.authorName = newAuthor.trim() || 'DefaultUser';
-      this.editorLevelData.meta.authorId = newAuthor.trim() || 'DefaultUser';
-      this.editorLevelData.par = newPar;
-      this.editorLevelData.meta.lastModified = Date.now();
-
-      // Mark as unsaved if this was a saved level
-      if (this.editorCurrentSavedId !== null) {
-        this.editorCurrentSavedId = null;
-      }
-
-      this.env.showToast(`Metadata updated: ${this.editorLevelData.course.title}`);
-      console.log('Level metadata updated:', {
-        title: this.editorLevelData.course.title,
-        author: this.editorLevelData.meta.authorName,
-        par: this.editorLevelData.par
-      });
-
-    } catch (error) {
-      console.error('Failed to edit metadata:', error);
-      this.env?.showToast('Failed to edit metadata');
-    }
-  }
-
-  async suggestPar(): Promise<void> {
-    if (!this.editorLevelData || !this.env) {
-      this.env?.showToast('No level data to analyze');
-      return;
-    }
-
-    try {
-      // Sync current editor state
-      this.syncEditorDataFromGlobals(this.env);
-
-      const analysis = this.analyzeLevelDifficulty();
-      const suggestedPar = this.calculateParFromAnalysis(analysis);
-      
-      const currentPar = this.editorLevelData.par || 3;
-      const message = `Current Par: ${currentPar}\nSuggested Par: ${suggestedPar}\n\nAnalysis:\n${analysis.summary}\n\nApply suggested par?`;
-      
-      const apply = await this.env.showConfirm(message, 'Par Suggestion');
-      if (apply) {
-        // Create undo snapshot before making changes
-        this.pushUndoSnapshot('Apply Par Suggestion');
-        
-        this.editorLevelData.par = suggestedPar;
-        if (!this.editorLevelData.meta) this.editorLevelData.meta = {};
-        this.editorLevelData.meta.lastModified = Date.now();
-        
-        // Mark as unsaved
-        if (this.editorCurrentSavedId !== null) {
-          this.editorCurrentSavedId = null;
-        }
-        
-        this.env.showToast(`Par updated to ${suggestedPar}`);
-      }
-
-    } catch (error) {
-      console.error('Failed to suggest par:', error);
-      this.env?.showToast('Failed to analyze level');
-    }
-  }
-
-  private analyzeLevelDifficulty(): { 
-    distance: number; 
-    obstacles: number; 
-    bankShots: number; 
-    complexity: number; 
-    summary: string 
-  } {
-    if (!this.editorLevelData) {
-      return { distance: 0, obstacles: 0, bankShots: 0, complexity: 1, summary: 'No level data' };
-    }
-
-    // Calculate direct distance from tee to cup
-    const tee = this.editorLevelData.tee;
-    const cup = this.editorLevelData.cup;
-    const directDistance = Math.sqrt(Math.pow(cup.x - tee.x, 2) + Math.pow(cup.y - tee.y, 2));
-
-    // Count obstacles that affect ball path
-    const walls = (this.editorLevelData.walls || []).length + (this.editorLevelData.wallsPoly || []).length;
-    const posts = (this.editorLevelData.posts || []).length;
-    const water = (this.editorLevelData.waters || []).length + (this.editorLevelData.watersPoly || []).length;
-    const sand = (this.editorLevelData.sands || []).length + (this.editorLevelData.sandsPoly || []).length;
-    const hills = (this.editorLevelData.hills || []).length;
-    
-    const totalObstacles = walls + posts + water + sand + hills;
-
-    // Analyze potential bank shots (walls near the direct path)
-    let bankShotOpportunities = 0;
-    const pathWalls = this.editorLevelData.walls || [];
-    for (const wall of pathWalls) {
-      // Check if wall is positioned to enable bank shots
-      const wallCenter = { x: wall.x + wall.w / 2, y: wall.y + wall.h / 2 };
-      const distanceToPath = this.distanceToLineSegment(wallCenter, tee, cup);
-      if (distanceToPath < 100) { // Wall is close to direct path
-        bankShotOpportunities++;
-      }
-    }
-
-    // Calculate complexity score
-    let complexity = 1;
-    
-    // Distance factor (longer = harder)
-    if (directDistance > 400) complexity += 1;
-    if (directDistance > 600) complexity += 1;
-    
-    // Obstacle factor
-    if (totalObstacles > 3) complexity += 1;
-    if (totalObstacles > 6) complexity += 1;
-    if (totalObstacles > 10) complexity += 1;
-    
-    // Water/sand penalty (more punishing than walls)
-    if (water > 0) complexity += 1;
-    if (sand > 2) complexity += 1;
-    
-    // Bank shot opportunities (require skill)
-    if (bankShotOpportunities > 1) complexity += 1;
-    if (bankShotOpportunities > 3) complexity += 1;
-
-    // Hills add elevation complexity
-    if (hills > 0) complexity += 1;
-
-    const summary = [
-      `Distance: ${Math.round(directDistance)}px`,
-      `Obstacles: ${totalObstacles} (${walls} walls, ${posts} posts, ${water} water, ${sand} sand, ${hills} hills)`,
-      `Bank opportunities: ${bankShotOpportunities}`,
-      `Complexity: ${complexity}/7`
-    ].join('\n');
-
-    return {
-      distance: directDistance,
-      obstacles: totalObstacles,
-      bankShots: bankShotOpportunities,
-      complexity,
-      summary
-    };
-  }
-
-  private calculateParFromAnalysis(analysis: { distance: number; obstacles: number; bankShots: number; complexity: number }): number {
-    // Base par calculation
-    let par = 2; // Minimum par
-    
-    // Distance-based par
-    if (analysis.distance > 200) par = 3;
-    if (analysis.distance > 400) par = 4;
-    if (analysis.distance > 600) par = 5;
-    
-    // Complexity adjustments
-    if (analysis.complexity >= 5) par += 1;
-    if (analysis.complexity >= 7) par += 1;
-    
-    // Obstacle adjustments
-    if (analysis.obstacles > 5) par += 1;
-    if (analysis.obstacles > 10) par += 1;
-    
-    // Bank shot bonus (skilled players can use these)
-    if (analysis.bankShots > 2 && analysis.complexity < 4) {
-      par = Math.max(par - 1, 2); // Reduce par if bank shots make it easier
-    }
-    
-    // Clamp to valid range
-    return Math.max(1, Math.min(9, par));
-  }
-
-  private distanceToLineSegment(point: { x: number; y: number }, lineStart: { x: number; y: number }, lineEnd: { x: number; y: number }): number {
-    const A = point.x - lineStart.x;
-    const B = point.y - lineStart.y;
-    const C = lineEnd.x - lineStart.x;
-    const D = lineEnd.y - lineStart.y;
-
-    const dot = A * C + B * D;
-    const lenSq = C * C + D * D;
-    
-    if (lenSq === 0) return Math.sqrt(A * A + B * B);
-    
-    let param = dot / lenSq;
-    param = Math.max(0, Math.min(1, param));
-    
-    const xx = lineStart.x + param * C;
-    const yy = lineStart.y + param * D;
-    
-    const dx = point.x - xx;
-    const dy = point.y - yy;
-    return Math.sqrt(dx * dx + dy * dy);
-  }
-
-  async exportLevel(): Promise<void> {
-    if (!this.editorLevelData) {
-      this.env?.showToast('No level data to export');
-      return;
-    }
-
-    // Sync current editor state
-    this.syncEditorDataFromGlobals(this.env!);
-
-    try {
-      const title = this.editorLevelData.course?.title || 'Untitled';
-      const filename = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'level';
-      
-      // Add metadata
-      const username = this.env!.getGlobalState().userProfile?.name || 'DefaultUser';
-      if (!this.editorLevelData.meta) this.editorLevelData.meta = {};
-      this.editorLevelData.meta.authorName = username;
-      this.editorLevelData.meta.authorId = username;
-      this.editorLevelData.meta.lastModified = Date.now();
-
-      const success = saveLevelAsDownload(this.editorLevelData, filename);
-      if (success) {
-        this.env?.showToast(`Exported: ${title}.json`);
-      } else {
-        this.env?.showToast('Export failed');
-      }
-    } catch (error) {
-      console.error('Failed to export level:', error);
-      this.env?.showToast('Export failed');
-    }
-  }
-
-  async testLevel(): Promise<void> {
-    if (!this.editorLevelData) {
-      this.env?.showToast('No level data to test');
-      return;
-    }
-
-    // Validate that we have required elements
-    if (!this.editorLevelData.tee || !this.editorLevelData.cup) {
-      this.env?.showToast('Level needs both a tee and cup to test');
-      return;
-    }
-
-    try {
-      // Sync current editor state to level data
-      this.syncEditorDataFromGlobals(this.env!);
-
-      // Create a temporary level object for testing
-      const testLevelData = {
-        ...this.editorLevelData,
-        course: {
-          ...this.editorLevelData.course,
-          title: this.editorLevelData.course?.title || 'Test Level',
-          index: 1,
-          total: 1
-        },
-        par: this.editorLevelData.par || 3
-      };
-
-      // Store the test level in a temporary cache entry and switch to play mode
-      const tempPath = `test-level-${Date.now()}`;
-      
-      // Use the environment's test level functionality if available
-      if (this.env && typeof (this.env as any).testLevel === 'function') {
-        await (this.env as any).testLevel(testLevelData);
-      } else {
-        // Fallback: show message that test functionality needs to be implemented in main
-        this.env?.showToast('Test Level functionality needs main.ts integration');
-        console.log('Test level data prepared:', testLevelData);
-      }
-
-    } catch (error) {
-      console.error('Failed to test level:', error);
-      this.env?.showToast('Failed to test level');
-    }
-  }
-
-  getSelectedTool(): EditorTool { return this.selectedTool; }
-  setSelectedTool(t: EditorTool): void { this.selectedTool = t; }
-  getUiHotspots(): EditorHotspot[] { return this.uiHotspots; }
-
-  // --- Helper methods ---
-  private getDefaultGlobalState() {
-    return {
-      WIDTH: 960,
-      HEIGHT: 600,
-      COURSE_MARGIN: 40
-    };
-  }
-
-  private loadEditorLevelIntoGlobals(env: EditorEnv): void {
-    if (!this.editorLevelData) return;
-    
+  // Hit-test for polygon vertices across all polygon types
+  private findPolygonVertexAtPoint(px: number, py: number, env: EditorEnv): { obj: SelectableObject; vertexIndex: number } | null {
     const gs = env.getGlobalState();
-    
-    // Update canvas dimensions if present in level data
-    if (this.editorLevelData.canvas) {
-      gs.levelCanvas.width = this.editorLevelData.canvas.width;
-      gs.levelCanvas.height = this.editorLevelData.canvas.height;
-    }
-    
-    // Update global state with editor level data (with safe defaults for missing arrays)
-    gs.ball = { x: this.editorLevelData.tee.x, y: this.editorLevelData.tee.y, vx: 0, vy: 0, moving: false };
-    gs.hole = { x: this.editorLevelData.cup.x, y: this.editorLevelData.cup.y, r: this.editorLevelData.cup.r };
-    gs.walls = [...(this.editorLevelData.walls || [])];
-    gs.polyWalls = [...(this.editorLevelData.wallsPoly || [])];
-    gs.posts = [...(this.editorLevelData.posts || [])];
-    gs.bridges = [...(this.editorLevelData.bridges || [])];
-    gs.waters = [...(this.editorLevelData.water || [])];
-    gs.watersPoly = [...(this.editorLevelData.waterPoly || [])];
-    gs.sands = [...(this.editorLevelData.sand || [])];
-    gs.sandsPoly = [...(this.editorLevelData.sandPoly || [])];
-    gs.hills = [...(this.editorLevelData.hills || [])];
-    gs.decorations = [...(this.editorLevelData.decorations || [])];
-    env.setGlobalState(gs);
-  }
+    const threshold = 8; // pixels
 
-  private syncEditorDataFromGlobals(env: EditorEnv): void {
-    if (!this.editorLevelData) return;
-    const gs = env.getGlobalState();
-    this.editorLevelData.walls = [...gs.walls];
-    this.editorLevelData.wallsPoly = [...gs.polyWalls];
-    this.editorLevelData.posts = [...gs.posts];
-    this.editorLevelData.bridges = [...gs.bridges];
-    this.editorLevelData.water = [...gs.waters];
-    this.editorLevelData.waterPoly = [...gs.watersPoly];
-    this.editorLevelData.sand = [...gs.sands];
-    this.editorLevelData.sandPoly = [...gs.sandsPoly];
-    this.editorLevelData.hills = [...gs.hills];
-    this.editorLevelData.decorations = [...gs.decorations];
-  }
+    const testPolyArray = <T extends { points: number[] }>(arr: T[] | undefined, type: SelectableObject['type']): { obj: SelectableObject; vertexIndex: number } | null => {
+      if (!arr) return null;
+      for (let idx = 0; idx < arr.length; idx++) {
+        const poly: any = arr[idx];
+        const pts: number[] = Array.isArray(poly.points) ? poly.points : [];
+        for (let i = 0, vi = 0; i + 1 < pts.length; i += 2, vi++) {
+          const vx = pts[i];
+          const vy = pts[i + 1];
+          const dx = px - vx;
+          const dy = py - vy;
+          if (Math.hypot(dx, dy) <= threshold) {
+            const obj: SelectableObject = { type: type as any, object: poly, index: idx } as any;
+            return { obj, vertexIndex: vi };
+          }
+        }
+      }
+      return null;
+    };
 
-  // --- Helpers migrated/replicated from main.ts ---
-  private getObjectBounds(obj: SelectableObject): { x: number; y: number; w: number; h: number } {
-    if (obj.type === 'post') {
-      const p: any = obj.object; return { x: p.x - p.r, y: p.y - p.r, w: p.r * 2, h: p.r * 2 };
-    }
-    if (obj.type === 'wall' || obj.type === 'water' || obj.type === 'sand' || obj.type === 'bridge' || obj.type === 'hill') {
-      const r: any = obj.object; return { x: r.x, y: r.y, w: r.w, h: r.h };
-    }
-    if (obj.type === 'wallsPoly' || obj.type === 'waterPoly' || obj.type === 'sandPoly') {
-      const pts: number[] = (obj.object as any).points || [];
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (let i = 0; i < pts.length; i += 2) { const x = pts[i], y = pts[i + 1]; if (x < minX) minX = x; if (y < minY) minY = y; if (x > maxX) maxX = x; if (y > maxY) maxY = y; }
-      if (!isFinite(minX)) return { x: 0, y: 0, w: 0, h: 0 };
-      return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
-    }
-    // Default empty bounds
-    return { x: 0, y: 0, w: 0, h: 0 };
+    return (
+      testPolyArray(gs.polyWalls as any[], 'wallsPoly') ||
+      testPolyArray(gs.watersPoly as any[], 'waterPoly') ||
+      testPolyArray(gs.sandsPoly as any[], 'sandPoly') ||
+      null
+    );
   }
-
-  private isPointInObject(px: number, py: number, obj: SelectableObject): boolean {
-    const b = this.getObjectBounds(obj);
-    return px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h;
-  }
-
-  private rectsIntersect(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }): boolean {
-    return !(a.x + a.w < b.x || b.x + b.w < a.x || a.y + a.h < b.y || b.y + b.h < a.y);
-  }
-
-  private getSelectionBounds(): { x: number; y: number; w: number; h: number } {
-    if (this.selectedObjects.length === 0) return { x: 0, y: 0, w: 0, h: 0 };
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const obj of this.selectedObjects) {
-      const b = this.getObjectBounds(obj);
-      minX = Math.min(minX, b.x);
-      minY = Math.min(minY, b.y);
-      maxX = Math.max(maxX, b.x + b.w);
-      maxY = Math.max(maxY, b.y + b.h);
-    }
-    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
-  }
-
-  private getResizeHandles(bounds: { x: number; y: number; w: number; h: number }): Array<{ x: number; y: number; w: number; h: number; cursor?: string }> {
-    const s = 8; // handle size
-    const midX = bounds.x + bounds.w / 2;
-    const midY = bounds.y + bounds.h / 2;
-    const corners = [
-      { x: bounds.x - s / 2, y: bounds.y - s / 2 },
-      { x: bounds.x + bounds.w - s / 2, y: bounds.y - s / 2 },
-      { x: bounds.x - s / 2, y: bounds.y + bounds.h - s / 2 },
-      { x: bounds.x + bounds.w - s / 2, y: bounds.y + bounds.h - s / 2 }
-    ];
-    const edges = [
-      { x: midX - s / 2, y: bounds.y - s / 2 },
-      { x: bounds.x + bounds.w - s / 2, y: midY - s / 2 },
-      { x: midX - s / 2, y: bounds.y + bounds.h - s / 2 },
-      { x: bounds.x - s / 2, y: midY - s / 2 }
-    ];
-    return [...corners, ...edges].map(h => ({ ...h, w: s, h: s }));
-  }
-
-  private getRotationHandles(bounds: { x: number; y: number; w: number; h: number }): Array<{ x: number; y: number; w: number; h: number }> {
-    const r = 8; // diameter
-    const pad = 16;
-    const cx = bounds.x + bounds.w / 2;
-    const cy = bounds.y + bounds.h / 2;
-    return [
-      { x: cx - r / 2, y: bounds.y - pad - r / 2, w: r, h: r }, // top
-      { x: bounds.x + bounds.w + pad - r / 2, y: cy - r / 2, w: r, h: r }, // right
-      { x: cx - r / 2, y: bounds.y + bounds.h + pad - r / 2, w: r, h: r }, // bottom
-      { x: bounds.x - pad - r / 2, y: cy - r / 2, w: r, h: r } // left
-    ];
-  }
-
-  private renderWithRotation(ctx: CanvasRenderingContext2D, obj: SelectableObject, draw: () => void) {
-    // Minimal rotation support: if object has numeric 'rot' radians, rotate about rect center
-    const o: any = obj.object;
-    const rot = typeof o?.rot === 'number' ? o.rot : 0;
-    if (!rot || !('x' in o && 'y' in o && 'w' in o && 'h' in o)) { draw(); return; }
-    const cx = o.x + o.w / 2;
-    const cy = o.y + o.h / 2;
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(rot);
-    ctx.translate(-cx, -cy);
-    draw();
-    ctx.restore();
-  }
-
+  // General object hit-test used by selection and clicking
   private findObjectAtPoint(px: number, py: number, env: EditorEnv): SelectableObject | null {
     const gs = env.getGlobalState();
     // Tee
     {
-      const teeObj: SelectableObject = { type: 'tee', object: { x: gs.ball.x, y: gs.ball.y } } as any;
-      if (this.isPointInObject(px, py, teeObj)) return { type: 'tee', object: gs.ball } as any;
+      const teeObj: SelectableObject = { type: 'tee', object: { x: gs.ball.x, y: gs.ball.y, r: (gs.ball as any).r || 8 } } as any;
+      if (this.isPointInObject(px, py, teeObj)) return teeObj;
     }
     // Cup
     {
@@ -3201,6 +2298,180 @@ class LevelEditorImpl implements LevelEditor {
       if (this.isPointInObject(px, py, obj)) return obj;
     }
     return null;
+  }
+
+  // Synchronize editor's internal level data from the current global state
+  private syncEditorDataFromGlobals(env: EditorEnv): void {
+    const gs = env.getGlobalState();
+    if (!this.editorLevelData) this.editorLevelData = {} as any;
+
+    // Canvas size (fallback to globals/env sizes)
+    const width = gs.levelCanvas?.width ?? gs.WIDTH ?? env.width;
+    const height = gs.levelCanvas?.height ?? gs.HEIGHT ?? env.height;
+    this.editorLevelData.canvas = { width, height };
+
+    // Preserve existing course/meta if present
+    this.editorLevelData.course = this.editorLevelData.course ?? { index: 1, total: 1, title: this.editorLevelData?.course?.title ?? 'Untitled' };
+    this.editorLevelData.par = typeof this.editorLevelData.par === 'number' ? this.editorLevelData.par : 3;
+
+    // Tee/Cup from ball/hole preview
+    const teeR = (gs.ball as any)?.r ?? (this.editorLevelData.tee?.r ?? 8);
+    const cupR = (gs.hole as any)?.r ?? (this.editorLevelData.cup?.r ?? 8);
+    this.editorLevelData.tee = { x: gs.ball?.x ?? 0, y: gs.ball?.y ?? 0, r: teeR };
+    this.editorLevelData.cup = { x: gs.hole?.x ?? 0, y: gs.hole?.y ?? 0, r: cupR };
+
+    // Arrays (deep copy)
+    this.editorLevelData.walls = JSON.parse(JSON.stringify(gs.walls ?? []));
+    this.editorLevelData.wallsPoly = JSON.parse(JSON.stringify(gs.polyWalls ?? []));
+    this.editorLevelData.posts = JSON.parse(JSON.stringify(gs.posts ?? []));
+    this.editorLevelData.bridges = JSON.parse(JSON.stringify(gs.bridges ?? []));
+    this.editorLevelData.water = JSON.parse(JSON.stringify(gs.waters ?? []));
+    this.editorLevelData.waterPoly = JSON.parse(JSON.stringify(gs.watersPoly ?? []));
+    this.editorLevelData.sand = JSON.parse(JSON.stringify(gs.sands ?? []));
+    this.editorLevelData.sandPoly = JSON.parse(JSON.stringify(gs.sandsPoly ?? []));
+    this.editorLevelData.hills = JSON.parse(JSON.stringify(gs.hills ?? []));
+    this.editorLevelData.decorations = JSON.parse(JSON.stringify(gs.decorations ?? []));
+  }
+
+  // Compute axis-aligned bounds for the current selection
+  private getSelectionBounds(): { x: number; y: number; w: number; h: number } {
+    if (this.selectedObjects.length === 0) return { x: 0, y: 0, w: 0, h: 0 };
+    if (this.selectedObjects.length === 1) return this.getObjectBounds(this.selectedObjects[0]);
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const obj of this.selectedObjects) {
+      const b = this.getObjectBounds(obj);
+      minX = Math.min(minX, b.x);
+      minY = Math.min(minY, b.y);
+      maxX = Math.max(maxX, b.x + b.w);
+      maxY = Math.max(maxY, b.y + b.h);
+    }
+    if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) {
+      return { x: 0, y: 0, w: 0, h: 0 };
+    }
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  }
+
+  // Compute axis-aligned bounds for a single object (handles polygons and rotated rect-like types)
+  private getObjectBounds(obj: SelectableObject): { x: number; y: number; w: number; h: number } {
+    const t = obj.type as SelectableObject['type'];
+    const o: any = obj.object as any;
+
+    // Circle-like (tee/cup/post)
+    if (t === 'tee' || t === 'cup' || t === 'post') {
+      const r = (o?.r ?? 8) as number;
+      return { x: (o?.x ?? 0) - r, y: (o?.y ?? 0) - r, w: r * 2, h: r * 2 };
+    }
+
+    // Polygon types
+    if (t === 'wallsPoly' || t === 'waterPoly' || t === 'sandPoly') {
+      const pts: number[] = Array.isArray(o?.points) ? o.points : [];
+      if (pts.length < 2) return { x: 0, y: 0, w: 0, h: 0 };
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (let i = 0; i + 1 < pts.length; i += 2) {
+        const x = pts[i];
+        const y = pts[i + 1];
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+      if (!isFinite(minX)) return { x: 0, y: 0, w: 0, h: 0 };
+      return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+    }
+
+    // Rect-like with optional rotation
+    const rx = o?.x ?? 0;
+    const ry = o?.y ?? 0;
+    const rw = o?.w ?? 0;
+    const rh = o?.h ?? 0;
+    const rot = typeof o?.rot === 'number' ? o.rot : 0;
+    if (!rot) {
+      return { x: rx, y: ry, w: rw, h: rh };
+    }
+    // AABB of rotated rectangle around center
+    const cx = rx + rw / 2;
+    const cy = ry + rh / 2;
+    const cosA = Math.cos(rot);
+    const sinA = Math.sin(rot);
+    const corners = [
+      { x: -rw / 2, y: -rh / 2 },
+      { x: rw / 2, y: -rh / 2 },
+      { x: -rw / 2, y: rh / 2 },
+      { x: rw / 2, y: rh / 2 }
+    ];
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const c of corners) {
+      const wx = cx + c.x * cosA - c.y * sinA;
+      const wy = cy + c.x * sinA + c.y * cosA;
+      minX = Math.min(minX, wx);
+      minY = Math.min(minY, wy);
+      maxX = Math.max(maxX, wx);
+      maxY = Math.max(maxY, wy);
+    }
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  }
+
+  // Rotation handle(s) positioned above top-center of the bounds
+  private getRotationHandles(bounds: { x: number; y: number; w: number; h: number }): Array<{ x: number; y: number; w: number; h: number }> {
+    const size = 10; // visual size for circular handle
+    const gap = 14;  // gap above the top edge
+    const cx = bounds.x + bounds.w / 2;
+    const hx = cx - size / 2;
+    const hy = bounds.y - gap - size;
+    return [{ x: hx, y: hy, w: size, h: size }];
+  }
+
+  // 8 resize handles: 0..3 corners (NW, NE, SW, SE), 4..7 edges (N, E, S, W)
+  private getResizeHandles(bounds: { x: number; y: number; w: number; h: number }): Array<{ x: number; y: number; w: number; h: number }> {
+    const s = 8; // square handle size
+    const x = bounds.x, y = bounds.y, w = bounds.w, h = bounds.h;
+    const mx = x + w / 2;
+    const my = y + h / 2;
+    return [
+      // Corners: NW, NE, SW, SE
+      { x: x - s / 2,     y: y - s / 2,     w: s, h: s },
+      { x: x + w - s / 2, y: y - s / 2,     w: s, h: s },
+      { x: x - s / 2,     y: y + h - s / 2, w: s, h: s },
+      { x: x + w - s / 2, y: y + h - s / 2, w: s, h: s },
+      // Edges: N, E, S, W
+      { x: mx - s / 2,    y: y - s / 2,     w: s, h: s },
+      { x: x + w - s / 2, y: my - s / 2,    w: s, h: s },
+      { x: mx - s / 2,    y: y + h - s / 2, w: s, h: s },
+      { x: x - s / 2,     y: my - s / 2,    w: s, h: s }
+    ];
+  }
+
+  // Helper: point-inside test by object type
+  private isPointInObject(px: number, py: number, obj: SelectableObject): boolean {
+    const type = obj.type as SelectableObject['type'];
+    const o: any = obj.object as any;
+    if (type === 'tee' || type === 'cup' || type === 'post') {
+      const r = o.r || 8;
+      const dx = px - o.x; const dy = py - o.y;
+      return (dx * dx + dy * dy) <= r * r;
+    }
+    if (type === 'wallsPoly' || type === 'waterPoly' || type === 'sandPoly') {
+      const pts: number[] = Array.isArray(o.points) ? o.points : [];
+      if (pts.length < 6) return false;
+      // ray cast
+      let inside = false;
+      for (let i = 0, j = (pts.length / 2 - 1); i < pts.length / 2; j = i++) {
+        const xi = pts[i * 2], yi = pts[i * 2 + 1];
+        const xj = pts[j * 2], yj = pts[j * 2 + 1];
+        const intersect = ((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / ((yj - yi) || 1e-6) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+    // Rect-like with optional rotation
+    const rx = o.x || 0, ry = o.y || 0, rw = o.w || 0, rh = o.h || 0;
+    const cx = rx + rw / 2, cy = ry + rh / 2;
+    const rot = typeof o.rot === 'number' ? o.rot : 0;
+    const s = Math.sin(-rot), c = Math.cos(-rot);
+    const lx = c * (px - cx) - s * (py - cy) + cx;
+    const ly = s * (px - cx) + c * (py - cy) + cy;
+    return (lx >= rx && lx <= rx + rw && ly >= ry && ly <= ry + rh);
   }
 }
 

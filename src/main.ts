@@ -1178,11 +1178,11 @@ function generateLevelThumbnail(levelData: any, width: number = 120, height: num
   const tee = levelData.tee || { x: 100, y: 300, r: 15 };
   const hole = levelData.hole || { x: 700, y: 300, r: 12 };
   const walls = levelData.walls || [];
-  const polyWalls = levelData.polyWalls || [];
-  const waters = levelData.waters || [];
-  const polyWaters = levelData.polyWaters || [];
-  const sands = levelData.sands || [];
-  const polySands = levelData.polySands || [];
+  const wallsPoly = levelData.wallsPoly || [];
+  const water = levelData.water || [];
+  const waterPoly = levelData.waterPoly || [];
+  const sand = levelData.sand || [];
+  const sandPoly = levelData.sandPoly || [];
   const hills = levelData.hills || [];
   const bridges = levelData.bridges || [];
   const posts = levelData.posts || [];
@@ -1213,11 +1213,11 @@ function generateLevelThumbnail(levelData: any, width: number = 120, height: num
   thumbCtx.strokeRect(fairway.x, fairway.y, fairway.w, fairway.h);
   
   // Water areas
-  for (const w of waters) {
+  for (const w of water) {
     thumbCtx.fillStyle = COLORS.waterFill;
     thumbCtx.fillRect(w.x, w.y, w.w, w.h);
   }
-  for (const pw of polyWaters) {
+  for (const pw of waterPoly) {
     if (pw.points && pw.points.length >= 6) {
       thumbCtx.fillStyle = COLORS.waterFill;
       thumbCtx.beginPath();
@@ -1231,11 +1231,11 @@ function generateLevelThumbnail(levelData: any, width: number = 120, height: num
   }
   
   // Sand areas
-  for (const s of sands) {
+  for (const s of sand) {
     thumbCtx.fillStyle = COLORS.sandFill;
     thumbCtx.fillRect(s.x, s.y, s.w, s.h);
   }
-  for (const ps of polySands) {
+  for (const ps of sandPoly) {
     if (ps.points && ps.points.length >= 6) {
       thumbCtx.fillStyle = COLORS.sandFill;
       thumbCtx.beginPath();
@@ -1265,7 +1265,7 @@ function generateLevelThumbnail(levelData: any, width: number = 120, height: num
     thumbCtx.fillStyle = COLORS.wallFill;
     thumbCtx.fillRect(w.x, w.y, w.w, w.h);
   }
-  for (const pw of polyWalls) {
+  for (const pw of wallsPoly) {
     if (pw.points && pw.points.length >= 6) {
       thumbCtx.fillStyle = COLORS.wallFill;
       thumbCtx.beginPath();

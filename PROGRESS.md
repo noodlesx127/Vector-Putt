@@ -4,7 +4,7 @@
 
 # Project Progress — Vector Putt
 
-Updated: 2025-08-26 (local) — Level Browser: implemented preview thumbnails and quick-play; list is searchable/filterable and scanning all sources. Editor: grid snapping helpers (nudges/alignment) completed. Thumbnails: fixed water/sand/wallsPoly naming in `generateLevelThumbnail()`. Prior notes retained below.
+Updated: 2025-08-27 (local) — Level Editor TS fixes: closed missing brace in `handleMouseUp()` and added `renderWithRotation()` helper; build validation pending. Level Browser: implemented preview thumbnails and quick-play; list is searchable/filterable and scanning all sources. Editor: grid snapping helpers (nudges/alignment) completed. Thumbnails: fixed water/sand/wallsPoly naming in `generateLevelThumbnail()`. Prior notes retained below.
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 

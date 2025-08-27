@@ -15,7 +15,8 @@ import {
   saveLevelToFilesystem, 
   isFileSystemAccessSupported, 
   saveLevelAsDownload,
-  applyLevelDataFixups 
+  applyLevelDataFixups,
+  getUserLevelsDirectory
 } from './filesystem';
 
 // Local palette for the editor module (matches docs/PALETTE.md and main.ts)
@@ -202,8 +203,8 @@ class LevelEditorImpl implements LevelEditor {
   // Drag state for rectangle placements
   private isEditorDragging = false;
   private editorDragTool: EditorTool | null = null;
-  private editorDragStart = { x: 0, y: 0 };
-  private editorDragCurrent = { x: 0, y: 0 };
+  private editorDragStart: { x: number; y: number } | null = null;
+  private editorDragCurrent: { x: number; y: number } | null = null;
 
   // Selection state (migrated from main.ts selection system)
   private selectedObjects: SelectableObject[] = [];
@@ -1065,9 +1066,11 @@ class LevelEditorImpl implements LevelEditor {
     }
 
     // Drag outline preview for rectangle tools
-    if (this.isEditorDragging && this.editorDragTool && (
-      this.editorDragTool === 'wall' || this.editorDragTool === 'bridge' || this.editorDragTool === 'water' || this.editorDragTool === 'sand' || this.editorDragTool === 'hill'
-    )) {
+    if (
+      this.isEditorDragging && this.editorDragTool && this.editorDragStart && this.editorDragCurrent && (
+        this.editorDragTool === 'wall' || this.editorDragTool === 'bridge' || this.editorDragTool === 'water' || this.editorDragTool === 'sand' || this.editorDragTool === 'hill'
+      )
+    ) {
       const x0 = this.editorDragStart.x;
       const y0 = this.editorDragStart.y;
       const x1 = this.editorDragCurrent.x;
@@ -2051,6 +2054,8 @@ class LevelEditorImpl implements LevelEditor {
       return;
     }
 
+  }
+
   handleMouseUp(e: MouseEvent, env: EditorEnv): void {
     const p = env.worldFromEvent(e);
     const { x: fairX, y: fairY, w: fairW, h: fairH } = env.fairwayRect();
@@ -2188,7 +2193,6 @@ class LevelEditorImpl implements LevelEditor {
       (gs.decorations as any[]).forEach((o, i) => pushIf({ type: 'decoration', object: o, index: i } as any));
 
       if (e.shiftKey) {
-        // Union
         const set = new Set(this.selectedObjects);
         for (const o of newlySelected) set.add(o);
         this.selectedObjects = Array.from(set);
@@ -2199,11 +2203,10 @@ class LevelEditorImpl implements LevelEditor {
       this.isSelectionDragging = false;
       this.selectionBoxStart = null;
       this.dragMoveOffset = { x: 0, y: 0 };
+      this.syncEditorDataFromGlobals(env);
       return;
     }
   }
-
-  // Hit-test for polygon vertices across all polygon types
   private findPolygonVertexAtPoint(px: number, py: number, env: EditorEnv): { obj: SelectableObject; vertexIndex: number } | null {
     const gs = env.getGlobalState();
     const threshold = 8; // pixels
@@ -2298,6 +2301,120 @@ class LevelEditorImpl implements LevelEditor {
       if (this.isPointInObject(px, py, obj)) return obj;
     }
     return null;
+  }
+
+  // Keyboard shortcuts
+  handleKeyDown(e: KeyboardEvent, env: EditorEnv): void {
+    if (env.isOverlayActive?.()) return;
+
+    const key = e.key;
+    const ctrl = e.ctrlKey || e.metaKey;
+
+    // Track last mouse position might be updated elsewhere; ensure exists
+    this.lastMousePosition = this.lastMousePosition || { x: 0, y: 0 } as any;
+
+    // Polygon finalize/cancel
+    if (key === 'Enter') {
+      if (this.polygonInProgress) {
+        e.preventDefault();
+        this.finishPolygon(env);
+        return;
+      }
+    }
+    if (key === 'Escape') {
+      e.preventDefault();
+      this.polygonInProgress = null;
+      this.isEditorDragging = false;
+      this.isSelectionDragging = false;
+      this.isDragMoving = false;
+      this.isResizing = false;
+      this.isGroupResizing = false;
+      this.isRotating = false;
+      this.isVertexDragging = false;
+      this.openEditorMenu = null;
+      this.postRadiusPicker = null;
+      this.hillDirectionPicker = null;
+      this.resizeHandleIndex = null;
+      this.resizeStartBounds = null;
+      this.resizeStartMouse = null;
+      this.dragMoveStart = null;
+      this.dragMoveOffset = { x: 0, y: 0 };
+      return;
+    }
+
+    // Arrow keys: nudge selection (Shift => larger step)
+    if (key === 'ArrowLeft' || key === 'ArrowRight' || key === 'ArrowUp' || key === 'ArrowDown') {
+      if (this.selectedObjects.length > 0) {
+        e.preventDefault();
+        this.nudgeSelectedObjects(key, e.shiftKey, env);
+      }
+      return;
+    }
+
+    if (ctrl) {
+      switch (key.toLowerCase()) {
+        case 'z':
+          e.preventDefault();
+          if (e.shiftKey) { if (this.canRedo()) this.performRedo(); }
+          else { if (this.canUndo()) this.performUndo(); }
+          return;
+        case 'y':
+          e.preventDefault();
+          if (this.canRedo()) this.performRedo();
+          return;
+        case 'c':
+          e.preventDefault();
+          if (this.selectedObjects.length > 0) this.copySelectedObjects();
+          return;
+        case 'x':
+          e.preventDefault();
+          if (this.selectedObjects.length > 0) this.cutSelectedObjects();
+          return;
+        case 'v':
+          e.preventDefault();
+          if (this.clipboard.length > 0) this.pasteObjects(this.lastMousePosition.x, this.lastMousePosition.y);
+          return;
+        case 'd':
+          e.preventDefault();
+          if (this.selectedObjects.length > 0) this.duplicateSelectedObjects();
+          return;
+        case 'g':
+          e.preventDefault();
+          try {
+            const newShow = !env.getShowGrid();
+            env.setShowGrid?.(newShow);
+            this.showGrid = newShow;
+          } catch {}
+          return;
+        case '-':
+          e.preventDefault();
+          try {
+            const g = Math.max(2, env.getGridSize() - 2);
+            env.setGridSize?.(g);
+            this.gridSize = g;
+          } catch {}
+          return;
+        case '=':
+        case '+':
+          e.preventDefault();
+          try {
+            const g = Math.max(2, env.getGridSize() + 2);
+            env.setGridSize?.(g);
+            this.gridSize = g;
+          } catch {}
+          return;
+      }
+    }
+
+    // Delete selection
+    if (key === 'Delete' || key === 'Backspace') {
+      if (this.selectedObjects.length > 0) {
+        e.preventDefault();
+        this.pushUndoSnapshot(`Delete ${this.selectedObjects.length} object(s)`);
+        this.deleteSelectedObjects();
+      }
+      return;
+    }
   }
 
   // Synchronize editor's internal level data from the current global state
@@ -2442,6 +2559,28 @@ class LevelEditorImpl implements LevelEditor {
     ];
   }
 
+  // Helper: render a rect-like object with optional rotation by applying a center-based transform
+  private renderWithRotation(ctx: CanvasRenderingContext2D, obj: SelectableObject, draw: () => void): void {
+    const t = obj.type as SelectableObject['type'];
+    const o: any = obj.object as any;
+    const rot = typeof o?.rot === 'number' ? o.rot : 0;
+    // Only rect-like types support rotation; polygons and circles are handled separately
+    const rotatable = (t === 'wall' || t === 'water' || t === 'sand' || t === 'bridge' || t === 'hill' || t === 'decoration');
+    if (!rot || !rotatable) {
+      draw();
+      return;
+    }
+    const rx = o?.x ?? 0, ry = o?.y ?? 0, rw = o?.w ?? 0, rh = o?.h ?? 0;
+    const cx = rx + rw / 2;
+    const cy = ry + rh / 2;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rot);
+    ctx.translate(-cx, -cy);
+    draw();
+    ctx.restore();
+  }
+
   // Helper: point-inside test by object type
   private isPointInObject(px: number, py: number, obj: SelectableObject): boolean {
     const type = obj.type as SelectableObject['type'];
@@ -2473,6 +2612,301 @@ class LevelEditorImpl implements LevelEditor {
     const ly = s * (px - cx) + c * (py - cy) + cy;
     return (lx >= rx && lx <= rx + rw && ly >= ry && ly <= ry + rh);
   }
+
+  // --- Persistence commands and helpers ---
+
+  private applyLevelToEnv(level: any, env: EditorEnv): void {
+    // Store deep copy as editor data
+    this.editorLevelData = JSON.parse(JSON.stringify(level));
+
+    const globalState = env.getGlobalState();
+    env.setGlobalState({
+      levelCanvas: {
+        width: this.editorLevelData.canvas?.width ?? globalState.WIDTH,
+        height: this.editorLevelData.canvas?.height ?? globalState.HEIGHT
+      },
+      walls: this.editorLevelData.walls ?? [],
+      sands: this.editorLevelData.sand ?? [],
+      sandsPoly: this.editorLevelData.sandPoly ?? [],
+      waters: this.editorLevelData.water ?? [],
+      watersPoly: this.editorLevelData.waterPoly ?? [],
+      decorations: this.editorLevelData.decorations ?? [],
+      hills: this.editorLevelData.hills ?? [],
+      bridges: this.editorLevelData.bridges ?? [],
+      posts: this.editorLevelData.posts ?? [],
+      polyWalls: this.editorLevelData.wallsPoly ?? [],
+      // Use tee/cup as ball/hole preview locations
+      ball: { x: this.editorLevelData.tee.x, y: this.editorLevelData.tee.y, vx: 0, vy: 0, moving: false },
+      hole: { x: this.editorLevelData.cup.x, y: this.editorLevelData.cup.y, r: this.editorLevelData.cup.r }
+    });
+
+    // Reset selection and drag state after applying a level
+    this.selectedObjects = [];
+    this.clearDragState();
+  }
+
+  async newLevel(): Promise<void> {
+    if (!this.env) return;
+    const env = this.env;
+
+    const ok = await env.showConfirm('Start a new level? Unsaved changes will be lost.', 'New Level');
+    if (!ok) return;
+
+    const gs = env.getGlobalState();
+    const defaultCupR = (gs.hole && (gs.hole as any).r) || 8;
+    const newLevel = {
+      canvas: { width: gs.WIDTH, height: gs.HEIGHT },
+      course: { index: 1, total: 1, title: 'Untitled' },
+      par: 3,
+      tee: { x: gs.COURSE_MARGIN + 60, y: Math.floor(gs.HEIGHT / 2) },
+      cup: { x: gs.WIDTH - gs.COURSE_MARGIN - 60, y: Math.floor(gs.HEIGHT / 2), r: defaultCupR },
+      walls: [],
+      wallsPoly: [],
+      posts: [],
+      bridges: [],
+      water: [],
+      waterPoly: [],
+      sand: [],
+      sandPoly: [],
+      hills: [],
+      decorations: [],
+      meta: { authorId: env.getUserId(), authorName: undefined, created: new Date().toISOString(), modified: new Date().toISOString() }
+    };
+
+    this.editorCurrentSavedId = null;
+    this.undoStack = [];
+    this.redoStack = [];
+    this.applyLevelToEnv(newLevel, env);
+    env.showToast('New level created');
+  }
+
+  async save(): Promise<void> {
+    if (!this.env) return;
+    const env = this.env;
+    this.syncEditorDataFromGlobals(env);
+
+    // Ensure meta fields
+    const username = env.getUserId();
+    const level = applyLevelDataFixups({ ...this.editorLevelData });
+    level.meta = level.meta || {};
+    if (!level.meta.authorId) level.meta.authorId = username;
+    if (!level.meta.created) level.meta.created = new Date().toISOString();
+    level.meta.modified = new Date().toISOString();
+
+    if (!this.editorCurrentSavedId) {
+      // No known filename -> Save As
+      await this.saveAs();
+      return;
+    }
+
+    const ok = await saveLevelToFilesystem(level, this.editorCurrentSavedId, { useUserDirectory: true, username });
+    env.showToast(ok ? `Saved ${this.editorCurrentSavedId}` : 'Save failed');
+  }
+
+  async saveAs(): Promise<void> {
+    if (!this.env) return;
+    const env = this.env;
+    this.syncEditorDataFromGlobals(env);
+
+    const username = env.getUserId();
+    const level = applyLevelDataFixups({ ...this.editorLevelData });
+    level.meta = level.meta || {};
+    if (!level.meta.authorId) level.meta.authorId = username;
+    if (!level.meta.created) level.meta.created = new Date().toISOString();
+    level.meta.modified = new Date().toISOString();
+
+    const suggested = (level.course?.title || 'untitled')
+      .toString()
+      .trim()
+      .replace(/\s+/g, '_')
+      .replace(/[^a-zA-Z0-9_\-]/g, '') || 'level';
+    const name = await env.showPrompt('Save level as (filename):', suggested, 'Save As');
+    if (!name) return;
+    const fileName = name.endsWith('.json') ? name : `${name}.json`;
+
+    const ok = await saveLevelToFilesystem(level, fileName, { useUserDirectory: true, username });
+    if (ok) {
+      this.editorCurrentSavedId = fileName;
+      env.showToast(`Saved ${fileName}`);
+    } else {
+      env.showToast('Save failed');
+    }
+  }
+
+  async openLoadPicker(): Promise<void> {
+    if (!this.env) return;
+    const env = this.env;
+    const username = env.getUserId();
+
+    const levels = await loadLevelsFromFilesystem({ useUserDirectory: true, username });
+    if (!levels || levels.length === 0) {
+      env.showToast('No levels found');
+      return;
+    }
+
+    const items = levels.map(lf => ({
+      label: `${lf.name} (${lf.source})`,
+      value: lf
+    }));
+
+    const chosen = await env.showList('Load Level', items, 0);
+    if (!chosen) return;
+
+    const confirm = await env.showConfirm('Load selected level and discard current changes?', 'Load Level');
+    if (!confirm) return;
+
+    const lf = chosen as { name: string; data: any; path?: string; source: string };
+    const fixed = applyLevelDataFixups(lf.data);
+    this.applyLevelToEnv(fixed, env);
+
+    // Track filename for quick Save if it's a user level
+    if ((lf as any).path && lf.source === 'user') {
+      const p: string = (lf as any).path;
+      const base = p.split('/').pop() || null;
+      this.editorCurrentSavedId = base;
+    } else {
+      this.editorCurrentSavedId = null;
+    }
+
+    env.showToast(`Loaded ${lf.name}`);
+  }
+
+  async openDeletePicker(): Promise<void> {
+    if (!this.env) return;
+    const env = this.env;
+    const username = env.getUserId();
+
+    if (!isFileSystemAccessSupported()) {
+      env.showToast('Delete requires File System Access support');
+      return;
+    }
+
+    const levels = await loadLevelsFromFilesystem({ useUserDirectory: true, username });
+    const userLevels = levels.filter(l => l.source === 'user');
+    if (userLevels.length === 0) {
+      env.showToast('No user levels to delete');
+      return;
+    }
+
+    const items = userLevels.map(lf => ({
+      label: `${lf.name}`,
+      value: (lf.path || '').split('/').pop() // filename.json
+    }));
+
+    const selected = await env.showList('Delete Level', items, 0);
+    if (!selected) return;
+
+    const filename = selected as string;
+    const ok = await env.showConfirm(`Permanently delete '${filename}'?`, 'Delete Level');
+    if (!ok) return;
+
+    try {
+      const dir = await getUserLevelsDirectory(username);
+      if (!dir) throw new Error('User directory unavailable');
+      await (dir as any).removeEntry(filename);
+      env.showToast(`Deleted ${filename}`);
+    } catch (e) {
+      console.error(e);
+      env.showToast('Delete failed');
+    }
+  }
+
+  async importLevel(): Promise<void> {
+    if (!this.env) return;
+    const env = this.env;
+    const data = await importLevelFromFile();
+    if (!data) return;
+
+    const fixed = applyLevelDataFixups(data);
+    // Ensure author tracking
+    fixed.meta = fixed.meta || {};
+    if (!fixed.meta.authorId) fixed.meta.authorId = env.getUserId();
+    fixed.meta.modified = new Date().toISOString();
+    if (!fixed.meta.created) fixed.meta.created = fixed.meta.modified;
+
+    this.editorCurrentSavedId = null; // imported file is not yet saved
+    this.applyLevelToEnv(fixed, env);
+    env.showToast('Imported level');
+  }
+
+  async exportLevel(): Promise<void> {
+    if (!this.env) return;
+    const env = this.env;
+    this.syncEditorDataFromGlobals(env);
+
+    const level = applyLevelDataFixups({ ...this.editorLevelData });
+    const base = (level.course?.title || 'level')
+      .toString().trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_\-]/g, '') || 'level';
+    const filename = `${base}.json`;
+    const ok = saveLevelAsDownload(level, filename);
+    env.showToast(ok ? `Exported ${filename}` : 'Export failed');
+  }
+
+  async editMetadata(): Promise<void> {
+    if (!this.env) return;
+    const env = this.env;
+    this.syncEditorDataFromGlobals(env);
+
+    const currentTitle = this.editorLevelData?.course?.title || 'Untitled';
+    const currentAuthor = this.editorLevelData?.meta?.authorName || '';
+    const title = await env.showPrompt('Level Title:', currentTitle, 'Metadata');
+    if (title === null) return;
+    const author = await env.showPrompt('Author Name:', currentAuthor, 'Metadata');
+    if (author === null) return;
+
+    this.pushUndoSnapshot('Edit metadata');
+    this.editorLevelData.course = this.editorLevelData.course || { index: 1, total: 1 };
+    this.editorLevelData.course.title = title || 'Untitled';
+    this.editorLevelData.meta = this.editorLevelData.meta || {};
+    this.editorLevelData.meta.authorName = author || undefined;
+    this.editorLevelData.meta.modified = new Date().toISOString();
+    env.showToast('Metadata updated');
+  }
+
+  async suggestPar(): Promise<void> {
+    if (!this.env) return;
+    const env = this.env;
+    this.syncEditorDataFromGlobals(env);
+
+    const tee = this.editorLevelData.tee;
+    const cup = this.editorLevelData.cup;
+    const dist = Math.hypot((cup.x || 0) - (tee.x || 0), (cup.y || 0) - (tee.y || 0));
+    const obstacles =
+      (this.editorLevelData.walls?.length || 0) +
+      (this.editorLevelData.wallsPoly?.length || 0) +
+      (this.editorLevelData.water?.length || 0) +
+      (this.editorLevelData.waterPoly?.length || 0) +
+      (this.editorLevelData.sand?.length || 0) +
+      (this.editorLevelData.sandPoly?.length || 0) +
+      (this.editorLevelData.bridges?.length || 0) +
+      (this.editorLevelData.hills?.length || 0);
+
+    let suggested = Math.round(dist / 250 + obstacles * 0.15);
+    suggested = Math.max(2, Math.min(7, suggested));
+
+    const accept = await env.showConfirm(`Suggested par is ${suggested}. Apply?`, 'Suggest Par');
+    if (!accept) return;
+    this.pushUndoSnapshot('Set par');
+    this.editorLevelData.par = suggested;
+    env.showToast(`Par set to ${suggested}`);
+  }
+
+  async testLevel(): Promise<void> {
+    if (!this.env) return;
+    const env = this.env;
+    this.syncEditorDataFromGlobals(env);
+    if (typeof env.testLevel === 'function') {
+      await env.testLevel(this.editorLevelData);
+    } else {
+      env.showToast('Test not supported in this build');
+    }
+  }
+
+  // Interface implementation: minimal state exposure for main UI
+  getSelectedTool(): EditorTool { return this.selectedTool; }
+  setSelectedTool(t: EditorTool): void { this.selectedTool = t; }
+  getUiHotspots(): EditorHotspot[] { return this.uiHotspots; }
+
 }
 
 export const levelEditor: LevelEditor = new LevelEditorImpl();

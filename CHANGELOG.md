@@ -15,6 +15,9 @@ All notable changes to this project will be documented in this file.
 - Level deletion: Fixed invalid Firebase path during delete by ensuring the Firebase level ID is used everywhere. `src/editor/levelEditor.ts` now stores the real Firebase ID when loading a level (not the UI label), so `openDeletePicker()` passes a valid ID to `FirebaseLevelStore.deleteLevel()`.
  - Level Editor Decorations: fixed decorations placement schema (use `kind` instead of `type`; include `w`/`h` dimensions; added missing `defaultRadius` variable) so Flowers/Trees/Rocks/Bushes place and render correctly.
  - Thumbnails (Level Editor): corrected water/sand naming in `generateLevelThumbnail()` to use editor-level keys `water`, `waterPoly`, `sand`, `sandPoly`, and `wallsPoly` (instead of pluralized or mismatched keys). Prevents missing water/sand/wallsPoly in level preview thumbnails. (`src/main.ts`)
+ - Level Editor TypeScript fixes:
+   - Fix (Level Editor): Closed a missing brace in `handleMouseUp()` within `src/editor/levelEditor.ts` that caused TS1128 (“Declaration or statement expected”).
+   - Fix (Level Editor): Implemented `renderWithRotation()` helper in `src/editor/levelEditor.ts` used by the editor preview to draw rotated rect-like objects. Resolves TS2339 errors and restores correct rendering for rotated Water/Sand/Bridge/Hill/Wall/Decoration.
 
 ## v0.3.24 — 2025-08-24
 

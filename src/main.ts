@@ -1474,12 +1474,13 @@ async function deleteUserLevel(level: UserLevelEntry): Promise<void> {
       try {
         const userId = getUserId();
         if (userId && firebaseReady) {
-          // Find the level ID by matching name and author
+          // Find the level by matching name and author
           const firebaseLevels = await firebaseManager.levels.getAllLevels(userId);
           const levelToDelete = firebaseLevels.find(l => l.title === level.name && l.author === level.author);
           
           if (levelToDelete) {
-            await firebaseManager.levels.deleteLevel(levelToDelete.name, userId);
+            // Use the level title as the levelId for deletion (Firebase expects the slug/key, not the full ID)
+            await firebaseManager.levels.deleteLevel(level.name, userId);
           } else {
             showUiToast('Level not found in Firebase', 3000);
             return;

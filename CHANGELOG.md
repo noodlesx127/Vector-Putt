@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+- HUD: Best score display restored in gameplay HUD (course mode only). Fetches asynchronously from Firebase per level and updates after saving scores.
+
 ### Changed
 - User level visibility: Normal users now see all user-created levels (in addition to public levels). Edit/Delete permissions remain restricted to owners and admins via existing checks.
  - User Made Levels UI: added full mouse click support for list items and action buttons (Play/Edit/Delete/Duplicate); redesigned entries with card-style layout, color-coded source badges, clearer button layout, and permission hints. Improved scrollbar styling and hit detection to match the new layout.

@@ -218,6 +218,7 @@ Notes:
   - [x] Strokes for current hole
   - [x] Align HUD across the very top (left/center/right)
   - [x] Show Birdie helper (strokes remaining for birdie)
+  - [x] HUD: Best score display (course mode only; async from Firebase; updates after save)
 - [x] Aiming arrow visual design (power feedback via length/color)
   - [x] Post-Hole scorecard screen with performance label
   - [x] Main Menu (Start, Options placeholder) → Course Select (Dev Levels)

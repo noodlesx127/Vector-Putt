@@ -236,6 +236,14 @@ function adaptFirebaseLevelToMain(firebaseLevel: any): Level {
       points: poly.points ? poly.points.flatMap((p: any) => [p.x, p.y]) : []
     }));
   }
+  // Normalize posts radius property for engine (expects r)
+  if (Array.isArray(level.posts)) {
+    level.posts = level.posts.map((p: any) => ({ ...p, r: (p?.r ?? p?.radius ?? 8) }));
+  }
+  // Ensure cup radius is provided
+  if (level.cup && typeof level.cup.r !== 'number') {
+    level.cup.r = 12;
+  }
   
   // Ensure required fields exist
   if (!level.course) level.course = { index: 1, total: 1, title: level.meta?.title || 'Untitled' };
@@ -690,6 +698,11 @@ let gameState: 'menu' | 'course' | 'options' | 'users' | 'changelog' | 'loading'
 let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
 let currentLevelIndex = 0;
 let paused = false;
+// When true, we are playing a single, ad-hoc level (e.g., user-made or editor test)
+let singleLevelMode = false;
+// Track current level path and best score for HUD display (course mode only)
+let currentLevelPath: string | null = null;
+let bestScoreForCurrentLevel: number | null = null;
 const APP_VERSION = '0.3.24';
 const restitution = 0.9; // wall bounce energy retention
 const frictionK = 1.2; // base exponential damping (reduced for less "sticky" green)
@@ -786,6 +799,12 @@ async function recordScore(levelPath: string, score: number): Promise<void> {
   
   try {
     await firebaseManager.scores.saveScore(userId, levelPath, score);
+    // Refresh best score after saving (only relevant in course mode)
+    if (!singleLevelMode && currentLevelPath === levelPath) {
+      try {
+        bestScoreForCurrentLevel = await getBestScore(levelPath);
+      } catch {}
+    }
   } catch (error) {
     console.error('Failed to record score:', error);
   }
@@ -1334,6 +1353,7 @@ async function playUserLevel(level: UserLevelEntry): Promise<void> {
     const levelData = level.data;
     
     // Set up single-level play mode
+    singleLevelMode = true;
     gameState = 'play';
     currentLevelIndex = 0;
     courseScores = [];
@@ -1510,11 +1530,11 @@ async function loadLevelFromData(levelData: any): Promise<void> {
     // Use the existing loadLevel function with a temporary level object
     const tempLevel: Level = {
       tee: levelData.tee,
-      cup: levelData.cup,
+      cup: { x: levelData.cup.x, y: levelData.cup.y, r: (typeof levelData.cup.r === 'number' ? levelData.cup.r : 12) },
       canvas: levelData.canvas || { width: WIDTH, height: HEIGHT },
       walls: levelData.walls || [],
       wallsPoly: levelData.wallsPoly || [],
-      posts: levelData.posts || [],
+      posts: Array.isArray(levelData.posts) ? levelData.posts.map((p: any) => ({ ...p, r: (p?.r ?? p?.radius ?? 8) })) : [],
       bridges: levelData.bridges || [],
       water: levelData.water || [],
       waterPoly: levelData.waterPoly || [],
@@ -1551,11 +1571,11 @@ async function testLevelFromEditor(levelData: any): Promise<void> {
     // Create a test level object
     const testLevel: Level = {
       tee: levelData.tee,
-      cup: levelData.cup,
+      cup: { x: levelData.cup.x, y: levelData.cup.y, r: (typeof levelData.cup.r === 'number' ? levelData.cup.r : 12) },
       canvas: levelData.canvas || { width: WIDTH, height: HEIGHT },
       walls: levelData.walls || [],
       wallsPoly: levelData.wallsPoly || [],
-      posts: levelData.posts || [],
+      posts: Array.isArray(levelData.posts) ? levelData.posts.map((p: any) => ({ ...p, r: (p?.r ?? p?.radius ?? 8) })) : [],
       bridges: levelData.bridges || [],
       water: levelData.water || [],
       waterPoly: levelData.waterPoly || [],
@@ -1577,6 +1597,7 @@ async function testLevelFromEditor(levelData: any): Promise<void> {
     
     // Mark that we're testing a level
     isTestingLevel = true;
+    singleLevelMode = true;
     
     // Switch to play mode
     gameState = 'play';
@@ -1598,6 +1619,7 @@ async function testLevelFromEditor(levelData: any): Promise<void> {
 function returnToEditor(): void {
   if (isTestingLevel) {
     isTestingLevel = false;
+    singleLevelMode = false;
     gameState = 'levelEditor';
     showUiToast('Returned to Level Editor');
   }
@@ -1709,7 +1731,7 @@ function advanceAfterSunk() {
   if (isLastHole) {
     gameState = 'summary';
     transitioning = false;
-  } else {
+  } else if (!singleLevelMode) {
     const next = currentLevelIndex + 1;
     // kick off preload of the following level to reduce perceived delay later
     preloadLevelByIndex(next + 1);
@@ -1721,6 +1743,7 @@ function advanceAfterSunk() {
 }
 
 async function startCourseFromFile(courseJsonPath: string): Promise<void> {
+  if (!isDevBuild()) return;
   try {
     const res = await fetch(courseJsonPath);
     const data = (await res.json()) as { levels: string[] };
@@ -2199,18 +2222,8 @@ canvas.addEventListener('mousedown', (e) => {
         if (state.bridges) bridges = state.bridges;
         if (state.posts) posts = state.posts;
         if (state.polyWalls) polyWalls = state.polyWalls;
-        if (state.ball) {
-          ball.x = state.ball.x;
-          ball.y = state.ball.y;
-          ball.vx = state.ball.vx;
-          ball.vy = state.ball.vy;
-          ball.moving = state.ball.moving;
-        }
-        if (state.hole) {
-          hole.x = state.hole.x;
-          hole.y = state.hole.y;
-          if (state.hole.r !== undefined) (hole as any).r = state.hole.r;
-        }
+        if (state.ball) { ball.x = state.ball.x; ball.y = state.ball.y; ball.vx = state.ball.vx; ball.vy = state.ball.vy; ball.moving = state.ball.moving; }
+        if (state.hole) { hole.x = state.hole.x; hole.y = state.hole.y; if (state.hole.r !== undefined) (hole as any).r = state.hole.r; }
       },
       getUserId,
       migrateSingleSlotIfNeeded,
@@ -4495,10 +4508,10 @@ function draw() {
   const leftTextBase = `Hole ${courseInfo.index}/${courseInfo.total}`;
   const leftText = courseInfo.title ? `${leftTextBase} — ${courseInfo.title}` : leftTextBase;
   const totalSoFar = courseScores.reduce((a, b) => a + b, 0) + (gameState === 'sunk' ? 0 : 0);
-  const bestScore = currentLevelIndex < levelPaths.length ? getBestScore(levelPaths[currentLevelIndex]) : null;
-  const bestText = bestScore !== null ? `   Best: ${bestScore}` : '';
+  const bestText = (!singleLevelMode && bestScoreForCurrentLevel != null) ? `   Best ${bestScoreForCurrentLevel}` : '';
   const centerText = `Par ${courseInfo.par}   Strokes ${strokes}   Total ${totalSoFar}${bestText}`;
   const rightText = `To Birdie: ${toBirdie === null ? '—' : toBirdie}   Speed ${speed}`;
+  
   // left: show username, then Hole label shifted to the right
   ctx.textAlign = 'left';
   const leftBaseX = rrHUD.x + rrHUD.w + 12;
@@ -4961,13 +4974,32 @@ async function loadLevel(path: string) {
   hole.x = lvl.cup.x; hole.y = lvl.cup.y; (hole as any).r = lvl.cup.r;
   strokes = 0;
   gameState = 'play';
-  currentLevelIndex = Math.max(0, levelPaths.indexOf(path));
-  // record par for this hole so summary can show deltas
-  coursePars[currentLevelIndex] = lvl.par;
+  // Update current level tracking and fetch best score (course mode only)
+  currentLevelPath = path;
+  bestScoreForCurrentLevel = null;
+  if (!singleLevelMode) {
+    (async () => {
+      try { bestScoreForCurrentLevel = await getBestScore(path); } catch {}
+    })();
+  }
+  const idx = levelPaths.indexOf(path);
+  if (!singleLevelMode && idx >= 0) {
+    currentLevelIndex = idx;
+    // record par for this hole so summary can show deltas
+    coursePars[currentLevelIndex] = lvl.par;
+  } else {
+    currentLevelIndex = 0;
+    if (singleLevelMode) {
+      // Clamp course info to a one-hole session
+      courseInfo = { index: 1, total: 1, par: lvl.par, title: lvl.course.title };
+      coursePars = [lvl.par];
+      courseScores = [];
+    }
+  }
   preShot = { x: ball.x, y: ball.y };
   if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
   // Preload the subsequent level to avoid first-transition delay
-  preloadLevelByIndex(currentLevelIndex + 1);
+  if (!singleLevelMode) preloadLevelByIndex(currentLevelIndex + 1);
 
   // Safety: nudge ball out if tee overlaps a wall
   for (let i = 0; i < 8; i++) {
@@ -5050,11 +5082,15 @@ async function boot() {
   loadUserProfile();
   
   try {
-    const res = await fetch('/levels/course.json');
-    if (res.ok) {
-      const data = (await res.json()) as { levels: string[] };
-      if (Array.isArray(data.levels) && data.levels.length > 0) {
-        levelPaths = data.levels;
+    // Avoid 404s in production: only attempt to read local course.json in dev
+    const envAny: any = (typeof import.meta !== 'undefined' ? (import.meta as any).env : null);
+    if (envAny?.DEV) {
+      const res = await fetch('/levels/course.json');
+      if (res.ok) {
+        const data = (await res.json()) as { levels: string[] };
+        if (Array.isArray(data.levels) && data.levels.length > 0) {
+          levelPaths = data.levels;
+        }
       }
     }
   } catch {}

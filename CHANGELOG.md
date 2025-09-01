@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - Obsolete user data migration flows: removed cross-ID level migration and single-slot migration code paths; removed `migrateUserData()` usage. Startup still performs bundled/public and legacy localStorage level migrations only.
 
 ### Fixed
+- Level deletion: Fixed issue where deleted levels still appeared in User Made Levels list by adding Firebase cache invalidation and propagation delay after deletion
 - Level loading issues: Fixed level rendering problems and ball disappearing after hitting by correcting property name mapping inconsistencies between `sandPoly`/`waterPoly` and `sandsPoly`/`watersPoly` in level data structures
 - Level deletion: Fixed invalid Firebase path during delete by ensuring the Firebase level ID is used everywhere. `src/editor/levelEditor.ts` now stores the real Firebase ID when loading a level (not the UI label), so `openDeletePicker()` passes a valid ID to `FirebaseLevelStore.deleteLevel()`.
  - Level Editor Decorations: fixed decorations placement schema (use `kind` instead of `type`; include `w`/`h` dimensions; added missing `defaultRadius` variable) so Flowers/Trees/Rocks/Bushes place and render correctly.

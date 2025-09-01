@@ -1503,6 +1503,16 @@ async function deleteUserLevel(level: UserLevelEntry): Promise<void> {
       return;
     }
     
+    // Wait a moment for Firebase to propagate the deletion
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Force clear any Firebase caches and reload the levels list
+    if (firebaseReady && firebaseManager?.levels) {
+      // Clear the Firebase level store cache
+      (firebaseManager.levels as any).cachedLevels?.clear();
+      (firebaseManager.levels as any).userLevelsCache?.clear();
+    }
+    
     // Reload the levels list
     await loadUserLevelsList();
     

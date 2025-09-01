@@ -4,7 +4,7 @@
 
 # Project Progress — Vector Putt
 
-Updated: 2025-08-27 (local) — Level Editor TS fixes: closed missing brace in `handleMouseUp()` and added `renderWithRotation()` helper; build validation pending. Level Browser: implemented preview thumbnails and quick-play; list is searchable/filterable and scanning all sources. Editor: grid snapping helpers (nudges/alignment) completed. Thumbnails: fixed water/sand/wallsPoly naming in `generateLevelThumbnail()`. HUD: restored Best score display (course mode only), fetched async via Firebase on `loadLevel()` and refreshed after `recordScore()`; rendered in `draw()` center text.
+Updated: 2025-08-31 (local) — Fixed level loading/rendering and ball disappearance by normalizing polygon property names (`sandsPoly`/`watersPoly` fallbacks to `sandPoly`/`waterPoly`) in `loadLevel()`, `applyLevelToGlobals()`, and `loadLevelFromData()`. Also previously: Level Editor TS fixes (closed missing brace in `handleMouseUp()` and added `renderWithRotation()`); Level Browser previews & quick-play; Editor grid snapping; Thumbnails naming fixes; HUD best score restored.
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 

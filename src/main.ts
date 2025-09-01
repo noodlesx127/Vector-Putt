@@ -598,9 +598,9 @@ function applyLevelToGlobals(parsed: Level): void {
   levelCanvas = { width: parsed.canvas?.width ?? WIDTH, height: parsed.canvas?.height ?? HEIGHT };
   walls = parsed.walls ?? [];
   sands = parsed.sand ?? [];
-  sandsPoly = parsed.sandPoly ?? [];
+  sandsPoly = (parsed as any).sandsPoly || (parsed.sandPoly ?? []);
   waters = parsed.water ?? [];
-  watersPoly = parsed.waterPoly ?? [];
+  watersPoly = (parsed as any).watersPoly || (parsed.waterPoly ?? []);
   decorations = parsed.decorations ?? [];
   hills = parsed.hills ?? [];
   bridges = parsed.bridges ?? [];
@@ -1537,9 +1537,9 @@ async function loadLevelFromData(levelData: any): Promise<void> {
       posts: Array.isArray(levelData.posts) ? levelData.posts.map((p: any) => ({ ...p, r: (p?.r ?? p?.radius ?? 8) })) : [],
       bridges: levelData.bridges || [],
       water: levelData.water || [],
-      waterPoly: levelData.waterPoly || [],
+      waterPoly: levelData.watersPoly || levelData.waterPoly || [],
       sand: levelData.sand || [],
-      sandPoly: levelData.sandPoly || [],
+      sandPoly: levelData.sandsPoly || levelData.sandPoly || [],
       hills: levelData.hills || [],
       decorations: levelData.decorations || [],
       course: levelData.course || { index: 1, total: 1, title: 'User Level' },
@@ -4960,9 +4960,9 @@ async function loadLevel(path: string) {
   levelCanvas = { width: (lvl.canvas?.width ?? WIDTH), height: (lvl.canvas?.height ?? HEIGHT) };
   walls = lvl.walls ?? [];
   sands = lvl.sand ?? [];
-  sandsPoly = lvl.sandPoly ?? [];
+  sandsPoly = (lvl as any).sandsPoly || (lvl.sandPoly ?? []);
   waters = lvl.water ?? [];
-  watersPoly = lvl.waterPoly ?? [];
+  watersPoly = (lvl as any).watersPoly || (lvl.waterPoly ?? []);
   decorations = lvl.decorations ?? [];
   // Ensure decorations sit on the table outside the fairway if placed near edges
   snapDecorationsToTable();

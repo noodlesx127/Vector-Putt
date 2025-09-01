@@ -4,6 +4,8 @@
 
 # Project Progress — Vector Putt
 
+Updated: 2025-09-01 — Level Editor Save/Load bug fixed: editor now saves, loads, and deletes levels via Firebase (no browser file dialogs). Wired `src/editor/levelEditor.ts` to `FirebaseLevelStore` for persistence; Import/Export remain as explicit file ops.
+
 Updated: 2025-08-31 (local) — Fixed level loading/rendering and ball disappearance by normalizing polygon property names (`sandsPoly`/`watersPoly` fallbacks to `sandPoly`/`waterPoly`) in `loadLevel()`, `applyLevelToGlobals()`, and `loadLevelFromData()`. Also previously: Level Editor TS fixes (closed missing brace in `handleMouseUp()` and added `renderWithRotation()`); Level Browser previews & quick-play; Editor grid snapping; Thumbnails naming fixes; HUD best score restored.
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.

@@ -23,6 +23,7 @@ All notable changes to this project will be documented in this file.
  - Level Editor TypeScript fixes:
    - Fix (Level Editor): Closed a missing brace in `handleMouseUp()` within `src/editor/levelEditor.ts` that caused TS1128 (“Declaration or statement expected”).
    - Fix (Level Editor): Implemented `renderWithRotation()` helper in `src/editor/levelEditor.ts` used by the editor preview to draw rotated rect-like objects. Resolves TS2339 errors and restores correct rendering for rotated Water/Sand/Bridge/Hill/Wall/Decoration.
+ - Level Editor Save/Load: Editor now saves, loads, and deletes levels via Firebase instead of local filesystem dialogs. Replaced `saveLevelToFilesystem()`/`loadLevelsFromFilesystem()`/directory access with `FirebaseLevelStore.saveLevel()`, `.getUserLevels()`, and `.deleteLevel()` in `src/editor/levelEditor.ts`. Eliminates browser file pickers during Save/Load.
 
 ## v0.3.24 — 2025-08-24
 

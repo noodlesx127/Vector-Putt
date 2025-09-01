@@ -9,15 +9,12 @@
 */
 
 import { 
-  loadLevelsFromFilesystem, 
   importLevelFromFile, 
-  importMultipleLevelsFromFiles,
-  saveLevelToFilesystem, 
-  isFileSystemAccessSupported, 
   saveLevelAsDownload,
-  applyLevelDataFixups,
-  getUserLevelsDirectory
+  applyLevelDataFixups
 } from './filesystem';
+import firebaseLevelStore from '../firebase/FirebaseLevelStore';
+import type { LevelEntry as FirebaseLevelEntry } from '../firebase/FirebaseLevelStore';
 
 // Local palette for the editor module (matches docs/PALETTE.md and main.ts)
 const COLORS = {
@@ -2694,13 +2691,20 @@ class LevelEditorImpl implements LevelEditor {
     level.meta.modified = new Date().toISOString();
 
     if (!this.editorCurrentSavedId) {
-      // No known filename -> Save As
+      // No existing Firebase ID -> Save As
       await this.saveAs();
       return;
     }
 
-    const ok = await saveLevelToFilesystem(level, this.editorCurrentSavedId, { useUserDirectory: true, username });
-    env.showToast(ok ? `Saved ${this.editorCurrentSavedId}` : 'Save failed');
+    try {
+      const id = await firebaseLevelStore.saveLevel(level, this.editorCurrentSavedId, username);
+      this.editorCurrentSavedId = id;
+      const title = level.course?.title || level.meta?.title || 'Level';
+      env.showToast(`Saved "${title}"`);
+    } catch (e) {
+      console.error(e);
+      env.showToast('Save failed');
+    }
   }
 
   async saveAs(): Promise<void> {
@@ -2715,20 +2719,22 @@ class LevelEditorImpl implements LevelEditor {
     if (!level.meta.created) level.meta.created = new Date().toISOString();
     level.meta.modified = new Date().toISOString();
 
-    const suggested = (level.course?.title || 'untitled')
-      .toString()
-      .trim()
-      .replace(/\s+/g, '_')
-      .replace(/[^a-zA-Z0-9_\-]/g, '') || 'level';
-    const name = await env.showPrompt('Save level as (filename):', suggested, 'Save As');
-    if (!name) return;
-    const fileName = name.endsWith('.json') ? name : `${name}.json`;
+    const suggested = (level.course?.title || level.meta?.title || 'Untitled').toString().trim();
+    const title = await env.showPrompt('Level Title:', suggested, 'Save');
+    if (title === null) return;
 
-    const ok = await saveLevelToFilesystem(level, fileName, { useUserDirectory: true, username });
-    if (ok) {
-      this.editorCurrentSavedId = fileName;
-      env.showToast(`Saved ${fileName}`);
-    } else {
+    // Persist title in both course and meta for compatibility
+    level.course = level.course || { index: 1, total: 1 };
+    (level.course as any).title = title || 'Untitled';
+    level.meta = level.meta || {};
+    level.meta.title = title || 'Untitled';
+
+    try {
+      const id = await firebaseLevelStore.saveLevel(level, undefined, username);
+      this.editorCurrentSavedId = id;
+      env.showToast(`Saved "${title || 'Untitled'}"`);
+    } catch (e) {
+      console.error(e);
       env.showToast('Save failed');
     }
   }
@@ -2738,37 +2744,28 @@ class LevelEditorImpl implements LevelEditor {
     const env = this.env;
     const username = env.getUserId();
 
-    const levels = await loadLevelsFromFilesystem({ useUserDirectory: true, username });
-    if (!levels || levels.length === 0) {
+    const entries = await firebaseLevelStore.getUserLevels(username);
+    if (!entries || entries.length === 0) {
       env.showToast('No levels found');
       return;
     }
 
-    const items = levels.map(lf => ({
-      label: `${lf.name} (${lf.source})`,
-      value: lf
+    const items = entries.map((e) => ({
+      label: `${e.title} (${new Date(e.lastModified || 0).toLocaleString()})`,
+      value: e
     }));
 
     const chosen = await env.showList('Load Level', items, 0);
     if (!chosen) return;
 
-    const confirm = await env.showConfirm('Load selected level and discard current changes?', 'Load Level');
-    if (!confirm) return;
+    const ok = await env.showConfirm('Load selected level and discard current changes?', 'Load Level');
+    if (!ok) return;
 
-    const lf = chosen as { name: string; data: any; path?: string; source: string };
-    const fixed = applyLevelDataFixups(lf.data);
+    const le = chosen as FirebaseLevelEntry;
+    const fixed = applyLevelDataFixups(le.data as any);
     this.applyLevelToEnv(fixed, env);
-
-    // Track filename for quick Save if it's a user level
-    if ((lf as any).path && lf.source === 'user') {
-      const p: string = (lf as any).path;
-      const base = p.split('/').pop() || null;
-      this.editorCurrentSavedId = base;
-    } else {
-      this.editorCurrentSavedId = null;
-    }
-
-    env.showToast(`Loaded ${lf.name}`);
+    this.editorCurrentSavedId = le.name; // Firebase ID
+    env.showToast(`Loaded "${le.title}"`);
   }
 
   async openDeletePicker(): Promise<void> {
@@ -2776,35 +2773,28 @@ class LevelEditorImpl implements LevelEditor {
     const env = this.env;
     const username = env.getUserId();
 
-    if (!isFileSystemAccessSupported()) {
-      env.showToast('Delete requires File System Access support');
-      return;
-    }
-
-    const levels = await loadLevelsFromFilesystem({ useUserDirectory: true, username });
-    const userLevels = levels.filter(l => l.source === 'user');
-    if (userLevels.length === 0) {
+    const entries = await firebaseLevelStore.getUserLevels(username);
+    if (!entries || entries.length === 0) {
       env.showToast('No user levels to delete');
       return;
     }
 
-    const items = userLevels.map(lf => ({
-      label: `${lf.name}`,
-      value: (lf.path || '').split('/').pop() // filename.json
+    const items = entries.map((e) => ({
+      label: `${e.title}`,
+      value: e
     }));
 
-    const selected = await env.showList('Delete Level', items, 0);
-    if (!selected) return;
+    const chosen = await env.showList('Delete Level', items, 0);
+    if (!chosen) return;
 
-    const filename = selected as string;
-    const ok = await env.showConfirm(`Permanently delete '${filename}'?`, 'Delete Level');
+    const le = chosen as FirebaseLevelEntry;
+    const ok = await env.showConfirm(`Permanently delete "${le.title}"?`, 'Delete Level');
     if (!ok) return;
 
     try {
-      const dir = await getUserLevelsDirectory(username);
-      if (!dir) throw new Error('User directory unavailable');
-      await (dir as any).removeEntry(filename);
-      env.showToast(`Deleted ${filename}`);
+      await firebaseLevelStore.deleteLevel(le.name, username);
+      if (this.editorCurrentSavedId === le.name) this.editorCurrentSavedId = null;
+      env.showToast(`Deleted "${le.title}"`);
     } catch (e) {
       console.error(e);
       env.showToast('Delete failed');

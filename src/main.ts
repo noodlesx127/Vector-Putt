@@ -221,21 +221,18 @@ function adaptFirebaseLevelToMain(firebaseLevel: any): Level {
   const level = { ...firebaseLevel };
   
   // Convert polygon points from Firebase format {x,y}[] to main app format number[]
-  if (level.wallsPoly) {
-    level.wallsPoly = level.wallsPoly.map((poly: any) => ({
-      points: poly.points ? poly.points.flatMap((p: any) => [p.x, p.y]) : []
-    }));
-  }
-  if (level.waterPoly) {
-    level.waterPoly = level.waterPoly.map((poly: any) => ({
-      points: poly.points ? poly.points.flatMap((p: any) => [p.x, p.y]) : []
-    }));
-  }
-  if (level.sandPoly) {
-    level.sandPoly = level.sandPoly.map((poly: any) => ({
-      points: poly.points ? poly.points.flatMap((p: any) => [p.x, p.y]) : []
-    }));
-  }
+  const normalizePoly = (arr: any[]) => arr.map((poly: any) => {
+    const pts = poly?.points ?? [];
+    if (Array.isArray(pts) && pts.length > 0 && typeof pts[0] === 'number') {
+      // Already number[]
+      return { points: pts };
+    }
+    // Assume array of {x,y}
+    return { points: Array.isArray(pts) ? pts.flatMap((p: any) => [p.x, p.y]) : [] };
+  });
+  if (Array.isArray(level.wallsPoly)) level.wallsPoly = normalizePoly(level.wallsPoly);
+  if (Array.isArray(level.waterPoly)) level.waterPoly = normalizePoly(level.waterPoly);
+  if (Array.isArray(level.sandPoly)) level.sandPoly = normalizePoly(level.sandPoly);
   // Normalize posts radius property for engine (expects r)
   if (Array.isArray(level.posts)) {
     level.posts = level.posts.map((p: any) => ({ ...p, r: (p?.r ?? p?.radius ?? 8) }));

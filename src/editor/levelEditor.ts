@@ -2762,7 +2762,28 @@ class LevelEditorImpl implements LevelEditor {
     if (!ok) return;
 
     const le = chosen as FirebaseLevelEntry;
-    const fixed = applyLevelDataFixups(le.data as any);
+    // Some older saves or migrations may store data as a JSON string or omit it in the listing.
+    let levelData: any = (le as any).data;
+    if (typeof levelData === 'string') {
+      try {
+        levelData = JSON.parse(levelData);
+      } catch (e) {
+        console.warn('Level data JSON string parse failed, will refetch:', e);
+        levelData = null;
+      }
+    }
+
+    if (!levelData || typeof levelData !== 'object') {
+      // Fallback: fetch the full level by ID from Firebase
+      const fetched = await firebaseLevelStore.loadLevel(le.name, username);
+      if (!fetched) {
+        env.showToast('Failed to load level');
+        return;
+      }
+      levelData = fetched;
+    }
+
+    const fixed = applyLevelDataFixups(levelData);
     this.applyLevelToEnv(fixed, env);
     this.editorCurrentSavedId = le.name; // Firebase ID
     env.showToast(`Loaded "${le.title}"`);

@@ -1078,6 +1078,7 @@ let hoverOptionsUsers = false; // admin-only users button
 // User Levels state
 interface UserLevelEntry {
   name: string;
+  id?: string;
   author: string;
   data: any;
   source: 'filesystem' | 'localStorage' | 'bundled' | 'firebase';
@@ -1107,6 +1108,7 @@ async function loadUserLevelsList(): Promise<void> {
       console.log('User Made Levels: Firebase returned', firebaseLevels.length, 'levels:', firebaseLevels);
       
       const allLevels: UserLevelEntry[] = firebaseLevels.map(entry => ({
+        id: entry.name,
         name: entry.title,
         author: entry.author,
         data: adaptFirebaseLevelToMain(entry.data),
@@ -1478,9 +1480,11 @@ async function deleteUserLevel(level: UserLevelEntry): Promise<void> {
           const firebaseLevels = await firebaseManager.levels.getAllLevels(userId);
           const levelToDelete = firebaseLevels.find(l => l.title === level.name && l.author === level.author);
           
-          if (levelToDelete) {
-            // Use the level title as the levelId for deletion (Firebase expects the slug/key, not the full ID)
-            await firebaseManager.levels.deleteLevel(level.name, userId);
+          if (level?.id) {
+            await firebaseManager.levels.deleteLevel(level.id, userId);
+          } else if (levelToDelete) {
+            // Use the Firebase level ID (key)
+            await firebaseManager.levels.deleteLevel(levelToDelete.name, userId);
           } else {
             showUiToast('Level not found in Firebase', 3000);
             return;

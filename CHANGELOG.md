@@ -15,6 +15,9 @@ All notable changes to this project will be documented in this file.
  - Filesystem level scan: Restricted `scanFilesystemLevels()` to dev builds via `isDevBuild()` to avoid production 404s when `/levels/` is not served.
 
 ### Removed
+- Automatic runtime level migrations during Firebase initialization (both legacy localStorage and bundled levels). Migrations are now handled exclusively via the CLI `scripts/migrate-levels.js`.
+
+### Removed
 - Obsolete user data migration flows: removed cross-ID level migration and single-slot migration code paths; removed `migrateUserData()` usage. Startup still performs bundled/public and legacy localStorage level migrations only.
 
 ### Fixed

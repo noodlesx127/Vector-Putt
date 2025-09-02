@@ -33,11 +33,6 @@ export class FirebaseManager {
         firebaseScoreStore.init()
       ]);
 
-      // Perform level migrations only (bundled/public and legacy localStorage levels)
-      console.log('Performing level migrations...');
-      await firebaseLevelStore.migrateFromLocalStorage();
-      await firebaseLevelStore.migrateBundledLevels();
-
       this.initialized = true;
       console.log('Firebase services initialized successfully');
 

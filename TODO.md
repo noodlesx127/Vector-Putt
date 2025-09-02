@@ -90,7 +90,14 @@ Notes:
   - [x] In-app (or web) level editor to place walls/terrain/hills/decorations
   - [ ] Grid snapping, keyboard nudges, and alignment helpers
   - [x] Load/Save `levels/*.json` with schema-aware validation
-  - [ ] Course builder to add/remove/reorder holes, set titles and par
+  - [ ] Dev/Admin-only Course Creator (Editor → Editor Tools → "Course Creator")
+    - [ ] Dedicated UI listing all levels with thumbnail and metadata (name, author, par)
+    - [ ] Build "Bundled" courses or arbitrary series of levels forming a full Course
+    - [ ] Create/edit courses: rename course, reorder levels, add/remove levels
+    - [ ] Save flow prompts for Course Name; upon save, add new button in "Select Course" chooser
+    - [ ] Manage courses: edit existing course(s) and delete course entirely
+    - [ ] Visibility: feature gated to Dev/Admin only
+    - [ ] Persistence: course definition format consumed by runtime Course Select
   - [ ] Level browser: scan `levels/` and list levels; searchable and filterable
   - [ ] Preview thumbnails and quick-play from the browser
   - [x] Open/edit existing `levels/*.json` (load, modify, validate) and Save/Save As

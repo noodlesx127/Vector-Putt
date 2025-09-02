@@ -324,6 +324,10 @@ async function writeLevelsDoc(doc: LevelsDocV1): Promise<void> {
 
 // Filesystem operations
 async function scanFilesystemLevels(): Promise<LevelEntry[]> {
+  // Only available during development builds to avoid 404s in production
+  if (!isDevBuild()) {
+    return [];
+  }
   try {
     const levels: LevelEntry[] = [];
     
@@ -692,7 +696,7 @@ window.addEventListener('unhandledrejection', (ev) => {
 // Game state
 let lastTime = performance.now();
 let gameState: 'menu' | 'course' | 'options' | 'users' | 'changelog' | 'loading' | 'play' | 'sunk' | 'summary' | 'levelEditor' | 'userLevels' = 'menu';
-let levelPaths = ['/levels/level1.json', '/levels/level2.json', '/levels/level3.json'];
+let levelPaths: string[] = [];
 let currentLevelIndex = 0;
 let paused = false;
 // When true, we are playing a single, ad-hoc level (e.g., user-made or editor test)
@@ -1778,6 +1782,58 @@ async function startCourseFromFile(courseJsonPath: string): Promise<void> {
   }
 }
 
+// Start Dev Levels course from Firebase public levels (avoids fetching /levels in production)
+async function startDevCourseFromFirebase(): Promise<void> {
+  try {
+    if (!firebaseReady) {
+      console.warn('Firebase not ready; cannot load Dev Levels from Firebase');
+      return;
+    }
+    const entries = await firebaseManager.levels.getAllLevels(undefined);
+    // Heuristic: Dev/bundled levels authored by system
+    const devEntries = entries.filter((e: any) => {
+      try { return (e?.data?.meta?.authorId === 'system') || (e?.author === 'Game Developer'); } catch { return false; }
+    });
+    if (devEntries.length === 0) {
+      console.warn('No Dev (public) levels found in Firebase');
+      return;
+    }
+    // Sort by course index if present; then by title
+    devEntries.sort((a: any, b: any) => {
+      const ai = (a?.data?.course?.index ?? 0); const bi = (b?.data?.course?.index ?? 0);
+      if (ai !== bi) return ai - bi;
+      const at = (a?.title || '').toString(); const bt = (b?.title || '').toString();
+      return at.localeCompare(bt);
+    });
+    // Build synthetic paths and seed cache so loadLevel() reads from cache (no network)
+    const paths: string[] = [];
+    for (const ent of devEntries) {
+      const key = `dev:${ent.name}`;
+      paths.push(key);
+      try {
+        const lvl = adaptFirebaseLevelToMain(ent.data);
+        levelCache.set(key, lvl);
+      } catch (e) {
+        console.warn('Failed to adapt dev level; skipping', ent?.name, e);
+      }
+    }
+    if (paths.length === 0) {
+      console.warn('Dev levels adaptation produced no playable levels');
+      return;
+    }
+    levelPaths = paths;
+    courseScores = [];
+    coursePars = [];
+    currentLevelIndex = 0;
+    gameState = 'loading';
+    await loadLevel(levelPaths[0]);
+    // Set state to play after first level is loaded
+    gameState = 'play';
+  } catch (e) {
+    console.error('Failed to start Dev Levels from Firebase:', e);
+  }
+}
+
 // Main Menu layout helpers
 function getMainStartRect() {
   const w = 160, h = 36;
@@ -2034,9 +2090,7 @@ canvas.addEventListener('mousedown', (e) => {
   if (gameState === 'course') {
     const dev = getCourseDevRect();
     if (p.x >= dev.x && p.x <= dev.x + dev.w && p.y >= dev.y && p.y <= dev.y + dev.h) {
-      gameState = 'play';
-      loadLevelByIndex(1);
-      preloadLevelByIndex(2);
+      void startDevCourseFromFirebase();
       return;
     }
     const userLevels = getCourseUserLevelsRect();
@@ -4964,9 +5018,19 @@ async function loadLevel(path: string) {
   if (levelCache.has(path)) {
     lvl = levelCache.get(path)!;
   } else {
-  const res = await fetch(path);
-    lvl = (await res.json()) as Level;
-    levelCache.set(path, lvl);
+    // Handle synthetic dev paths by loading from Firebase rather than network
+    if (path.startsWith('dev:')) {
+      if (!firebaseReady) throw new Error('Firebase not ready to load dev level');
+      const id = path.slice(4);
+      const fbData = await firebaseManager.levels.loadLevel(id, undefined);
+      if (!fbData) throw new Error(`Dev level not found in Firebase: ${id}`);
+      lvl = adaptFirebaseLevelToMain(fbData);
+      levelCache.set(path, lvl);
+    } else {
+      const res = await fetch(path);
+      lvl = (await res.json()) as Level;
+      levelCache.set(path, lvl);
+    }
   }
   courseInfo = { index: lvl.course.index, total: lvl.course.total, par: lvl.par, title: lvl.course.title };
   levelCanvas = { width: (lvl.canvas?.width ?? WIDTH), height: (lvl.canvas?.height ?? HEIGHT) };
@@ -5081,6 +5145,8 @@ function preloadLevelByIndex(i: number): void {
   const clamped = ((i % levelPaths.length) + levelPaths.length) % levelPaths.length;
   const path = levelPaths[clamped];
   if (levelCache.has(path)) return;
+  // Do not attempt network fetch for synthetic dev paths; cache should be pre-seeded
+  if (path.startsWith('dev:')) return;
   fetch(path)
     .then((res) => res.json())
     .then((lvl: Level) => { levelCache.set(path, lvl); })

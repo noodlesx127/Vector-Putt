@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - User level visibility: Normal users now see all user-created levels (in addition to public levels). Edit/Delete permissions remain restricted to owners and admins via existing checks.
  - User Made Levels UI: added full mouse click support for list items and action buttons (Play/Edit/Delete/Duplicate); redesigned entries with card-style layout, color-coded source badges, clearer button layout, and permission hints. Improved scrollbar styling and hit detection to match the new layout.
+ - Dev Levels loading: Dev/bundled levels are now loaded from Firebase only. Removed default static `'/levels/*.json'` paths from runtime and switched Course Select "Dev Levels" to use `startDevCourseFromFirebase()`.
+ - Filesystem level scan: Restricted `scanFilesystemLevels()` to dev builds via `isDevBuild()` to avoid production 404s when `/levels/` is not served.
 
 ### Removed
 - Obsolete user data migration flows: removed cross-ID level migration and single-slot migration code paths; removed `migrateUserData()` usage. Startup still performs bundled/public and legacy localStorage level migrations only.
@@ -25,6 +27,7 @@ All notable changes to this project will be documented in this file.
    - Fix (Level Editor): Implemented `renderWithRotation()` helper in `src/editor/levelEditor.ts` used by the editor preview to draw rotated rect-like objects. Resolves TS2339 errors and restores correct rendering for rotated Water/Sand/Bridge/Hill/Wall/Decoration.
  - Level Editor Save/Load: Editor now saves, loads, and deletes levels via Firebase instead of local filesystem dialogs. Replaced `saveLevelToFilesystem()`/`loadLevelsFromFilesystem()`/directory access with `FirebaseLevelStore.saveLevel()`, `.getUserLevels()`, and `.deleteLevel()` in `src/editor/levelEditor.ts`. Eliminates browser file pickers during Save/Load.
  - Level Editor Load: Fixed "Failed to load level" in the editor by normalizing list selection handling to use `chosen.value` from `showList()`, falling back to the raw object when needed. Added robust fetch fallback to try user-scoped `loadLevel(id, userId)` and then public `loadLevel(id)` if needed, plus targeted debug logs to trace `id`, `userId`, and fetch source. (`src/editor/levelEditor.ts`)
+ - Dev Levels 404s in production: Replaced static `/levels/` fetching with Firebase-backed Dev Levels and gated filesystem scanning behind `isDevBuild()`. Prevents course select and editor from hitting 404s in deployed builds.
 
 ## v0.3.24 — 2025-08-24
 

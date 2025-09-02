@@ -2761,9 +2761,12 @@ class LevelEditorImpl implements LevelEditor {
     const ok = await env.showConfirm('Load selected level and discard current changes?', 'Load Level');
     if (!ok) return;
 
-    const le = chosen as FirebaseLevelEntry;
+    const chosenItem: any = chosen as any;
+    const le: FirebaseLevelEntry = (chosenItem && chosenItem.value) ? chosenItem.value : (chosen as FirebaseLevelEntry);
+    console.log('Editor load: selected level', { id: (le as any)?.name, title: (le as any)?.title, user: username });
     // Some older saves or migrations may store data as a JSON string or omit it in the listing.
-    let levelData: any = (le as any).data;
+    // Prefer embedded data from the list value
+    let levelData: any = (le as any)?.data ?? (chosenItem && chosenItem.value ? chosenItem.value.data : undefined);
     if (typeof levelData === 'string') {
       try {
         levelData = JSON.parse(levelData);
@@ -2774,12 +2777,21 @@ class LevelEditorImpl implements LevelEditor {
     }
 
     if (!levelData || typeof levelData !== 'object') {
-      // Fallback: fetch the full level by ID from Firebase
-      const fetched = await firebaseLevelStore.loadLevel(le.name, username);
+      // Fallback: fetch the full level by ID from Firebase (scoped to user)
+      console.log('Editor load: fetching by id with user scope', le.name, username);
+      let source = 'user';
+      let fetched = await firebaseLevelStore.loadLevel(le.name, username);
+      if (!fetched) {
+        // Secondary fallback: try without user scope (public path)
+        console.log('Editor load: user-scoped fetch returned null; trying public path');
+        fetched = await firebaseLevelStore.loadLevel(le.name);
+        source = 'public';
+      }
       if (!fetched) {
         env.showToast('Failed to load level');
         return;
       }
+      console.log('Editor load: fetched level OK', { id: le.name, source });
       levelData = fetched;
     }
 
@@ -2808,7 +2820,8 @@ class LevelEditorImpl implements LevelEditor {
     const chosen = await env.showList('Delete Level', items, 0);
     if (!chosen) return;
 
-    const le = chosen as FirebaseLevelEntry;
+    const chosenDelItem: any = chosen as any;
+    const le: FirebaseLevelEntry = (chosenDelItem && chosenDelItem.value) ? chosenDelItem.value : (chosen as FirebaseLevelEntry);
     const ok = await env.showConfirm(`Permanently delete "${le.title}"?`, 'Delete Level');
     if (!ok) return;
 

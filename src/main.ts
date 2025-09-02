@@ -87,6 +87,13 @@ type UiOverlayState = {
   // Shared
   title?: string;
   message?: string;
+  // Positioning (for draggable overlays)
+  posX?: number;
+  posY?: number;
+  // Drag state (internal)
+  dragActive?: boolean;
+  dragOffsetX?: number;
+  dragOffsetY?: number;
   // Prompt
   inputText?: string;
   inputPlaceholder?: string;
@@ -136,6 +143,8 @@ function showUiList(title: string, items: UiListItem[], startIndex = 0): Promise
 function handleOverlayKey(e: KeyboardEvent) {
   if (!isOverlayActive()) return;
   try { e.preventDefault(); } catch {}
+  try { e.stopPropagation(); } catch {}
+  try { e.stopImmediatePropagation(); } catch {}
   const k = uiOverlay.kind;
   if (k === 'confirm') {
     if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space') { uiOverlay.resolve?.(true); uiOverlay = { kind: 'none' }; return; }
@@ -163,9 +172,23 @@ function handleOverlayKey(e: KeyboardEvent) {
     if (e.code === 'Escape') { uiOverlay.resolve?.(null); uiOverlay = { kind: 'none' }; return; }
   }
 }
-window.addEventListener('keydown', handleOverlayKey);
+// Use capture phase so we intercept before other global handlers
+window.addEventListener('keydown', handleOverlayKey, true);
 
-type OverlayHotspot = { kind: 'btn' | 'listItem' | 'input'; index?: number; x: number; y: number; w: number; h: number };
+// Swallow keyup/keypress when an overlay is active so other global handlers don't fire
+function swallowOverlayKey(e: KeyboardEvent) {
+  if (!isOverlayActive()) return;
+  try { e.preventDefault(); } catch {}
+  try { e.stopPropagation(); } catch {}
+  try { e.stopImmediatePropagation(); } catch {}
+}
+// Capture phase to intercept before other listeners
+window.addEventListener('keyup', swallowOverlayKey, true);
+window.addEventListener('keypress', swallowOverlayKey as any, true);
+document.addEventListener('keypress', swallowOverlayKey as any, true);
+try { canvas.addEventListener('keypress', swallowOverlayKey as any, true); } catch {}
+
+type OverlayHotspot = { kind: 'btn' | 'listItem' | 'input' | 'drag'; index?: number; x: number; y: number; w: number; h: number };
 let overlayHotspots: OverlayHotspot[] = [];
 
 function handleOverlayMouseDown(e: MouseEvent) {
@@ -211,10 +234,49 @@ function handleOverlayMouseDown(e: MouseEvent) {
           return;
         }
       }
+      // Drag start (title bar)
+      if (hs.kind === 'drag') {
+        uiOverlay.dragActive = true;
+        uiOverlay.dragOffsetX = p.x - hs.x;
+        uiOverlay.dragOffsetY = p.y - hs.y;
+        // Initialize position if not set
+        if (typeof uiOverlay.posX !== 'number') uiOverlay.posX = hs.x;
+        if (typeof uiOverlay.posY !== 'number') uiOverlay.posY = hs.y;
+        return;
+      }
     }
   }
 }
 canvas.addEventListener('mousedown', handleOverlayMouseDown, { capture: true });
+
+function handleOverlayMouseMove(e: MouseEvent) {
+  if (!isOverlayActive()) return;
+  try { e.preventDefault(); } catch {}
+  try { e.stopPropagation(); } catch {}
+  if (!uiOverlay.dragActive) return;
+  const p = worldFromEvent(e);
+  const panelW = Math.min(640, WIDTH - 80);
+  // panelH depends on kind and content; use generous margins while dragging and clamp in draw
+  const margin = 20;
+  let px = p.x - (uiOverlay.dragOffsetX ?? 0);
+  let py = p.y - (uiOverlay.dragOffsetY ?? 0);
+  // Clamp to viewport (rough clamp; exact clamp done in render)
+  px = Math.max(margin, Math.min(WIDTH - panelW - margin, px));
+  py = Math.max(margin, Math.min(HEIGHT - 120, py));
+  uiOverlay.posX = px;
+  uiOverlay.posY = py;
+}
+canvas.addEventListener('mousemove', handleOverlayMouseMove, { capture: true });
+
+function handleOverlayMouseUp(e: MouseEvent) {
+  if (!isOverlayActive()) return;
+  try { e.preventDefault(); } catch {}
+  try { e.stopPropagation(); } catch {}
+  if (uiOverlay.dragActive) {
+    uiOverlay.dragActive = false;
+  }
+}
+canvas.addEventListener('mouseup', handleOverlayMouseUp, { capture: true });
 
 // Type adapter to convert between Firebase and main app Level formats
 function adaptFirebaseLevelToMain(firebaseLevel: any): Level {
@@ -4861,8 +4923,16 @@ function renderGlobalOverlays(): void {
       panelH = 100 + visible * 28 + 56; // title+list+buttons
       panelH = Math.min(panelH, HEIGHT - 120);
     }
-    const px = Math.floor(WIDTH / 2 - panelW / 2);
-    const py = Math.floor(HEIGHT / 2 - panelH / 2);
+    // Persisted or centered position
+    let px = (typeof uiOverlay.posX === 'number') ? uiOverlay.posX : Math.floor(WIDTH / 2 - panelW / 2);
+    let py = (typeof uiOverlay.posY === 'number') ? uiOverlay.posY : Math.floor(HEIGHT / 2 - panelH / 2);
+    // Clamp to viewport bounds (leave margins so outline remains visible)
+    const margin = 20;
+    px = Math.max(margin, Math.min(WIDTH - panelW - margin, px));
+    py = Math.max(margin, Math.min(HEIGHT - panelH - margin, py));
+    // Update stored position to clamped values to avoid drift
+    uiOverlay.posX = px;
+    uiOverlay.posY = py;
     // panel background
     ctx.fillStyle = 'rgba(0,0,0,0.8)';
     ctx.fillRect(px, py, panelW, panelH);
@@ -4879,6 +4949,9 @@ function renderGlobalOverlays(): void {
       ctx.fillText(uiOverlay.title!, px + pad, cy);
       cy += titleH;
     }
+    // Title bar drag handle (top region)
+    const dragH = Math.max(24, titleH || 0);
+    overlayHotspots.push({ kind: 'drag', x: px, y: py, w: panelW, h: dragH });
     // message (simple line-break support)
     if (uiOverlay.message) {
       ctx.font = '14px system-ui, sans-serif';

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+- Overlays: fully swallow keyboard events while a modal is open.
+  - Added `stopPropagation()` in `handleOverlayKey()`.
+  - Added capture-phase `keyup`/`keypress` listeners on `window`/`document`/`canvas` to intercept early.
+  - Added capture-phase `keydown` listener and `stopImmediatePropagation()` in overlay handlers to ensure no other key listeners execute while a modal is active.
+  - Prevents underlying UI (menus, gameplay pause, editor shortcuts) from reacting to keys when an overlay is active.
+
 ## v0.3.25 — 2025-09-01
 
 ### Added

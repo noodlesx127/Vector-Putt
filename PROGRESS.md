@@ -1,10 +1,8 @@
   /**
-   * This file tracks current focus, next steps, decisions, and open questions. Keep it short and living. Completed items have been moved to `COMPLETED.md`.
+   * This file tracks current focus, next steps, decisions, and open questions. Keep it short and living. Completed items have been moved to `COMPLETED.md`. Always follow the format of this file.
    */
 
 # Project Progress — Vector Putt
-
-
 
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
@@ -18,6 +16,7 @@ As of 2025-08-25, focus these open items migrated from `TODO.md`:
  - **Course Creator — Follow-ups**
    - [ ] Unit tests for `src/firebase/FirebaseCourseStore.ts`
    - [ ] Overlay flow edge cases and error handling
+     - [x] Fix: fully swallow keyboard events while modal overlays are active (stopPropagation in `handleOverlayKey()`, plus capture-phase keyup/keypress listeners). Underlying UI no longer reacts during modals.
    - [ ] Usability polish (e.g., drag-and-drop reordering)
    - [ ] Course Select integration (consume `courses` to build runtime lists)
   

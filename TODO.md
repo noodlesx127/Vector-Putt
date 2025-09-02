@@ -134,6 +134,7 @@ Notes:
     - [x] User directory structure: `User_Levels/Username/levelname.json` for organized user content
     - [x] Overlay migration complete: replaced browser dialogs with in-game overlays across Editor and Users Admin UI (Confirm, Prompt, List, Toast); keyboard-friendly (Enter/Esc/Arrows)
       - [x] Rendering integration complete: overlays and toasts render at the end of `draw()` above all UI; `overlayHotspots` rebuilt each frame; overlay mouse events swallowed to prevent click-through; toasts displayed as a top-right stack with auto-expire.
+      - [x] Keyboard input swallowing: added stopPropagation/stopImmediatePropagation and capture-phase keydown/keyup/keypress so underlying UI/gameplay cannot react while a modal is open
   - [x] Consistency: define local `COLORS` and `SelectableObject` in `src/editor/levelEditor.ts`; standardize naming to `wallsPoly` in `getObjectBounds()`.
       - [x] Course/Options/Changelog now render overlays too (added inline `renderGlobalOverlays()` before early returns in `draw()`).
   - [x] Consistency: fix `generateLevelThumbnail()` to use editor-level keys `water`, `waterPoly`, `sand`, `sandPoly`, and `wallsPoly` for correct thumbnail rendering (`src/main.ts`).

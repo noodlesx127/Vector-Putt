@@ -6,6 +6,7 @@
 
 Updated: 2025-09-02 — Fixed Level Editor load failure: normalized list selection to use `chosen.value` from `showList()`, added robust fallback fetch (`loadLevel(id, userId)` then `loadLevel(id)`) and debug logs with `id`/`userId`/source in `src/editor/levelEditor.ts`.
 Updated: 2025-09-02 — Dev Levels loading now uses Firebase only. Replaced static `/levels/*.json` paths with `startDevCourseFromFirebase()` and gated `scanFilesystemLevels()` behind `isDevBuild()` to prevent 404s in production. Updated `CHANGELOG.md`.
+Updated: 2025-09-02 — Added one-time Levels Migration script `scripts/migrate-levels.js` and npm scripts `migrate:levels` / `migrate:levels:dry-run` to import JSON files from `levels/` into Firebase public dev levels.
 Updated: 2025-09-01 — Fixed User Made Levels delete bug: `src/main.ts` now deletes by Firebase level ID (key) instead of title. Added `id` to `UserLevelEntry` and mapped it from `FirebaseLevelStore.getAllLevels()`.
 Updated: 2025-09-01 — Level Editor Save/Load bug fixed: editor now saves, loads, and deletes levels via Firebase (no browser file dialogs). Wired `src/editor/levelEditor.ts` to `FirebaseLevelStore` for persistence; Import/Export remain as explicit file ops.
 

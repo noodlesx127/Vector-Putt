@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - HUD: Best score display restored in gameplay HUD (course mode only). Fetches asynchronously from Firebase per level and updates after saving scores.
+- Scripts: One-time Levels Migration CLI `scripts/migrate-levels.js` to import JSON files from `levels/` into Firebase public dev levels. Includes `npm run migrate:levels` and `npm run migrate:levels:dry-run`.
 
 ### Changed
 - User level visibility: Normal users now see all user-created levels (in addition to public levels). Edit/Delete permissions remain restricted to owners and admins via existing checks.

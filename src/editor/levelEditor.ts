@@ -15,6 +15,7 @@ import {
 } from './filesystem';
 import firebaseLevelStore from '../firebase/FirebaseLevelStore';
 import type { LevelEntry as FirebaseLevelEntry } from '../firebase/FirebaseLevelStore';
+import firebaseCourseStore from '../firebase/FirebaseCourseStore';
 
 // Local palette for the editor module (matches docs/PALETTE.md and main.ts)
 const COLORS = {
@@ -61,7 +62,7 @@ export type EditorTool =
   | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'sand' | 'sandPoly' | 'hill' | 'decoration';
 
 export type EditorAction =
-  | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'gridToggle' | 'gridMinus' | 'gridPlus' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate';
+  | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'gridToggle' | 'gridMinus' | 'gridPlus' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'courseCreator';
 
 export type EditorMenuId = 'file' | 'objects' | 'decorations' | 'tools';
 
@@ -136,6 +137,8 @@ export interface EditorEnv {
   exitToMenu(): void;
   getUserId(): string;
   testLevel?(levelData: any): Promise<void>;
+  // Role
+  getUserRole?(): 'admin' | 'user';
 }
 
 export interface LevelEditor {
@@ -284,6 +287,145 @@ class LevelEditorImpl implements LevelEditor {
       this.clearDragState();
     } finally {
       this.isApplyingUndoRedo = false;
+    }
+  }
+
+  // Admin-only Course Creator overlay
+  async openCourseCreator(): Promise<void> {
+    if (!this.env) return;
+    const env = this.env;
+    const isAdmin = (typeof env.getUserRole === 'function') ? (env.getUserRole() === 'admin') : false;
+    if (!isAdmin) {
+      env.showToast('Admin only');
+      return;
+    }
+
+    const refreshAndPickCourse = async (): Promise<{ id: string; title: string; levelIds: string[] } | null> => {
+      const courses = await firebaseCourseStore.getCourses();
+      const items = [
+        ...courses.map(c => ({ label: `${c.title} (${c.levelIds.length} levels)`, value: c })),
+        { label: '➕ New Course…', value: { __new: true } }
+      ];
+      const chosen = await env.showList('Course Creator', items, 0);
+      if (!chosen) return null;
+      const v: any = (chosen as any).value ?? chosen;
+      if (v && v.__new) {
+        const title = await env.showPrompt('New course title:', 'New Course', 'Create Course');
+        if (title === null) return null;
+        const id = await firebaseCourseStore.createCourse(title, [], true);
+        env.showToast(`Created course "${title}"`);
+        return { id, title, levelIds: [] };
+      }
+      return { id: v.id, title: v.title, levelIds: [...(v.levelIds || [])] };
+    };
+
+    const pickLevelFromAll = async (excludeIds: Set<string>): Promise<{ id: string; title: string } | null> => {
+      const all = await firebaseLevelStore.getAllLevels(env.getUserId());
+      const candidates = all.filter(le => !excludeIds.has(le.name));
+      if (candidates.length === 0) {
+        env.showToast('No more levels to add');
+        return null;
+      }
+      const items = candidates.map(le => ({ label: `${le.title} — ${le.author}`, value: le }));
+      const chosen = await env.showList('Add Level to Course', items, 0);
+      if (!chosen) return null;
+      const le: any = (chosen as any).value ?? chosen;
+      return { id: le.name, title: le.title };
+    };
+
+    const labelForLevelId = async (id: string): Promise<string> => {
+      // Try to infer label from cached list; fallback to id
+      const all = await firebaseLevelStore.getAllLevels(env.getUserId());
+      const found = all.find(le => le.name === id);
+      return found ? found.title : id;
+    };
+
+    while (true) {
+      const course = await refreshAndPickCourse();
+      if (!course) break; // user cancelled
+
+      // Submenu for course actions
+      const actions = [
+        { label: '✏️ Rename', value: 'rename' },
+        { label: '➕ Add Level', value: 'add' },
+        { label: '➖ Remove Level', value: 'remove' },
+        { label: '↕️ Reorder Levels', value: 'reorder' },
+        { label: '🗑️ Delete Course', value: 'delete' },
+        { label: 'Close', value: 'close' }
+      ];
+
+      const chosenAction = await env.showList(`Edit Course: ${course.title}`, actions, 0);
+      if (!chosenAction) break;
+      const act = ((chosenAction as any).value ?? chosenAction) as string;
+
+      if (act === 'close') break;
+
+      if (act === 'rename') {
+        const newTitle = await env.showPrompt('Course title:', course.title, 'Rename Course');
+        if (newTitle !== null && newTitle.trim().length > 0) {
+          await firebaseCourseStore.updateCourse(course.id, { title: newTitle });
+          env.showToast('Course renamed');
+        }
+        continue;
+      }
+
+      if (act === 'add') {
+        const exclude = new Set(course.levelIds);
+        const pick = await pickLevelFromAll(exclude);
+        if (pick) {
+          const next = [...course.levelIds, pick.id];
+          await firebaseCourseStore.updateCourse(course.id, { levelIds: next } as any);
+          env.showToast(`Added level: ${pick.title}`);
+        }
+        continue;
+      }
+
+      if (act === 'remove') {
+        if (course.levelIds.length === 0) {
+          env.showToast('Course has no levels');
+          continue;
+        }
+        const labels = await Promise.all(course.levelIds.map(async (id) => ({ id, title: await labelForLevelId(id) })));
+        const items = labels.map(l => ({ label: l.title, value: l.id }));
+        const chosen = await env.showList('Remove Level', items, 0);
+        if (!chosen) continue;
+        const id = ((chosen as any).value ?? chosen) as string;
+        const next = course.levelIds.filter(x => x !== id);
+        await firebaseCourseStore.updateCourse(course.id, { levelIds: next } as any);
+        env.showToast('Removed level');
+        continue;
+      }
+
+      if (act === 'reorder') {
+        if (course.levelIds.length < 2) {
+          env.showToast('Need at least two levels to reorder');
+          continue;
+        }
+        const labels = await Promise.all(course.levelIds.map(async (id) => await labelForLevelId(id)));
+        const listing = labels.map((t, i) => `${i + 1}. ${t}`).join('\n');
+        const fromStr = await env.showPrompt(`Current order:\n${listing}\n\nMove which index? (1-${course.levelIds.length})`, '1', 'Reorder');
+        if (fromStr === null) continue;
+        const toStr = await env.showPrompt(`Move to position: (1-${course.levelIds.length})`, '1', 'Reorder');
+        if (toStr === null) continue;
+        const from = Math.max(1, Math.min(course.levelIds.length, parseInt(fromStr, 10))) - 1;
+        const to = Math.max(1, Math.min(course.levelIds.length, parseInt(toStr, 10))) - 1;
+        if (Number.isNaN(from) || Number.isNaN(to)) continue;
+        const next = [...course.levelIds];
+        const [moved] = next.splice(from, 1);
+        next.splice(to, 0, moved);
+        await firebaseCourseStore.updateCourse(course.id, { levelIds: next } as any);
+        env.showToast('Reordered levels');
+        continue;
+      }
+
+      if (act === 'delete') {
+        const ok = await env.showConfirm(`Permanently delete course "${course.title}"?`, 'Delete Course');
+        if (ok) {
+          await firebaseCourseStore.deleteCourse(course.id);
+          env.showToast('Course deleted');
+        }
+        continue;
+      }
     }
   }
 
@@ -760,7 +902,9 @@ class LevelEditorImpl implements LevelEditor {
         { label: 'Duplicate (Ctrl+D)', item: { kind: 'action', action: 'duplicate' } },
         { label: 'Grid Toggle', item: { kind: 'action', action: 'gridToggle' }, separator: true },
         { label: 'Grid -', item: { kind: 'action', action: 'gridMinus' } },
-        { label: 'Grid +', item: { kind: 'action', action: 'gridPlus' } }
+        { label: 'Grid +', item: { kind: 'action', action: 'gridPlus' } },
+        // Admin-only tool entry (conditionally rendered at runtime)
+        { label: 'Course Creator', item: { kind: 'action', action: 'courseCreator' }, separator: true }
       ]
     }
   };
@@ -1418,13 +1562,22 @@ class LevelEditorImpl implements LevelEditor {
         const tw = ctx.measureText(m.title).width;
         headerX += tw + 16;
       }
+      // Filter items for admin gating
+      const isAdmin = (typeof env.getUserRole === 'function') ? (env.getUserRole() === 'admin') : false;
+      const visibleItems = menu.items.filter(mi => {
+        if (this.openEditorMenu === 'tools' && mi.item.kind === 'action' && (mi.item as any).action === 'courseCreator') {
+          return isAdmin;
+        }
+        return true;
+      });
+
       let maxWidth = 0;
-      for (const item of menu.items) {
+      for (const item of visibleItems) {
         const w = ctx.measureText(item.label).width; if (w > maxWidth) maxWidth = w;
       }
       const dropdownW = Math.max(120, maxWidth + 24);
       const itemH = 22;
-      const dropdownH = menu.items.length * itemH + 4;
+      const dropdownH = visibleItems.length * itemH + 4;
       const dropdownX = headerX;
       const dropdownY = menubarH;
 
@@ -1435,8 +1588,8 @@ class LevelEditorImpl implements LevelEditor {
       ctx.strokeRect(dropdownX, dropdownY, dropdownW, dropdownH);
 
       let itemY = dropdownY + 2;
-      for (let i = 0; i < menu.items.length; i++) {
-        const menuItem = menu.items[i];
+      for (let i = 0; i < visibleItems.length; i++) {
+        const menuItem = visibleItems[i];
         const isActive = i === this.editorMenuActiveItemIndex;
         const isSelected = (() => {
           if (menuItem.item.kind === 'tool') return this.selectedTool === menuItem.item.tool;
@@ -1615,6 +1768,18 @@ class LevelEditorImpl implements LevelEditor {
               try { const g = Math.max(2, env.getGridSize() - 2); env.setGridSize?.(g); } catch {}
             } else if (item.action === 'gridPlus') {
               try { const g = Math.max(2, env.getGridSize() + 2); env.setGridSize?.(g); } catch {}
+            } else if (item.action === 'courseCreator') {
+              // Admin gating (double enforcement)
+              const isAdmin = (typeof env.getUserRole === 'function') ? (env.getUserRole() === 'admin') : false;
+              if (!isAdmin) {
+                try { env.showToast('Admin only'); } catch {}
+                this.openEditorMenu = null;
+                return;
+              }
+              // Open Course Creator overlay
+              void this.openCourseCreator();
+              this.openEditorMenu = null;
+              return;
             } else if (item.action === 'new') {
               void this.newLevel();
             } else if (item.action === 'save') {
@@ -2686,7 +2851,7 @@ class LevelEditorImpl implements LevelEditor {
     const username = env.getUserId();
     const level = applyLevelDataFixups({ ...this.editorLevelData });
     level.meta = level.meta || {};
-    if (!level.meta.authorId) level.meta.authorId = username;
+    // Do NOT overwrite authorId on normal save; preserve original owner
     if (!level.meta.created) level.meta.created = new Date().toISOString();
     level.meta.modified = new Date().toISOString();
 
@@ -2694,6 +2859,23 @@ class LevelEditorImpl implements LevelEditor {
       // No existing Firebase ID -> Save As
       await this.saveAs();
       return;
+    }
+
+    // Permission check: prevent overwriting others' levels unless admin
+    const gs = typeof env.getGlobalState === 'function' ? env.getGlobalState() : null;
+    const userRole = (gs?.userProfile?.role === 'admin') ? 'admin' : 'user';
+    if (userRole !== 'admin') {
+      try {
+        const existing = await firebaseLevelStore.loadLevel(this.editorCurrentSavedId);
+        const ownerId = existing && (existing as any).meta ? (existing as any).meta.authorId : undefined;
+        if (ownerId && ownerId !== username) {
+          env.showToast('You cannot overwrite a level you do not own. Saving a copy instead.');
+          await this.saveAs();
+          return;
+        }
+      } catch {
+        // If load fails, fall through; Firebase will enforce permissions as a backstop
+      }
     }
 
     try {
@@ -2715,7 +2897,8 @@ class LevelEditorImpl implements LevelEditor {
     const username = env.getUserId();
     const level = applyLevelDataFixups({ ...this.editorLevelData });
     level.meta = level.meta || {};
-    if (!level.meta.authorId) level.meta.authorId = username;
+    // New copy must always be owned by the current user
+    level.meta.authorId = username;
     if (!level.meta.created) level.meta.created = new Date().toISOString();
     level.meta.modified = new Date().toISOString();
 

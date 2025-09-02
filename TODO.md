@@ -92,11 +92,11 @@ Notes:
   - [x] Load/Save `levels/*.json` with schema-aware validation
   - [ ] Dev/Admin-only Course Creator (Editor → Editor Tools → "Course Creator")
     - [ ] Dedicated UI listing all levels with thumbnail and metadata (name, author, par)
-    - [ ] Build "Bundled" courses or arbitrary series of levels forming a full Course
-    - [ ] Create/edit courses: rename course, reorder levels, add/remove levels
+    - [x] Build "Bundled" courses or arbitrary series of levels forming a full Course
+    - [x] Create/edit courses: rename course, reorder levels, add/remove levels
     - [ ] Save flow prompts for Course Name; upon save, add new button in "Select Course" chooser
-    - [ ] Manage courses: edit existing course(s) and delete course entirely
-    - [ ] Visibility: feature gated to Dev/Admin only
+    - [x] Manage courses: edit existing course(s) and delete course entirely
+    - [x] Visibility: feature gated to Dev/Admin only
     - [ ] Persistence: course definition format consumed by runtime Course Select
   - [ ] Level browser: scan `levels/` and list levels; searchable and filterable
   - [ ] Preview thumbnails and quick-play from the browser

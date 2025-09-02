@@ -17,7 +17,8 @@ A classic mini golf recreation using TypeScript + Canvas with data‑driven leve
 - Retro vector palette and clean course framing
 - In-game overlay dialogs (Confirm, Prompt, List) and Toast notifications replace browser alerts/prompts; overlays render above all UI, rebuild hotspots every frame, swallow input while active, and support Enter/Esc/Arrow keys.
 - Level Editor: top menubar with pull-down menus (File, Objects, Decorations, Editor Tools); tool palette and selection; Tee/Cup placement with 20px grid snapping; multi-level persistence (Save, Save As, Load, New, Delete) via Firebase Realtime Database; ownership metadata (authorId/authorName) with owner/admin overwrite/delete permissions; automatic migration from localStorage; in-editor grid preview; editor preview renders existing geometry (water, sand, bridges, hills, decorations, walls, polygon walls, posts) using play-mode visuals; interactive placement for Posts (click) and Walls/Bridges/Water/Sand/Hills (click-drag rectangles) with grid snapping and fairway clamping. Select Tool supports selection, movement, and deletion for polygon objects (`wallsPoly`, `waterPoly`, `sandPoly`). Undo/Redo (Ctrl+Z/Ctrl+Y) with 50-step history; Clipboard (Copy/Cut/Paste via Ctrl+C/Ctrl+X/Ctrl+V) across rects, posts, and polygons (translate-only for polys), paste at mouse cursor with grid snap and clamping.
- - Admin visibility: Admin users see all user-created levels (public + private) in Level Editor and Course Select.
+- Admin visibility: Admin users see all user-created levels (public + private) in Level Editor and Course Select.
+ - Admin-only Course Creator: an overlay in the Level Editor (Editor Tools → Course Creator) for listing, creating, renaming, reordering, and adding/removing levels in courses. Persists to Firebase via a `courses` path and `FirebaseCourseStore`; available only when `EditorEnv.getUserRole()` is `admin`.
 
 ## Stack
 

@@ -8,7 +8,8 @@ const PATHS = {
   levels: 'levels',
   userLevels: 'userLevels',
   scores: 'scores',
-  settings: 'settings'
+  settings: 'settings',
+  courses: 'courses'
 } as const;
 
 // User data interface
@@ -40,6 +41,16 @@ export interface FirebaseScore {
   strokes: number;
   timestamp: number;
   courseId?: string;
+}
+
+// Course data interface
+export interface FirebaseCourse {
+  id: string;
+  title: string;
+  levelIds: string[];
+  createdAt: number;
+  lastModified: number;
+  isPublic?: boolean;
 }
 
 // Settings data interface
@@ -168,6 +179,46 @@ export class FirebaseDatabase {
   static async deleteLevel(levelId: string, userId?: string): Promise<void> {
     const path = userId ? `${PATHS.userLevels}/${userId}/${levelId}` : `${PATHS.levels}/${levelId}`;
     await remove(ref(database, path));
+  }
+
+  // Courses
+  static async getCourses(): Promise<FirebaseCourse[]> {
+    const snapshot = await get(ref(database, PATHS.courses));
+    if (!snapshot.exists()) return [];
+
+    const courses = snapshot.val();
+    return Object.keys(courses).map(id => ({ id, ...courses[id] }));
+  }
+
+  static async getCourse(courseId: string): Promise<FirebaseCourse | null> {
+    const snapshot = await get(ref(database, `${PATHS.courses}/${courseId}`));
+    if (!snapshot.exists()) return null;
+
+    return { id: courseId, ...snapshot.val() };
+  }
+
+  static async saveCourse(course: Omit<FirebaseCourse, 'id'>): Promise<string> {
+    const courseRef = push(ref(database, PATHS.courses));
+    const courseId = courseRef.key!;
+
+    await set(courseRef, {
+      ...course,
+      createdAt: course.createdAt || Date.now(),
+      lastModified: Date.now()
+    });
+
+    return courseId;
+  }
+
+  static async updateCourse(courseId: string, updates: Partial<FirebaseCourse>): Promise<void> {
+    await update(ref(database, `${PATHS.courses}/${courseId}`), {
+      ...updates,
+      lastModified: Date.now()
+    });
+  }
+
+  static async deleteCourse(courseId: string): Promise<void> {
+    await remove(ref(database, `${PATHS.courses}/${courseId}`));
   }
 
   // Scores

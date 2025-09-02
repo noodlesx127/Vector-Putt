@@ -2,22 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## v0.3.25 — 2025-09-01
 
 ### Added
 - HUD: Best score display restored in gameplay HUD (course mode only). Fetches asynchronously from Firebase per level and updates after saving scores.
 - Scripts: One-time Levels Migration CLI `scripts/migrate-levels.js` to import JSON files from `levels/` into Firebase public dev levels. Includes `npm run migrate:levels` and `npm run migrate:levels:dry-run`.
+- Level Editor: Admin-only "Course Creator" overlay under Editor Tools. Item is visible only to admins, gated via `EditorEnv.getUserRole()`.
+  - Lists courses, create/rename/delete, add/remove/reorder levels using in-game overlays (`showList`/`showPrompt`/`showConfirm`).
+  - Persists to Firebase via new `courses` path and `FirebaseCourseStore` (CRUD backed by `FirebaseDatabase`).
+ - Firebase: Introduced dedicated `courses` path in Firebase Realtime Database with full CRUD in `src/firebase/database.ts`; added `src/firebase/FirebaseCourseStore.ts` providing caching and course operations used by the editor overlay.
 
 ### Changed
 - User level visibility: Normal users now see all user-created levels (in addition to public levels). Edit/Delete permissions remain restricted to owners and admins via existing checks.
- - User Made Levels UI: added full mouse click support for list items and action buttons (Play/Edit/Delete/Duplicate); redesigned entries with card-style layout, color-coded source badges, clearer button layout, and permission hints. Improved scrollbar styling and hit detection to match the new layout.
- - Dev Levels loading: Dev/bundled levels are now loaded from Firebase only. Removed default static `'/levels/*.json'` paths from runtime and switched Course Select "Dev Levels" to use `startDevCourseFromFirebase()`.
- - Filesystem level scan: Restricted `scanFilesystemLevels()` to dev builds via `isDevBuild()` to avoid production 404s when `/levels/` is not served.
+- User Made Levels UI: added full mouse click support for list items and action buttons (Play/Edit/Delete/Duplicate); redesigned entries with card-style layout, color-coded source badges, clearer button layout, and permission hints. Improved scrollbar styling and hit detection to match the new layout.
+- Dev Levels loading: Dev/bundled levels are now loaded from Firebase only. Removed default static `'/levels/*.json'` paths from runtime and switched Course Select "Dev Levels" to use `startDevCourseFromFirebase()`.
+- Filesystem level scan: Restricted `scanFilesystemLevels()` to dev builds via `isDevBuild()` to avoid production 404s when `/levels/` is not served.
+ - Editor gating: Enforced admin-only access for Course Creator at both the menu item and overlay using `EditorEnv.getUserRole()`.
+- Level Editor save permissions: Enforced ownership-based overwrite in `src/editor/levelEditor.ts`. Normal users can only overwrite their own levels; admins can overwrite any level. Non-owners attempting Save are redirected to Save As with a toast explaining why.
+- Save As ownership: `saveAs()` now always sets `level.meta.authorId` to the current user to ensure new copies are owned by the saver.
 
 ### Removed
 - Automatic runtime level migrations during Firebase initialization (both legacy localStorage and bundled levels). Migrations are now handled exclusively via the CLI `scripts/migrate-levels.js`.
-
-### Removed
 - Obsolete user data migration flows: removed cross-ID level migration and single-slot migration code paths; removed `migrateUserData()` usage. Startup still performs bundled/public and legacy localStorage level migrations only.
 
 ### Fixed

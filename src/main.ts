@@ -115,6 +115,7 @@ type UiOverlayState = {
   courseEditingTitle?: boolean;
   courseNewTitle?: string;
   selectedLevelIndex?: number;
+  scrollOffset?: number;
   // Resolution
   resolve?: (value: any) => void;
   reject?: (reason?: any) => void;
@@ -172,6 +173,7 @@ function showUiCourseEditor(courseData: { id: string; title: string; levelIds: s
       courseEditingTitle: false,
       courseNewTitle: courseData.title,
       selectedLevelIndex: -1,
+      scrollOffset: 0,
       cancelable: true,
       resolve
     };
@@ -236,11 +238,25 @@ function handleOverlayKey(e: KeyboardEvent) {
     } else {
       const levels = uiOverlay.courseData?.levelIds || [];
       if (e.code === 'ArrowDown') {
-        uiOverlay.selectedLevelIndex = Math.min(levels.length - 1, (uiOverlay.selectedLevelIndex ?? -1) + 1);
+        const newIndex = Math.min(levels.length - 1, (uiOverlay.selectedLevelIndex ?? -1) + 1);
+        uiOverlay.selectedLevelIndex = newIndex;
+        // Auto-scroll to keep selection visible
+        const rowHeight = 40;
+        const maxVisibleRows = Math.floor((Math.min(600, HEIGHT - 120) - 200) / rowHeight);
+        const scrollOffset = uiOverlay.scrollOffset ?? 0;
+        if (newIndex >= scrollOffset + maxVisibleRows) {
+          uiOverlay.scrollOffset = newIndex - maxVisibleRows + 1;
+        }
         return;
       }
       if (e.code === 'ArrowUp') {
-        uiOverlay.selectedLevelIndex = Math.max(-1, (uiOverlay.selectedLevelIndex ?? -1) - 1);
+        const newIndex = Math.max(-1, (uiOverlay.selectedLevelIndex ?? -1) - 1);
+        uiOverlay.selectedLevelIndex = newIndex;
+        // Auto-scroll to keep selection visible
+        const scrollOffset = uiOverlay.scrollOffset ?? 0;
+        if (newIndex >= 0 && newIndex < scrollOffset) {
+          uiOverlay.scrollOffset = newIndex;
+        }
         return;
       }
       if (e.code === 'Escape') {
@@ -374,7 +390,7 @@ function handleOverlayMouseDown(e: MouseEvent) {
             return;
           }
           if (action === 'cancel') {
-            uiOverlay.resolve?.(null);
+            uiOverlay.resolve?.({ action: 'cancel' });
             uiOverlay = { kind: 'none' };
             return;
           }
@@ -876,19 +892,26 @@ async function migrateLevelsToNewUserId(_oldUserId: string, _newUserId: string):
 }
 
 // Deprecated: legacy single-slot editor level migration
-async function migrateSingleSlotIfNeeded(): Promise<void> {
-  // No-op
+function migrateSingleSlotIfNeeded(): void {
+  // No-op - legacy migration removed
 }
 
 // Users Admin UI hotspots (rebuilt every frame while in users screen)
-type UsersHotspot = { kind: 'back' | 'addUser' | 'addAdmin' | 'export' | 'import' | 'promote' | 'demote' | 'enable' | 'disable' | 'remove'; x: number; y: number; w: number; h: number; id?: string };
+type UiHotspot = {
+  kind: 'drag' | 'input' | 'btn' | 'listItem' | 'levelItem';
+  x: number; y: number; w: number; h: number;
+  index?: number;
+  action?: string;
+  id?: string;
+};
+
+type UsersHotspot = {
+  kind: 'back' | 'addUser' | 'addAdmin' | 'export' | 'import' | 'promote' | 'demote' | 'enable' | 'disable' | 'remove';
+  x: number; y: number; w: number; h: number;
+  id?: string;
+};
+
 let usersUiHotspots: UsersHotspot[] = [];
-
-
-
-
-
-
 
 function clampToFairway(x: number, y: number): { x: number; y: number } {
   const fairX = COURSE_MARGIN;
@@ -5376,15 +5399,41 @@ function renderGlobalOverlays(): void {
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
       
-      // Render level rows
+      // Render level rows with scrolling support
       const levels = courseData.levelIds || [];
       const levelTitles = courseData.levelTitles || [];
+      const scrollOffset = uiOverlay.scrollOffset ?? 0;
+      const visibleLevels = levels.slice(scrollOffset, scrollOffset + maxVisibleRows);
       
-      for (let i = 0; i < Math.min(levels.length, maxVisibleRows); i++) {
+      // Draw scrollbar if needed
+      if (levels.length > maxVisibleRows) {
+        const scrollbarX = px + editorPanelW - 20;
+        const scrollbarY = listStartY;
+        const scrollbarH = listHeight;
+        const scrollbarW = 16;
+        
+        // Scrollbar track
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        ctx.fillRect(scrollbarX, scrollbarY, scrollbarW, scrollbarH);
+        ctx.strokeStyle = '#666666';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(scrollbarX + 0.5, scrollbarY + 0.5, scrollbarW - 1, scrollbarH - 1);
+        
+        // Scrollbar thumb
+        const thumbHeight = Math.max(20, (maxVisibleRows / levels.length) * scrollbarH);
+        const thumbY = scrollbarY + (scrollOffset / (levels.length - maxVisibleRows)) * (scrollbarH - thumbHeight);
+        ctx.fillStyle = 'rgba(136, 212, 255, 0.6)';
+        ctx.fillRect(scrollbarX + 2, thumbY, scrollbarW - 4, thumbHeight);
+        ctx.strokeStyle = '#88d4ff';
+        ctx.strokeRect(scrollbarX + 2.5, thumbY + 0.5, scrollbarW - 5, thumbHeight - 1);
+      }
+      
+      for (let i = 0; i < visibleLevels.length; i++) {
+        const actualIndex = scrollOffset + i;
         const rowY = listStartY + i * rowHeight;
         const rowX = px + pad;
-        const rowW = editorPanelW - pad * 2;
-        const isSelected = (uiOverlay.selectedLevelIndex === i);
+        const rowW = editorPanelW - pad * 2 - (levels.length > maxVisibleRows ? 24 : 0); // Account for scrollbar
+        const isSelected = (uiOverlay.selectedLevelIndex === actualIndex);
         
         // Row background
         ctx.fillStyle = isSelected ? 'rgba(136, 212, 255, 0.2)' : 'rgba(255,255,255,0.05)';
@@ -5400,12 +5449,13 @@ function renderGlobalOverlays(): void {
         ctx.font = '14px system-ui, sans-serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        const levelTitle = levelTitles[i] || levels[i] || 'level';
+        const levelTitle = levelTitles[actualIndex] || levels[actualIndex] || 'level';
         ctx.fillText(levelTitle, rowX + 12, rowY + (rowHeight - 2) / 2);
         
         // Add hotspot for level selection
-        overlayHotspots.push({ kind: 'levelItem', index: i, x: rowX, y: rowY, w: rowW, h: rowHeight - 2 });
+        overlayHotspots.push({ kind: 'levelItem', index: actualIndex, x: rowX, y: rowY, w: rowW, h: rowHeight - 2 });
       }
+      
       
       // Control buttons (left side)
       const buttonY = py + editorPanelH - 60;
@@ -5497,21 +5547,43 @@ function renderGlobalOverlays(): void {
   }
 }
 
-// Support wheel scrolling for DnD list overlay
+// Support wheel scrolling for DnD list and Course Editor overlays
 function handleOverlayWheel(e: WheelEvent) {
   if (!isOverlayActive()) return;
-  if (uiOverlay.kind !== 'dndList') return;
-  try { e.preventDefault(); } catch {}
-  try { e.stopPropagation(); } catch {}
-  const items = uiOverlay.listItems ?? [];
-  if (items.length === 0) return;
-  const delta = Math.sign(e.deltaY);
-  const rowH = 32;
-  // Estimate rows visible based on last render calculation (~10)
-  const maxRows = 10;
-  const maxScroll = Math.max(0, items.length - maxRows);
-  const next = Math.max(0, Math.min(maxScroll, Math.floor((uiOverlay.dndScroll ?? 0) + delta)));
-  uiOverlay.dndScroll = next;
+  
+  if (uiOverlay.kind === 'dndList') {
+    try { e.preventDefault(); } catch {}
+    try { e.stopPropagation(); } catch {}
+    const items = uiOverlay.listItems ?? [];
+    if (items.length === 0) return;
+    const delta = Math.sign(e.deltaY);
+    const rowH = 32;
+    // Estimate rows visible based on last render calculation (~10)
+    const maxRows = 10;
+    const maxScroll = Math.max(0, items.length - maxRows);
+    const next = Math.max(0, Math.min(maxScroll, Math.floor((uiOverlay.dndScroll ?? 0) + delta)));
+    uiOverlay.dndScroll = next;
+    return;
+  }
+  
+  if (uiOverlay.kind === 'courseEditor') {
+    try { e.preventDefault(); } catch {}
+    try { e.stopPropagation(); } catch {}
+    const levels = uiOverlay.courseData?.levelIds || [];
+    const rowHeight = 40;
+    const editorPanelH = Math.min(600, HEIGHT - 120);
+    const listHeight = editorPanelH - 200; // Account for title, buttons, etc.
+    const maxVisibleRows = Math.floor(listHeight / rowHeight);
+    
+    if (levels.length <= maxVisibleRows) return; // No scrolling needed
+    
+    const delta = Math.sign(e.deltaY);
+    const currentScroll = uiOverlay.scrollOffset ?? 0;
+    const maxScroll = Math.max(0, levels.length - maxVisibleRows);
+    const newScroll = Math.max(0, Math.min(maxScroll, currentScroll + delta));
+    uiOverlay.scrollOffset = newScroll;
+    return;
+  }
 }
 try { canvas.addEventListener('wheel', handleOverlayWheel as any, { capture: true, passive: false }); } catch {}
 

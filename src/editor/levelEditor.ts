@@ -133,6 +133,7 @@ export interface EditorEnv {
   showList(title: string, items: Array<{label: string; value: any}>, startIndex?: number): Promise<any>;
   showDnDList?(title: string, items: Array<{label: string; value: any}>): Promise<Array<{label: string; value: any}> | null>;
   showCourseEditor?(courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] }): Promise<{ action: string; courseData?: any; levelIndex?: number } | null>;
+  showUiCourseCreator?(courseList: Array<{ id: string; title: string; levelIds: string[]; levelTitles: string[] }>): Promise<{ action: string; courseData?: any } | null>;
   renderGlobalOverlays(): void;
   isOverlayActive?(): boolean;
   migrateSingleSlotIfNeeded?(): void;
@@ -322,27 +323,37 @@ class LevelEditorImpl implements LevelEditor {
       return { id: le.name, title: le.title };
     };
 
-    // First, let user pick or create a course
+    // Show Course Creator UI
     const courses = await firebaseCourseStore.getCourses();
-    const items = [
-      ...courses.map(c => ({ label: `${c.title} (${c.levelIds.length} levels)`, value: c })),
-      { label: '➕ New Course…', value: { __new: true } }
-    ];
-    const chosen = await env.showList('Course Creator', items, 0);
+    const coursesWithTitles = await Promise.all(
+      courses.map(async (c) => {
+        const levelTitles = await Promise.all(c.levelIds.map((id: string) => labelForLevelId(id)));
+        return { id: c.id, title: c.title, levelIds: [...(c.levelIds || [])], levelTitles };
+      })
+    );
+    
+    const chosen = await env.showUiCourseCreator?.(coursesWithTitles);
     if (!chosen) return;
     
-    const v: any = (chosen as any).value ?? chosen;
     let courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] };
     
-    if (v && v.__new) {
+    if (chosen.action === 'newCourse') {
       const title = await env.showPrompt('New course title:', 'New Course', 'Create Course');
       if (title === null) return;
       const id = await firebaseCourseStore.createCourse(title, [], true);
       env.showToast(`Created course "${title}"`);
       courseData = { id, title, levelIds: [], levelTitles: [] };
+    } else if (chosen.action === 'editCourse' && chosen.courseData) {
+      courseData = chosen.courseData;
+    } else if (chosen.action === 'deleteCourse' && chosen.courseData) {
+      const ok = await env.showConfirm(`Permanently delete course "${chosen.courseData.title}"?`, 'Delete Course');
+      if (ok) {
+        await firebaseCourseStore.deleteCourse(chosen.courseData.id);
+        env.showToast('Course deleted');
+      }
+      return;
     } else {
-      const levelTitles = await Promise.all(v.levelIds.map((id: string) => labelForLevelId(id)));
-      courseData = { id: v.id, title: v.title, levelIds: [...(v.levelIds || [])], levelTitles };
+      return;
     }
 
     // Show the new Course Editor UI

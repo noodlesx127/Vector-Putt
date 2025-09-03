@@ -131,7 +131,8 @@ export interface EditorEnv {
   showConfirm(message: string, title?: string): Promise<boolean>;
   showPrompt(message: string, defaultValue?: string, title?: string): Promise<string | null>;
   showList(title: string, items: Array<{label: string; value: any}>, startIndex?: number): Promise<any>;
-  showDnDList?(title: string, items: Array<{label: string; value: any}>): Promise<Array<{label: string; value: any}> | { __action: 'rename' | 'add' | 'remove' | 'delete'; index?: number } | null>;
+  showDnDList?(title: string, items: Array<{label: string; value: any}>): Promise<Array<{label: string; value: any}> | null>;
+  showCourseEditor?(courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] }): Promise<{ action: string; courseData?: any; levelIndex?: number } | null>;
   renderGlobalOverlays(): void;
   isOverlayActive?(): boolean;
   migrateSingleSlotIfNeeded?(): void;
@@ -291,7 +292,7 @@ class LevelEditorImpl implements LevelEditor {
     }
   }
 
-  // Admin-only Course Creator overlay
+  // Admin-only Course Creator overlay - redesigned single-screen UI
   async openCourseCreator(): Promise<void> {
     if (!this.env) return;
     const env = this.env;
@@ -301,23 +302,10 @@ class LevelEditorImpl implements LevelEditor {
       return;
     }
 
-    const refreshAndPickCourse = async (): Promise<{ id: string; title: string; levelIds: string[] } | null> => {
-      const courses = await firebaseCourseStore.getCourses();
-      const items = [
-        ...courses.map(c => ({ label: `${c.title} (${c.levelIds.length} levels)`, value: c })),
-        { label: '➕ New Course…', value: { __new: true } }
-      ];
-      const chosen = await env.showList('Course Creator', items, 0);
-      if (!chosen) return null;
-      const v: any = (chosen as any).value ?? chosen;
-      if (v && v.__new) {
-        const title = await env.showPrompt('New course title:', 'New Course', 'Create Course');
-        if (title === null) return null;
-        const id = await firebaseCourseStore.createCourse(title, [], true);
-        env.showToast(`Created course "${title}"`);
-        return { id, title, levelIds: [] };
-      }
-      return { id: v.id, title: v.title, levelIds: [...(v.levelIds || [])] };
+    const labelForLevelId = async (id: string): Promise<string> => {
+      const all = await firebaseLevelStore.getAllLevels(env.getUserId());
+      const found = all.find(le => le.name === id);
+      return found ? found.title : id;
     };
 
     const pickLevelFromAll = async (excludeIds: Set<string>): Promise<{ id: string; title: string } | null> => {
@@ -334,158 +322,73 @@ class LevelEditorImpl implements LevelEditor {
       return { id: le.name, title: le.title };
     };
 
-    const labelForLevelId = async (id: string): Promise<string> => {
-      // Try to infer label from cached list; fallback to id
-      const all = await firebaseLevelStore.getAllLevels(env.getUserId());
-      const found = all.find(le => le.name === id);
-      return found ? found.title : id;
-    };
+    // First, let user pick or create a course
+    const courses = await firebaseCourseStore.getCourses();
+    const items = [
+      ...courses.map(c => ({ label: `${c.title} (${c.levelIds.length} levels)`, value: c })),
+      { label: '➕ New Course…', value: { __new: true } }
+    ];
+    const chosen = await env.showList('Course Creator', items, 0);
+    if (!chosen) return;
+    
+    const v: any = (chosen as any).value ?? chosen;
+    let courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] };
+    
+    if (v && v.__new) {
+      const title = await env.showPrompt('New course title:', 'New Course', 'Create Course');
+      if (title === null) return;
+      const id = await firebaseCourseStore.createCourse(title, [], true);
+      env.showToast(`Created course "${title}"`);
+      courseData = { id, title, levelIds: [], levelTitles: [] };
+    } else {
+      const levelTitles = await Promise.all(v.levelIds.map((id: string) => labelForLevelId(id)));
+      courseData = { id: v.id, title: v.title, levelIds: [...(v.levelIds || [])], levelTitles };
+    }
 
+    // Show the new Course Editor UI
     while (true) {
-      const course = await refreshAndPickCourse();
-      if (!course) break; // user cancelled
+      const result = await (env as any).showCourseEditor(courseData);
+      if (!result) break; // User cancelled
 
-      // Submenu for course actions (no redundant Close; Cancel on list exits)
-      const actions = [
-        { label: '✏️ Rename', value: 'rename' },
-        { label: '➕ Add Level', value: 'add' },
-        { label: '➖ Remove Level', value: 'remove' },
-        { label: '🗂️ Edit Levels (drag to reorder)', value: 'reorder' },
-        { label: '🗑️ Delete Course', value: 'delete' }
-      ];
-
-      const chosenAction = await env.showList(`Edit Course: ${course.title}`, actions, 0);
-      if (!chosenAction) break;
-      const act = ((chosenAction as any).value ?? chosenAction) as string;
-
-      // Cancel on the list overlay above will exit
-
-      if (act === 'rename') {
-        const newTitle = await env.showPrompt('Course title:', course.title, 'Rename Course');
-        if (newTitle !== null && newTitle.trim().length > 0) {
-          await firebaseCourseStore.updateCourse(course.id, { title: newTitle });
-          env.showToast('Course renamed');
-        }
-        continue;
+      const { action } = result;
+      
+      if (action === 'save') {
+        await firebaseCourseStore.updateCourse(courseData.id, {
+          title: courseData.title,
+          levelIds: courseData.levelIds
+        } as any);
+        env.showToast('Course saved');
+        break;
       }
-
-      if (act === 'add') {
-        const exclude = new Set(course.levelIds);
+      
+      if (action === 'addLevel') {
+        const exclude = new Set(courseData.levelIds);
         const pick = await pickLevelFromAll(exclude);
         if (pick) {
-          const next = [...course.levelIds, pick.id];
-          await firebaseCourseStore.updateCourse(course.id, { levelIds: next } as any);
+          courseData.levelIds.push(pick.id);
+          courseData.levelTitles.push(pick.title);
           env.showToast(`Added level: ${pick.title}`);
         }
         continue;
       }
-
-      if (act === 'remove') {
-        if (course.levelIds.length === 0) {
-          env.showToast('Course has no levels');
-          continue;
+      
+      if (action === 'removeLevel') {
+        const levelIndex = result.levelIndex;
+        if (levelIndex >= 0 && levelIndex < courseData.levelIds.length) {
+          const removedTitle = courseData.levelTitles[levelIndex] || courseData.levelIds[levelIndex];
+          courseData.levelIds.splice(levelIndex, 1);
+          courseData.levelTitles.splice(levelIndex, 1);
+          env.showToast(`Removed level: ${removedTitle}`);
         }
-        const labels = await Promise.all(course.levelIds.map(async (id) => ({ id, title: await labelForLevelId(id) })));
-        const items = labels.map(l => ({ label: l.title, value: l.id }));
-        const chosen = await env.showList('Remove Level', items, 0);
-        if (!chosen) continue;
-        const id = ((chosen as any).value ?? chosen) as string;
-        const next = course.levelIds.filter(x => x !== id);
-        await firebaseCourseStore.updateCourse(course.id, { levelIds: next } as any);
-        env.showToast('Removed level');
         continue;
       }
-
-      if (act === 'reorder') {
-        if (typeof env.showDnDList !== 'function') {
-          env.showToast('Reorder UI not available');
-          continue;
-        }
-        // Working copy for single-screen editor
-        let workingTitle = course.title;
-        let workingLevelIds = [...course.levelIds];
-        let deleted = false;
-        // Helper to render items from working copy
-        const buildItems = async (): Promise<Array<{ label: string; value: string }>> => {
-          const labels = await Promise.all(workingLevelIds.map(async (id: string) => await labelForLevelId(id)));
-          return labels.map((title: string, i: number) => ({ label: `${i + 1}. ${title}`, value: workingLevelIds[i] }));
-        };
-        // Loop the overlay until Save/Cancel/Delete
-        while (true) {
-          const items = await buildItems();
-          const res = await env.showDnDList(`Edit Course — ${workingTitle}`, items);
-          if (!res) break; // Cancel -> discard changes
-          if (Array.isArray(res)) {
-            // Save pressed: commit order and title
-            const resultIds = res.map((it: { label: string; value: any }) => String(it.value));
-            // Validate integrity vs original set to prevent injection
-            const originalSet = new Set(workingLevelIds);
-            const unique = new Set(resultIds);
-            const allKnown = resultIds.every((id: string) => originalSet.has(id));
-            if (!allKnown || unique.size !== resultIds.length) {
-              env.showToast('Invalid result: duplicate or unknown level IDs');
-              continue;
-            }
-            // Persist changes
-            const updates: any = {};
-            if (workingTitle !== course.title) updates.title = workingTitle;
-            if (resultIds.some((id: string, idx: number) => id !== workingLevelIds[idx]) || workingLevelIds.length !== resultIds.length) {
-              updates.levelIds = resultIds;
-            }
-            if (Object.keys(updates).length > 0) {
-              await firebaseCourseStore.updateCourse(course.id, updates);
-              env.showToast('Saved course changes');
-            } else {
-              env.showToast('No changes');
-            }
-            // Reflect committed state into course for subsequent outer loop actions
-            course.title = workingTitle;
-            course.levelIds = updates.levelIds ? updates.levelIds : workingLevelIds;
-            break;
-          }
-          // Action token from toolbar
-          const action = res as { __action: 'rename' | 'add' | 'remove' | 'delete'; index?: number };
-          if (action.__action === 'rename') {
-            const newTitle = await env.showPrompt('Course title:', workingTitle, 'Rename Course');
-            if (newTitle !== null && newTitle.trim().length > 0) {
-              workingTitle = newTitle.trim();
-            }
-            continue;
-          }
-          if (action.__action === 'add') {
-            const exclude = new Set(workingLevelIds);
-            const pick = await pickLevelFromAll(exclude);
-            if (pick) workingLevelIds.push(pick.id);
-            continue;
-          }
-          if (action.__action === 'remove') {
-            const selIdx = typeof action.index === 'number' ? action.index : 0;
-            if (workingLevelIds.length === 0 || selIdx < 0 || selIdx >= workingLevelIds.length) {
-              env.showToast('Nothing to remove');
-            } else {
-              workingLevelIds.splice(selIdx, 1);
-            }
-            continue;
-          }
-          if (action.__action === 'delete') {
-            const ok = await env.showConfirm(`Permanently delete course "${workingTitle}"?`, 'Delete Course');
-            if (ok) {
-              await firebaseCourseStore.deleteCourse(course.id);
-              env.showToast('Course deleted');
-              deleted = true;
-            }
-            break; // exit editor after delete confirm path
-          }
-        }
-        if (deleted) continue; // go back to course picker after deletion
-        continue; // return to action menu after save/cancel
-      }
-
-      if (act === 'delete') {
-        const ok = await env.showConfirm(`Permanently delete course "${course.title}"?`, 'Delete Course');
+      
+      if (action === 'deleteCourse') {
+        const ok = await env.showConfirm(`Permanently delete course "${courseData.title}"?`, 'Delete Course');
         if (ok) {
-          await firebaseCourseStore.deleteCourse(course.id);
+          await firebaseCourseStore.deleteCourse(courseData.id);
           env.showToast('Course deleted');
+          break;
         }
         continue;
       }

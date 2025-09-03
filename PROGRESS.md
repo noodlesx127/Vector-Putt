@@ -14,10 +14,10 @@ As of 2025-08-25, focus these open items migrated from `TODO.md`:
   - [ ] Velocity affects terrain (e.g., hard shot may skim sand)
  
  - **Course Creator — Follow-ups**
-   - [ ] Unit tests for `src/firebase/FirebaseCourseStore.ts`
-   - [ ] Overlay flow edge cases and error handling
+   - [x] Unit tests for `src/firebase/FirebaseCourseStore.ts`
+   - [x] Overlay flow edge cases and error handling
      - [x] Fix: fully swallow keyboard events while modal overlays are active (stopPropagation in `handleOverlayKey()`, plus capture-phase keyup/keypress listeners). Underlying UI no longer reacts during modals.
-   - [ ] Usability polish (e.g., drag-and-drop reordering)
+   - [x] Usability polish: drag-and-drop reordering implemented in Course Creator overlay
    - [ ] Course Select integration (consume `courses` to build runtime lists)
   
 - **Level System**

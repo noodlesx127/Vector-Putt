@@ -131,6 +131,7 @@ export interface EditorEnv {
   showConfirm(message: string, title?: string): Promise<boolean>;
   showPrompt(message: string, defaultValue?: string, title?: string): Promise<string | null>;
   showList(title: string, items: Array<{label: string; value: any}>, startIndex?: number): Promise<any>;
+  showDnDList?(title: string, items: Array<{label: string; value: any}>): Promise<Array<{label: string; value: any}> | null>;
   renderGlobalOverlays(): void;
   isOverlayActive?(): boolean;
   migrateSingleSlotIfNeeded?(): void;
@@ -344,21 +345,20 @@ class LevelEditorImpl implements LevelEditor {
       const course = await refreshAndPickCourse();
       if (!course) break; // user cancelled
 
-      // Submenu for course actions
+      // Submenu for course actions (no redundant Close; Cancel on list exits)
       const actions = [
         { label: '✏️ Rename', value: 'rename' },
         { label: '➕ Add Level', value: 'add' },
         { label: '➖ Remove Level', value: 'remove' },
-        { label: '↕️ Reorder Levels', value: 'reorder' },
-        { label: '🗑️ Delete Course', value: 'delete' },
-        { label: 'Close', value: 'close' }
+        { label: '🗂️ Edit Levels (drag to reorder)', value: 'reorder' },
+        { label: '🗑️ Delete Course', value: 'delete' }
       ];
 
       const chosenAction = await env.showList(`Edit Course: ${course.title}`, actions, 0);
       if (!chosenAction) break;
       const act = ((chosenAction as any).value ?? chosenAction) as string;
 
-      if (act === 'close') break;
+      // Cancel on the list overlay above will exit
 
       if (act === 'rename') {
         const newTitle = await env.showPrompt('Course title:', course.title, 'Rename Course');
@@ -397,24 +397,39 @@ class LevelEditorImpl implements LevelEditor {
       }
 
       if (act === 'reorder') {
-        if (course.levelIds.length < 2) {
-          env.showToast('Need at least two levels to reorder');
+        if (course.levelIds.length === 0) {
+          env.showToast('Course has no levels');
           continue;
         }
         const labels = await Promise.all(course.levelIds.map(async (id) => await labelForLevelId(id)));
-        const listing = labels.map((t, i) => `${i + 1}. ${t}`).join('\n');
-        const fromStr = await env.showPrompt(`Current order:\n${listing}\n\nMove which index? (1-${course.levelIds.length})`, '1', 'Reorder');
-        if (fromStr === null) continue;
-        const toStr = await env.showPrompt(`Move to position: (1-${course.levelIds.length})`, '1', 'Reorder');
-        if (toStr === null) continue;
-        const from = Math.max(1, Math.min(course.levelIds.length, parseInt(fromStr, 10))) - 1;
-        const to = Math.max(1, Math.min(course.levelIds.length, parseInt(toStr, 10))) - 1;
-        if (Number.isNaN(from) || Number.isNaN(to)) continue;
-        const next = [...course.levelIds];
-        const [moved] = next.splice(from, 1);
-        next.splice(to, 0, moved);
-        await firebaseCourseStore.updateCourse(course.id, { levelIds: next } as any);
-        env.showToast('Reordered levels');
+        const items = labels.map((title, i) => ({ label: `${i + 1}. ${title}` , value: course.levelIds[i] }));
+        if (typeof env.showDnDList !== 'function') {
+          env.showToast('Reorder UI not available');
+          continue;
+        }
+        const result = await env.showDnDList(`Edit Levels — ${course.title}`, items);
+        if (!result) continue; // Cancelled
+        // Validate result integrity
+        const originalSet = new Set(course.levelIds);
+        const resultIds = result.map(it => String((it as any).value));
+        if (resultIds.length !== course.levelIds.length) {
+          env.showToast('Invalid result: mismatched item count');
+          continue;
+        }
+        const unique = new Set(resultIds);
+        const allKnown = resultIds.every(id => originalSet.has(id));
+        if (!allKnown || unique.size !== resultIds.length) {
+          env.showToast('Invalid result: duplicate or unknown level IDs');
+          continue;
+        }
+        // No-op? Skip update
+        const isNoop = resultIds.every((id, idx) => id === course.levelIds[idx]);
+        if (isNoop) {
+          env.showToast('No changes');
+          continue;
+        }
+        await firebaseCourseStore.updateCourse(course.id, { levelIds: resultIds } as any);
+        env.showToast('Saved course changes');
         continue;
       }
 

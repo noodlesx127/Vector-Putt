@@ -7,12 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+- Level Editor • Course Creator: Integrated draggable drag-and-drop reorder overlay for editing course level order. Uses in-game overlay with Save/Cancel and full input swallowing.
+
+### Changed
+- Level Editor • Course Creator: Reorder overlay now validates results before saving and skips no-op updates.
+  - Validation: checks item count, duplicate IDs, and unknown IDs; shows toast on invalid submissions.
+  - Optimization: if order is unchanged, no Firebase write is performed; shows "No changes" toast.
+
 ### Fixed
 - Overlays: fully swallow keyboard events while a modal is open.
   - Added `stopPropagation()` in `handleOverlayKey()`.
   - Added capture-phase `keyup`/`keypress` listeners on `window`/`document`/`canvas` to intercept early.
   - Added capture-phase `keydown` listener and `stopImmediatePropagation()` in overlay handlers to ensure no other key listeners execute while a modal is active.
   - Prevents underlying UI (menus, gameplay pause, editor shortcuts) from reacting to keys when an overlay is active.
+
+### Technical
+- EditorEnv UI wiring: Added `showDnDList` to all editor environment constructions in `src/main.ts` via a type-safe adapter that bridges to `showUiDnDList` (whose `UiListItem.value` is optional). The adapter guarantees `value` on return to satisfy `EditorEnv.showDnDList()` type and resolves prior TS mismatches.
 
 ## v0.3.25 — 2025-09-01
 

@@ -94,6 +94,7 @@ Notes:
     - [ ] Dedicated UI listing all levels with thumbnail and metadata (name, author, par)
     - [x] Build "Bundled" courses or arbitrary series of levels forming a full Course
     - [x] Create/edit courses: rename course, reorder levels, add/remove levels
+    - [x] Drag-and-drop reordering in overlay (Course Creator)
     - [ ] Save flow prompts for Course Name; upon save, add new button in "Select Course" chooser
     - [x] Manage courses: edit existing course(s) and delete course entirely
     - [x] Visibility: feature gated to Dev/Admin only

@@ -79,7 +79,7 @@ function newLevelId(): string {
 // ------------------------------
 // In-Game Modal Overlay System
 // ------------------------------
-type UiOverlayKind = 'none' | 'toast' | 'confirm' | 'prompt' | 'list';
+type UiOverlayKind = 'none' | 'toast' | 'confirm' | 'prompt' | 'list' | 'dndList';
 type UiToast = { id: number; message: string; expiresAt: number };
 type UiListItem = { id?: string; label: string; value?: any; disabled?: boolean };
 type UiOverlayState = {
@@ -100,6 +100,11 @@ type UiOverlayState = {
   // List
   listItems?: UiListItem[];
   listIndex?: number;
+  // DnD List (internal)
+  dndDragIndex?: number;
+  dndTargetIndex?: number;
+  dndPointerY?: number;
+  dndScroll?: number;
   // Resolution
   resolve?: (value: any) => void;
   reject?: (reason?: any) => void;
@@ -139,6 +144,15 @@ function showUiList(title: string, items: UiListItem[], startIndex = 0): Promise
   });
 }
 
+// Draggable, scrollable list with explicit Save/Cancel used by Course Creator
+function showUiDnDList(title: string, items: UiListItem[]): Promise<UiListItem[] | null> {
+  return new Promise<UiListItem[] | null>((resolve) => {
+    // Clone items to avoid mutating caller's array until Save
+    const cloned = items.map(it => ({ ...it }));
+    uiOverlay = { kind: 'dndList', title, listItems: cloned, dndScroll: 0, listIndex: 0, cancelable: true, resolve };
+  });
+}
+
 // Overlay input handling
 function handleOverlayKey(e: KeyboardEvent) {
   if (!isOverlayActive()) return;
@@ -168,6 +182,17 @@ function handleOverlayKey(e: KeyboardEvent) {
     if (e.code === 'Enter' || e.code === 'NumpadEnter') {
       const idx = uiOverlay.listIndex ?? 0;
       uiOverlay.resolve?.(items[idx] ?? null); uiOverlay = { kind: 'none' }; return;
+    }
+    if (e.code === 'Escape') { uiOverlay.resolve?.(null); uiOverlay = { kind: 'none' }; return; }
+  } else if (k === 'dndList') {
+    const items = uiOverlay.listItems ?? [];
+    if (e.code === 'ArrowDown') { uiOverlay.listIndex = Math.min(items.length - 1, (uiOverlay.listIndex ?? 0) + 1); return; }
+    if (e.code === 'ArrowUp') { uiOverlay.listIndex = Math.max(0, (uiOverlay.listIndex ?? 0) - 1); return; }
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+      // Save
+      uiOverlay.resolve?.(items);
+      uiOverlay = { kind: 'none' };
+      return;
     }
     if (e.code === 'Escape') { uiOverlay.resolve?.(null); uiOverlay = { kind: 'none' }; return; }
   }
@@ -234,6 +259,25 @@ function handleOverlayMouseDown(e: MouseEvent) {
           return;
         }
       }
+      if (uiOverlay.kind === 'dndList') {
+        if (hs.kind === 'listItem' && typeof hs.index === 'number') {
+          // Begin drag for this item
+          uiOverlay.dndDragIndex = hs.index;
+          uiOverlay.dndPointerY = p.y;
+          uiOverlay.dndTargetIndex = hs.index;
+          return;
+        }
+        if (hs.kind === 'btn' && typeof hs.index === 'number') {
+          const isSave = hs.index === 0; // 0: Save, 1: Cancel
+          if (isSave) {
+            uiOverlay.resolve?.(uiOverlay.listItems ?? []);
+          } else {
+            uiOverlay.resolve?.(null);
+          }
+          uiOverlay = { kind: 'none' };
+          return;
+        }
+      }
       // Drag start (title bar)
       if (hs.kind === 'drag') {
         uiOverlay.dragActive = true;
@@ -253,18 +297,37 @@ function handleOverlayMouseMove(e: MouseEvent) {
   if (!isOverlayActive()) return;
   try { e.preventDefault(); } catch {}
   try { e.stopPropagation(); } catch {}
-  if (!uiOverlay.dragActive) return;
   const p = worldFromEvent(e);
-  const panelW = Math.min(640, WIDTH - 80);
-  // panelH depends on kind and content; use generous margins while dragging and clamp in draw
-  const margin = 20;
-  let px = p.x - (uiOverlay.dragOffsetX ?? 0);
-  let py = p.y - (uiOverlay.dragOffsetY ?? 0);
-  // Clamp to viewport (rough clamp; exact clamp done in render)
-  px = Math.max(margin, Math.min(WIDTH - panelW - margin, px));
-  py = Math.max(margin, Math.min(HEIGHT - 120, py));
-  uiOverlay.posX = px;
-  uiOverlay.posY = py;
+  // Overlay panel dragging
+  if (uiOverlay.dragActive) {
+    const panelW = Math.min(640, WIDTH - 80);
+    const margin = 20;
+    let px = p.x - (uiOverlay.dragOffsetX ?? 0);
+    let py = p.y - (uiOverlay.dragOffsetY ?? 0);
+    px = Math.max(margin, Math.min(WIDTH - panelW - margin, px));
+    py = Math.max(margin, Math.min(HEIGHT - 120, py));
+    uiOverlay.posX = px;
+    uiOverlay.posY = py;
+  }
+  // DnD list dragging logic
+  if (uiOverlay.kind === 'dndList' && typeof uiOverlay.dndDragIndex === 'number') {
+    uiOverlay.dndPointerY = p.y;
+    // Determine target index by inspecting visible listItem hotspots
+    let target: number | null = null;
+    for (const hs of overlayHotspots) {
+      if (hs.kind === 'listItem') {
+        const mid = hs.y + hs.h / 2;
+        if (p.y < mid && p.y >= hs.y - 2 && p.y <= hs.y + hs.h + 2) {
+          target = Math.max(0, (hs.index ?? 0));
+          break;
+        }
+        if (p.y >= mid && p.y <= hs.y + hs.h + 6) {
+          target = Math.min((uiOverlay.listItems?.length ?? 1), (hs.index ?? 0) + 1);
+        }
+      }
+    }
+    if (target !== null) uiOverlay.dndTargetIndex = target;
+  }
 }
 canvas.addEventListener('mousemove', handleOverlayMouseMove, { capture: true });
 
@@ -274,6 +337,22 @@ function handleOverlayMouseUp(e: MouseEvent) {
   try { e.stopPropagation(); } catch {}
   if (uiOverlay.dragActive) {
     uiOverlay.dragActive = false;
+  }
+  if (uiOverlay.kind === 'dndList' && typeof uiOverlay.dndDragIndex === 'number') {
+    const from = uiOverlay.dndDragIndex;
+    let to = typeof uiOverlay.dndTargetIndex === 'number' ? uiOverlay.dndTargetIndex : from;
+    const items = uiOverlay.listItems ?? [];
+    if (to < 0) to = 0;
+    if (to > items.length) to = items.length;
+    if (from !== to && items.length > 0) {
+      const copy = items.slice();
+      const [moved] = copy.splice(from, 1);
+      copy.splice(to > from ? to - 1 : to, 0, moved);
+      uiOverlay.listItems = copy;
+    }
+    uiOverlay.dndDragIndex = undefined;
+    uiOverlay.dndTargetIndex = undefined;
+    uiOverlay.dndPointerY = undefined;
   }
 }
 canvas.addEventListener('mouseup', handleOverlayMouseUp, { capture: true });
@@ -2083,6 +2162,10 @@ canvas.addEventListener('mousedown', (e) => {
             showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
             showPrompt: (msg: string, def?: string, title?: string) => showUiPrompt(msg, def, title),
             showList: (title: string, items: Array<{label: string; value: any}>, startIndex?: number) => showUiList(title, items, startIndex),
+            showDnDList: async (title: string, items: Array<{label: string; value: any}>) => {
+              const res = await showUiDnDList(title, items as any);
+              return res ? res.map(it => ({ label: it.label, value: (it as any).value })) : null;
+            },
             getGlobalState: () => ({
               WIDTH,
               HEIGHT,
@@ -2320,6 +2403,10 @@ canvas.addEventListener('mousedown', (e) => {
       showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
       showPrompt: (msg: string, def?: string, title?: string) => showUiPrompt(msg, def, title),
       showList: (title: string, items: Array<{label: string; value: any}>, startIndex?: number) => showUiList(title, items, startIndex),
+      showDnDList: async (title: string, items: Array<{label: string; value: any}>) => {
+        const res = await showUiDnDList(title, items as any);
+        return res ? res.map(it => ({ label: it.label, value: (it as any).value })) : null;
+      },
       getGlobalState: () => ({
         WIDTH,
         HEIGHT,
@@ -2914,6 +3001,10 @@ function handleLevelEditorKeys(e: KeyboardEvent) {
       showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
       showPrompt: (msg: string, def?: string, title?: string) => showUiPrompt(msg, def, title),
       showList: (title: string, items: Array<{label: string; value: any}>, startIndex?: number) => showUiList(title, items, startIndex),
+      showDnDList: async (title: string, items: Array<{label: string; value: any}>) => {
+        const res = await showUiDnDList(title, items as any);
+        return res ? res.map(it => ({ label: it.label, value: (it as any).value })) : null;
+      },
     getGlobalState: () => ({
       WIDTH,
       HEIGHT,
@@ -4904,7 +4995,7 @@ function renderGlobalOverlays(): void {
     }
   }
 
-  // Modal overlays (confirm, prompt, list)
+  // Modal overlays (confirm, prompt, list, dndList)
   if (isOverlayActive() && uiOverlay.kind !== 'toast') {
     overlayHotspots = [];
     // dim background
@@ -4921,6 +5012,12 @@ function renderGlobalOverlays(): void {
       const items = uiOverlay.listItems ?? [];
       const visible = Math.min(items.length, 10);
       panelH = 100 + visible * 28 + 56; // title+list+buttons
+      panelH = Math.min(panelH, HEIGHT - 120);
+    }
+    if (uiOverlay.kind === 'dndList') {
+      const items = uiOverlay.listItems ?? [];
+      const visible = Math.min(items.length, 10);
+      panelH = 120 + visible * 32 + 56; // title+list+buttons
       panelH = Math.min(panelH, HEIGHT - 120);
     }
     // Persisted or centered position
@@ -5041,9 +5138,81 @@ function renderGlobalOverlays(): void {
       ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '15px system-ui, sans-serif';
       ctx.fillText('Cancel', bx + bw / 2, by + bh / 2 + 0.5);
       overlayHotspots.push({ kind: 'btn', x: bx, y: by, w: bw, h: bh });
+    } else if (uiOverlay.kind === 'dndList') {
+      // DnD List items
+      const items = uiOverlay.listItems ?? [];
+      const rowH = 32;
+      const maxRows = Math.min(10, Math.floor((panelH - (cy - py) - 80) / rowH));
+      const scroll = Math.max(0, Math.min((items.length - maxRows), Math.floor(uiOverlay.dndScroll ?? 0)));
+      ctx.font = '14px system-ui, sans-serif';
+      for (let vi = 0; vi < Math.min(items.length - scroll, maxRows); vi++) {
+        const i = scroll + vi;
+        const item = items[i];
+        const iy = cy + vi * rowH;
+        const ix = px + pad;
+        const iw = panelW - pad * 2;
+        const selected = (uiOverlay.listIndex ?? 0) === i;
+        ctx.fillStyle = selected ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.25)';
+        ctx.fillRect(ix, iy, iw, rowH - 4);
+        ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(ix + 0.5, iy + 0.5, iw - 1, rowH - 4 - 1);
+        ctx.fillStyle = item.disabled ? '#a0a0a0' : '#ffffff';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText(item.label, ix + 8, iy + (rowH - 4) / 2 + 0.5);
+        overlayHotspots.push({ kind: 'listItem', index: i, x: ix, y: iy, w: iw, h: rowH - 4 });
+      }
+      // If dragging, draw insertion indicator
+      if (typeof uiOverlay.dndDragIndex === 'number' && typeof uiOverlay.dndTargetIndex === 'number') {
+        const vi = uiOverlay.dndTargetIndex - scroll;
+        if (vi >= 0 && vi <= maxRows) {
+          const y = cy + vi * rowH;
+          ctx.strokeStyle = '#88d4ff';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(px + pad, y);
+          ctx.lineTo(px + panelW - pad, y);
+          ctx.stroke();
+        }
+      }
+      // Buttons: Save (index 0) and Cancel (index 1)
+      const bw = 120, bh = 30, gap = 12;
+      const by = py + panelH - pad - bh;
+      const saveX = px + panelW - pad - bw * 2 - gap;
+      const cancelX = px + panelW - pad - bw;
+      // Save
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillRect(saveX, by, bw, bh);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(saveX, by, bw, bh);
+      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '15px system-ui, sans-serif';
+      ctx.fillText('Save', saveX + bw / 2, by + bh / 2 + 0.5);
+      overlayHotspots.push({ kind: 'btn', index: 0, x: saveX, y: by, w: bw, h: bh });
+      // Cancel
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillRect(cancelX, by, bw, bh);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(cancelX, by, bw, bh);
+      ctx.fillStyle = '#ffffff'; ctx.font = '15px system-ui, sans-serif';
+      ctx.fillText('Cancel', cancelX + bw / 2, by + bh / 2 + 0.5);
+      overlayHotspots.push({ kind: 'btn', index: 1, x: cancelX, y: by, w: bw, h: bh });
     }
   }
 }
+
+// Support wheel scrolling for DnD list overlay
+function handleOverlayWheel(e: WheelEvent) {
+  if (!isOverlayActive()) return;
+  if (uiOverlay.kind !== 'dndList') return;
+  try { e.preventDefault(); } catch {}
+  try { e.stopPropagation(); } catch {}
+  const items = uiOverlay.listItems ?? [];
+  if (items.length === 0) return;
+  const delta = Math.sign(e.deltaY);
+  const rowH = 32;
+  // Estimate rows visible based on last render calculation (~10)
+  const maxRows = 10;
+  const maxScroll = Math.max(0, items.length - maxRows);
+  const next = Math.max(0, Math.min(maxScroll, Math.floor((uiOverlay.dndScroll ?? 0) + delta)));
+  uiOverlay.dndScroll = next;
+}
+try { canvas.addEventListener('wheel', handleOverlayWheel as any, { capture: true, passive: false }); } catch {}
 
 // Test function to diagnose overlay rendering
 function testOverlay() {

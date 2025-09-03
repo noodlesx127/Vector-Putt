@@ -186,15 +186,52 @@ function handleOverlayKey(e: KeyboardEvent) {
     if (e.code === 'Escape') { uiOverlay.resolve?.(null); uiOverlay = { kind: 'none' }; return; }
   } else if (k === 'dndList') {
     const items = uiOverlay.listItems ?? [];
-    if (e.code === 'ArrowDown') { uiOverlay.listIndex = Math.min(items.length - 1, (uiOverlay.listIndex ?? 0) + 1); return; }
-    if (e.code === 'ArrowUp') { uiOverlay.listIndex = Math.max(0, (uiOverlay.listIndex ?? 0) - 1); return; }
-    if (e.code === 'Enter' || e.code === 'NumpadEnter') {
-      // Save
+    const idx = uiOverlay.listIndex ?? 0;
+    // Navigation
+    if (e.code === 'ArrowDown' && !e.ctrlKey) { uiOverlay.listIndex = Math.min(items.length - 1, idx + 1); return; }
+    if (e.code === 'ArrowUp' && !e.ctrlKey) { uiOverlay.listIndex = Math.max(0, idx - 1); return; }
+    if (e.code === 'Home') { uiOverlay.listIndex = 0; return; }
+    if (e.code === 'End') { uiOverlay.listIndex = Math.max(0, items.length - 1); return; }
+    if (e.code === 'PageDown') { uiOverlay.dndScroll = Math.min((uiOverlay.dndScroll ?? 0) + 1, Math.max(0, items.length - 10)); return; }
+    if (e.code === 'PageUp') { uiOverlay.dndScroll = Math.max((uiOverlay.dndScroll ?? 0) - 1, 0); return; }
+
+    // Inline reorder with Ctrl+Arrow
+    if (e.ctrlKey && !e.shiftKey && (e.code === 'ArrowUp' || e.code === 'ArrowDown')) {
+      if (items.length > 1 && idx >= 0 && idx < items.length) {
+        const to = e.code === 'ArrowUp' ? Math.max(0, idx - 1) : Math.min(items.length - 1, idx + 1);
+        if (to !== idx) {
+          const tmp = items[idx];
+          items[idx] = items[to];
+          items[to] = tmp;
+          uiOverlay.listItems = items;
+          uiOverlay.listIndex = to;
+        }
+      }
+      return;
+    }
+
+    // Save / Cancel
+    if (e.code === 'Enter' || e.code === 'NumpadEnter' || (e.ctrlKey && e.code === 'KeyS')) {
       uiOverlay.resolve?.(items);
       uiOverlay = { kind: 'none' };
       return;
     }
     if (e.code === 'Escape') { uiOverlay.resolve?.(null); uiOverlay = { kind: 'none' }; return; }
+
+    // Remove selected item
+    if (e.code === 'Delete' || e.code === 'Backspace') {
+      const sel = typeof uiOverlay.listIndex === 'number' ? uiOverlay.listIndex : 0;
+      uiOverlay.resolve?.({ __action: 'remove', index: sel });
+      uiOverlay = { kind: 'none' };
+      return;
+    }
+
+    // Toolbar shortcuts
+    if (e.ctrlKey && !e.shiftKey && !e.altKey) {
+      if (e.code === 'KeyR') { uiOverlay.resolve?.({ __action: 'rename' }); uiOverlay = { kind: 'none' }; return; }
+      if (e.code === 'KeyN') { uiOverlay.resolve?.({ __action: 'add' }); uiOverlay = { kind: 'none' }; return; }
+      if (e.code === 'KeyD') { uiOverlay.resolve?.({ __action: 'delete' }); uiOverlay = { kind: 'none' }; return; }
+    }
   }
 }
 // Use capture phase so we intercept before other global handlers
@@ -268,11 +305,22 @@ function handleOverlayMouseDown(e: MouseEvent) {
           return;
         }
         if (hs.kind === 'btn' && typeof hs.index === 'number') {
-          const isSave = hs.index === 0; // 0: Save, 1: Cancel
-          if (isSave) {
+          // Button index mapping for dndList toolbar:
+          // 0: Save, 1: Cancel, 2: Rename Course, 3: Add Level, 4: Remove Level, 5: Delete Course
+          const idx = hs.index;
+          if (idx === 0) {
             uiOverlay.resolve?.(uiOverlay.listItems ?? []);
-          } else {
+          } else if (idx === 1) {
             uiOverlay.resolve?.(null);
+          } else if (idx === 2) {
+            uiOverlay.resolve?.({ __action: 'rename' });
+          } else if (idx === 3) {
+            uiOverlay.resolve?.({ __action: 'add' });
+          } else if (idx === 4) {
+            const sel = typeof uiOverlay.listIndex === 'number' ? uiOverlay.listIndex : 0;
+            uiOverlay.resolve?.({ __action: 'remove', index: sel });
+          } else if (idx === 5) {
+            uiOverlay.resolve?.({ __action: 'delete' });
           }
           uiOverlay = { kind: 'none' };
           return;
@@ -298,6 +346,16 @@ function handleOverlayMouseMove(e: MouseEvent) {
   try { e.preventDefault(); } catch {}
   try { e.stopPropagation(); } catch {}
   const p = worldFromEvent(e);
+  // Track hover over buttons
+  (uiOverlay as any).hoverBtnIndex = undefined;
+  for (const hs of overlayHotspots) {
+    if (hs.kind === 'btn') {
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
+        (uiOverlay as any).hoverBtnIndex = hs.index;
+        break;
+      }
+    }
+  }
   // Overlay panel dragging
   if (uiOverlay.dragActive) {
     const panelW = Math.min(640, WIDTH - 80);
@@ -327,6 +385,17 @@ function handleOverlayMouseMove(e: MouseEvent) {
       }
     }
     if (target !== null) uiOverlay.dndTargetIndex = target;
+  }
+  // DnD list hover highlight (when not dragging)
+  if (uiOverlay.kind === 'dndList' && typeof uiOverlay.dndDragIndex !== 'number') {
+    for (const hs of overlayHotspots) {
+      if (hs.kind === 'listItem') {
+        if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
+          uiOverlay.listIndex = hs.index ?? 0;
+          break;
+        }
+      }
+    }
   }
 }
 canvas.addEventListener('mousemove', handleOverlayMouseMove, { capture: true });
@@ -5152,12 +5221,33 @@ function renderGlobalOverlays(): void {
         const ix = px + pad;
         const iw = panelW - pad * 2;
         const selected = (uiOverlay.listIndex ?? 0) === i;
-        ctx.fillStyle = selected ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.25)';
+        // Row background
+        ctx.fillStyle = selected ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.28)';
         ctx.fillRect(ix, iy, iw, rowH - 4);
-        ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(ix + 0.5, iy + 0.5, iw - 1, rowH - 4 - 1);
+        // Selected left accent bar
+        if (selected) {
+          ctx.fillStyle = '#88d4ff';
+          ctx.fillRect(ix, iy, 3, rowH - 4);
+        }
+        // Border
+        ctx.strokeStyle = selected ? '#bde6ff' : '#cfd2cf';
+        ctx.lineWidth = selected ? 1.5 : 1;
+        ctx.strokeRect(ix + 0.5, iy + 0.5, iw - 1, rowH - 4 - 1);
+        // Drag handle (grip) on left
+        const handleX = ix + 8;
+        const handleY = iy + (rowH - 4) / 2 - 6;
+        ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+        ctx.lineWidth = 1;
+        for (let d = 0; d < 3; d++) {
+          ctx.beginPath();
+          ctx.moveTo(handleX + d * 3, handleY);
+          ctx.lineTo(handleX + d * 3, handleY + 12);
+          ctx.stroke();
+        }
+        // Label
         ctx.fillStyle = item.disabled ? '#a0a0a0' : '#ffffff';
         ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-        ctx.fillText(item.label, ix + 8, iy + (rowH - 4) / 2 + 0.5);
+        ctx.fillText(item.label, ix + 8 + 14, iy + (rowH - 4) / 2 + 0.5);
         overlayHotspots.push({ kind: 'listItem', index: i, x: ix, y: iy, w: iw, h: rowH - 4 });
       }
       // If dragging, draw insertion indicator
@@ -5173,22 +5263,54 @@ function renderGlobalOverlays(): void {
           ctx.stroke();
         }
       }
-      // Buttons: Save (index 0) and Cancel (index 1)
-      const bw = 120, bh = 30, gap = 12;
+      // Keyboard hint (small, above buttons)
+      {
+        const hint = 'Shortcuts: ↑/↓ select, Ctrl+↑/↓ move, Enter/Ctrl+S save, Esc cancel, Del remove, Ctrl+R rename, Ctrl+N add, Ctrl+D delete';
+        ctx.font = '12px system-ui, sans-serif';
+        ctx.fillStyle = 'rgba(255,255,255,0.75)';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+        const hx = px + pad;
+        const hy = py + panelH - pad - 34; // a bit above buttons row
+        ctx.fillText(hint, hx, hy);
+      }
+      // Toolbar buttons (left): Rename (2), Add Level (3), Remove Level (4), Delete Course (5)
+      const bwSmall = 130, bh = 30, gap = 12;
       const by = py + panelH - pad - bh;
+      let leftX = px + pad;
+      const toolbarButtons: Array<{ label: string; index: number }> = [
+        { label: 'Rename Course', index: 2 },
+        { label: 'Add Level', index: 3 },
+        { label: 'Remove Level', index: 4 },
+        { label: 'Delete Course', index: 5 },
+      ];
+      for (const b of toolbarButtons) {
+        const hovered = (uiOverlay as any).hoverBtnIndex === b.index;
+        ctx.fillStyle = hovered ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.10)';
+        ctx.fillRect(leftX, by, bwSmall, bh);
+        ctx.strokeStyle = hovered ? '#e8f6ff' : '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(leftX, by, bwSmall, bh);
+        ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '15px system-ui, sans-serif';
+        ctx.fillText(b.label, leftX + bwSmall / 2, by + bh / 2 + 0.5);
+        overlayHotspots.push({ kind: 'btn', index: b.index, x: leftX, y: by, w: bwSmall, h: bh });
+        leftX += bwSmall + gap;
+      }
+
+      // Buttons (right): Save (index 0) and Cancel (index 1)
+      const bw = 120;
       const saveX = px + panelW - pad - bw * 2 - gap;
       const cancelX = px + panelW - pad - bw;
       // Save
-      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      const saveHovered = (uiOverlay as any).hoverBtnIndex === 0;
+      ctx.fillStyle = saveHovered ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.10)';
       ctx.fillRect(saveX, by, bw, bh);
-      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(saveX, by, bw, bh);
+      ctx.strokeStyle = saveHovered ? '#e8f6ff' : '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(saveX, by, bw, bh);
       ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '15px system-ui, sans-serif';
       ctx.fillText('Save', saveX + bw / 2, by + bh / 2 + 0.5);
       overlayHotspots.push({ kind: 'btn', index: 0, x: saveX, y: by, w: bw, h: bh });
       // Cancel
-      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      const cancelHovered = (uiOverlay as any).hoverBtnIndex === 1;
+      ctx.fillStyle = cancelHovered ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.10)';
       ctx.fillRect(cancelX, by, bw, bh);
-      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(cancelX, by, bw, bh);
+      ctx.strokeStyle = cancelHovered ? '#e8f6ff' : '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(cancelX, by, bw, bh);
       ctx.fillStyle = '#ffffff'; ctx.font = '15px system-ui, sans-serif';
       ctx.fillText('Cancel', cancelX + bw / 2, by + bh / 2 + 0.5);
       overlayHotspots.push({ kind: 'btn', index: 1, x: cancelX, y: by, w: bw, h: bh });

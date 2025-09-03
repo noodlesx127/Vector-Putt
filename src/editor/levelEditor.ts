@@ -131,7 +131,7 @@ export interface EditorEnv {
   showConfirm(message: string, title?: string): Promise<boolean>;
   showPrompt(message: string, defaultValue?: string, title?: string): Promise<string | null>;
   showList(title: string, items: Array<{label: string; value: any}>, startIndex?: number): Promise<any>;
-  showDnDList?(title: string, items: Array<{label: string; value: any}>): Promise<Array<{label: string; value: any}> | null>;
+  showDnDList?(title: string, items: Array<{label: string; value: any}>): Promise<Array<{label: string; value: any}> | { __action: 'rename' | 'add' | 'remove' | 'delete'; index?: number } | null>;
   renderGlobalOverlays(): void;
   isOverlayActive?(): boolean;
   migrateSingleSlotIfNeeded?(): void;
@@ -397,40 +397,88 @@ class LevelEditorImpl implements LevelEditor {
       }
 
       if (act === 'reorder') {
-        if (course.levelIds.length === 0) {
-          env.showToast('Course has no levels');
-          continue;
-        }
-        const labels = await Promise.all(course.levelIds.map(async (id) => await labelForLevelId(id)));
-        const items = labels.map((title, i) => ({ label: `${i + 1}. ${title}` , value: course.levelIds[i] }));
         if (typeof env.showDnDList !== 'function') {
           env.showToast('Reorder UI not available');
           continue;
         }
-        const result = await env.showDnDList(`Edit Levels — ${course.title}`, items);
-        if (!result) continue; // Cancelled
-        // Validate result integrity
-        const originalSet = new Set(course.levelIds);
-        const resultIds = result.map(it => String((it as any).value));
-        if (resultIds.length !== course.levelIds.length) {
-          env.showToast('Invalid result: mismatched item count');
-          continue;
+        // Working copy for single-screen editor
+        let workingTitle = course.title;
+        let workingLevelIds = [...course.levelIds];
+        let deleted = false;
+        // Helper to render items from working copy
+        const buildItems = async (): Promise<Array<{ label: string; value: string }>> => {
+          const labels = await Promise.all(workingLevelIds.map(async (id: string) => await labelForLevelId(id)));
+          return labels.map((title: string, i: number) => ({ label: `${i + 1}. ${title}`, value: workingLevelIds[i] }));
+        };
+        // Loop the overlay until Save/Cancel/Delete
+        while (true) {
+          const items = await buildItems();
+          const res = await env.showDnDList(`Edit Course — ${workingTitle}`, items);
+          if (!res) break; // Cancel -> discard changes
+          if (Array.isArray(res)) {
+            // Save pressed: commit order and title
+            const resultIds = res.map((it: { label: string; value: any }) => String(it.value));
+            // Validate integrity vs original set to prevent injection
+            const originalSet = new Set(workingLevelIds);
+            const unique = new Set(resultIds);
+            const allKnown = resultIds.every((id: string) => originalSet.has(id));
+            if (!allKnown || unique.size !== resultIds.length) {
+              env.showToast('Invalid result: duplicate or unknown level IDs');
+              continue;
+            }
+            // Persist changes
+            const updates: any = {};
+            if (workingTitle !== course.title) updates.title = workingTitle;
+            if (resultIds.some((id: string, idx: number) => id !== workingLevelIds[idx]) || workingLevelIds.length !== resultIds.length) {
+              updates.levelIds = resultIds;
+            }
+            if (Object.keys(updates).length > 0) {
+              await firebaseCourseStore.updateCourse(course.id, updates);
+              env.showToast('Saved course changes');
+            } else {
+              env.showToast('No changes');
+            }
+            // Reflect committed state into course for subsequent outer loop actions
+            course.title = workingTitle;
+            course.levelIds = updates.levelIds ? updates.levelIds : workingLevelIds;
+            break;
+          }
+          // Action token from toolbar
+          const action = res as { __action: 'rename' | 'add' | 'remove' | 'delete'; index?: number };
+          if (action.__action === 'rename') {
+            const newTitle = await env.showPrompt('Course title:', workingTitle, 'Rename Course');
+            if (newTitle !== null && newTitle.trim().length > 0) {
+              workingTitle = newTitle.trim();
+            }
+            continue;
+          }
+          if (action.__action === 'add') {
+            const exclude = new Set(workingLevelIds);
+            const pick = await pickLevelFromAll(exclude);
+            if (pick) workingLevelIds.push(pick.id);
+            continue;
+          }
+          if (action.__action === 'remove') {
+            const selIdx = typeof action.index === 'number' ? action.index : 0;
+            if (workingLevelIds.length === 0 || selIdx < 0 || selIdx >= workingLevelIds.length) {
+              env.showToast('Nothing to remove');
+            } else {
+              workingLevelIds.splice(selIdx, 1);
+            }
+            continue;
+          }
+          if (action.__action === 'delete') {
+            const ok = await env.showConfirm(`Permanently delete course "${workingTitle}"?`, 'Delete Course');
+            if (ok) {
+              await firebaseCourseStore.deleteCourse(course.id);
+              env.showToast('Course deleted');
+              deleted = true;
+            }
+            break; // exit editor after delete confirm path
+          }
         }
-        const unique = new Set(resultIds);
-        const allKnown = resultIds.every(id => originalSet.has(id));
-        if (!allKnown || unique.size !== resultIds.length) {
-          env.showToast('Invalid result: duplicate or unknown level IDs');
-          continue;
-        }
-        // No-op? Skip update
-        const isNoop = resultIds.every((id, idx) => id === course.levelIds[idx]);
-        if (isNoop) {
-          env.showToast('No changes');
-          continue;
-        }
-        await firebaseCourseStore.updateCourse(course.id, { levelIds: resultIds } as any);
-        env.showToast('Saved course changes');
-        continue;
+        if (deleted) continue; // go back to course picker after deletion
+        continue; // return to action menu after save/cancel
       }
 
       if (act === 'delete') {

@@ -23,6 +23,8 @@ As of 2025-08-25, focus these open items migrated from `TODO.md`:
    - [x] Course Creator UI parity with Edit Course UI (800x600 panel, scrollable list, keyboard + mouse, bottom action buttons)
    - [x] Level Editor integration: `openCourseCreator()` now uses new overlay via `EditorEnv.showUiCourseCreator()`; Cancel returns to the editor
    - [x] Rendering/TS cleanup: guarded `item.data` when rendering list items in `src/main.ts` (strict null checks)
+   - [x] Course Editor drag-and-drop: Added missing level reordering with drag state, visual feedback, and proper array manipulation
+   - [x] Course Select UI redesign: Redesigned to match Course Editor visual design (centered panel, scrollable list, mouse wheel support)
    - [ ] Course Select integration (consume `courses` to build runtime lists)
    - [ ] Test pass: end-to-end Course Creator UI interactions (mouse/keyboard, scrolling, buttons, cancel)
   

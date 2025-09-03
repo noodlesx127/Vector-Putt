@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Level Editor: `openCourseCreator()` now uses the new Course Creator overlay instead of the simple list.
    - Added `showUiCourseCreator()` to `EditorEnv` and wired implementations in `src/main.ts` to call `showUiCourseCreator(courseList)`.
    - Preserves navigation flow; Cancel returns to Level Editor.
+- Course Select UI: Redesigned to match Course Editor visual design and interaction patterns.
+  - Replaced simple button layout with centered 800x600 panel, scrollable course list, and consistent styling.
+  - Added `courseSelectState` for selection tracking and `courseSelectHotspots` for click detection.
+  - Mouse wheel scrolling support and hover states for better UX.
 
 ### Fixed
 - Overlays: fully swallow keyboard events while a modal is open.
@@ -31,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - TypeScript: removed a duplicate `getUserId` property from `editorEnv` in `src/main.ts` that caused a duplicate property error in object literal. Kept the shorthand `getUserId` reference used elsewhere.
  - TypeScript: guarded `item.data` in Course Creator item rendering (`src/main.ts`) to satisfy strict null checks when building item labels.
+- Course Editor: Added missing drag-and-drop reordering functionality for level lists.
+  - Implemented drag state tracking with visual feedback (orange borders, green drop indicators).
+  - Mouse move/up handlers for completing reorder operations with proper array manipulation.
+  - Drag threshold (5px) prevents accidental drags during selection clicks.
 
 ### Technical
 - EditorEnv UI wiring: Added `showDnDList` to all editor environment constructions in `src/main.ts` via a type-safe adapter that bridges to `showUiDnDList` (whose `UiListItem.value` is optional). The adapter guarantees `value` on return to satisfy `EditorEnv.showDnDList()` type and resolves prior TS mismatches.

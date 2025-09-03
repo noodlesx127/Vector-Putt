@@ -365,6 +365,10 @@ try { canvas.addEventListener('keypress', swallowOverlayKey as any, true); } cat
 type OverlayHotspot = { kind: 'btn' | 'listItem' | 'input' | 'drag' | 'levelItem'; index?: number; action?: string; x: number; y: number; w: number; h: number };
 let overlayHotspots: OverlayHotspot[] = [];
 
+// Course Select hotspots
+type CourseSelectHotspot = { kind: 'courseItem' | 'btn'; index?: number; action?: string; x: number; y: number; w: number; h: number };
+let courseSelectHotspots: CourseSelectHotspot[] = [];
+
 function handleOverlayMouseDown(e: MouseEvent) {
   if (!isOverlayActive()) return;
   // Swallow clicks when an overlay is active so underlying UI doesn't receive them
@@ -1135,6 +1139,13 @@ window.addEventListener('unhandledrejection', (ev) => {
 // Game state
 let lastTime = performance.now();
 let gameState: 'menu' | 'course' | 'options' | 'users' | 'changelog' | 'loading' | 'play' | 'sunk' | 'summary' | 'levelEditor' | 'userLevels' = 'menu';
+
+// Course Select state
+let courseSelectState = {
+  selectedCourseIndex: -1,
+  scrollOffset: 0,
+  courses: [] as Array<{ id: string; title: string; type: 'dev' | 'user'; levelCount: number }>
+};
 let levelPaths: string[] = [];
 let currentLevelIndex = 0;
 let paused = false;
@@ -2387,6 +2398,13 @@ canvas.addEventListener('mousedown', (e) => {
     if (canStart && p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h) {
       // Go to Course Select
       gameState = 'course';
+      // Initialize course list
+      courseSelectState.courses = [
+        { id: 'dev', title: 'Dev Levels', type: 'dev', levelCount: 8 },
+        { id: 'user', title: 'User Made Levels', type: 'user', levelCount: 0 }
+      ];
+      courseSelectState.selectedCourseIndex = -1;
+      courseSelectState.scrollOffset = 0;
       // On Start: sync active profile with UsersStore (login by name)
       (async () => {
         try {
@@ -2532,23 +2550,29 @@ canvas.addEventListener('mousedown', (e) => {
       return;
     }
   }
-  // Handle Course Select buttons
+  // Handle Course Select interactions
   if (gameState === 'course') {
-    const dev = getCourseDevRect();
-    if (p.x >= dev.x && p.x <= dev.x + dev.w && p.y >= dev.y && p.y <= dev.y + dev.h) {
-      void startDevCourseFromFirebase();
-      return;
-    }
-    const userLevels = getCourseUserLevelsRect();
-    if (p.x >= userLevels.x && p.x <= userLevels.x + userLevels.w && p.y >= userLevels.y && p.y <= userLevels.y + userLevels.h) {
-      gameState = 'userLevels';
-      void loadUserLevelsList();
-      return;
-    }
-    const back = getCourseBackRect();
-    if (p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h) {
-      gameState = 'menu';
-      return;
+    // Check for course item clicks
+    for (const hs of courseSelectHotspots) {
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
+        if (hs.kind === 'courseItem' && typeof hs.index === 'number') {
+          courseSelectState.selectedCourseIndex = hs.index;
+          const course = courseSelectState.courses[hs.index];
+          if (course) {
+            if (course.type === 'dev') {
+              void startDevCourseFromFirebase();
+            } else if (course.type === 'user') {
+              gameState = 'userLevels';
+              void loadUserLevelsList();
+            }
+          }
+          return;
+        }
+        if (hs.kind === 'btn' && hs.action === 'back') {
+          gameState = 'menu';
+          return;
+        }
+      }
     }
   }
   // Handle User Levels screen clicks
@@ -3032,13 +3056,15 @@ canvas.addEventListener('mousemove', (e) => {
     return;
   }
   if (gameState === 'course') {
-    const dev = getCourseDevRect();
-    const userLevels = getCourseUserLevelsRect();
-    const back = getCourseBackRect();
-    hoverCourseDev = p.x >= dev.x && p.x <= dev.x + dev.w && p.y >= dev.y && p.y <= dev.y + dev.h;
-    hoverCourseUserLevels = p.x >= userLevels.x && p.x <= userLevels.x + userLevels.w && p.y >= userLevels.y && p.y <= userLevels.y + userLevels.h;
-    hoverCourseBack = p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h;
-    canvas.style.cursor = (hoverCourseDev || hoverCourseUserLevels || hoverCourseBack) ? 'pointer' : 'default';
+    // Check for hover over course items and buttons
+    let hovering = false;
+    for (const hs of courseSelectHotspots) {
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
+        hovering = true;
+        break;
+      }
+    }
+    canvas.style.cursor = hovering ? 'pointer' : 'default';
     return;
   }
   if (gameState === 'userLevels') {
@@ -4271,46 +4297,119 @@ function draw() {
     renderGlobalOverlays();
     return;
   }
-  // Course Select screen
+  // Course Select screen - redesigned to match Course Editor UI
   if (gameState === 'course') {
+    courseSelectHotspots = [];
+    
+    // Panel dimensions matching Course Editor
+    const panelW = Math.min(800, WIDTH - 80);
+    const panelH = Math.min(600, HEIGHT - 120);
+    const margin = 20;
+    const pad = 20;
+    
+    let px = Math.floor(WIDTH / 2 - panelW / 2);
+    let py = Math.floor(HEIGHT / 2 - panelH / 2);
+    px = Math.max(margin, Math.min(WIDTH - panelW - margin, px));
+    py = Math.max(margin, Math.min(HEIGHT - panelH - margin, py));
+    
+    // Panel background
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(px, py, panelW, panelH);
+    ctx.strokeStyle = '#cfd2cf';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(px + 0.5, py + 0.5, panelW - 1, panelH - 1);
+    
+    // Title
     ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.font = '28px system-ui, sans-serif';
-    ctx.fillText('Select Course', WIDTH/2, 60);
+    ctx.font = '20px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('Select Course', px + pad, py + pad);
+    
+    let contentY = py + pad + 32;
+    
+    // Course list area
+    const listStartY = contentY;
+    const listEndY = py + panelH - 80; // Leave space for buttons
+    const listHeight = listEndY - listStartY;
+    const rowHeight = 40;
+    const maxVisibleRows = Math.floor(listHeight / rowHeight);
+    
+    const courses = courseSelectState.courses;
+    const scrollOffset = courseSelectState.scrollOffset;
+    const visibleCourses = courses.slice(scrollOffset, scrollOffset + maxVisibleRows);
+    
+    // Draw scrollbar if needed
+    if (courses.length > maxVisibleRows) {
+      const scrollbarX = px + panelW - 20;
+      const scrollbarY = listStartY;
+      const scrollbarH = listHeight;
+      const scrollbarW = 16;
+      
+      // Scrollbar track
+      ctx.fillStyle = 'rgba(255,255,255,0.1)';
+      ctx.fillRect(scrollbarX, scrollbarY, scrollbarW, scrollbarH);
+      ctx.strokeStyle = '#666666';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(scrollbarX + 0.5, scrollbarY + 0.5, scrollbarW - 1, scrollbarH - 1);
+      
+      // Scrollbar thumb
+      const thumbHeight = Math.max(20, (maxVisibleRows / courses.length) * scrollbarH);
+      const thumbY = scrollbarY + (scrollOffset / (courses.length - maxVisibleRows)) * (scrollbarH - thumbHeight);
+      ctx.fillStyle = 'rgba(136, 212, 255, 0.6)';
+      ctx.fillRect(scrollbarX + 2, thumbY, scrollbarW - 4, thumbHeight);
+      ctx.strokeStyle = '#88d4ff';
+      ctx.strokeRect(scrollbarX + 2.5, thumbY + 0.5, scrollbarW - 5, thumbHeight - 1);
+    }
+    
+    // Render course rows
+    for (let i = 0; i < visibleCourses.length; i++) {
+      const actualIndex = scrollOffset + i;
+      const course = visibleCourses[i];
+      const rowY = listStartY + i * rowHeight;
+      const rowX = px + pad;
+      const rowW = panelW - pad * 2 - (courses.length > maxVisibleRows ? 24 : 0);
+      const isSelected = (courseSelectState.selectedCourseIndex === actualIndex);
+      
+      // Row background
+      ctx.fillStyle = isSelected ? 'rgba(136, 212, 255, 0.2)' : 'rgba(255,255,255,0.05)';
+      ctx.fillRect(rowX, rowY, rowW, rowHeight - 2);
+      
+      // Row border
+      ctx.strokeStyle = isSelected ? '#88d4ff' : '#666666';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(rowX + 0.5, rowY + 0.5, rowW - 1, rowHeight - 2 - 1);
+      
+      // Course text
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '14px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const courseText = `${course.title} (${course.levelCount} levels)`;
+      ctx.fillText(courseText, rowX + 12, rowY + (rowHeight - 2) / 2);
+      
+      // Add hotspot for course selection
+      courseSelectHotspots.push({ kind: 'courseItem', index: actualIndex, x: rowX, y: rowY, w: rowW, h: rowHeight - 2 });
+    }
+    
+    // Back button (bottom right)
+    const buttonY = py + panelH - 60;
+    const buttonH = 28;
+    const backBtnW = 80;
+    const backX = px + panelW - pad - backBtnW;
+    
+    ctx.fillStyle = 'rgba(128,128,128,0.3)';
+    ctx.fillRect(backX, buttonY, backBtnW, buttonH);
+    ctx.strokeStyle = '#808080';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(backX + 0.5, buttonY + 0.5, backBtnW - 1, buttonH - 1);
+    ctx.fillStyle = '#ffffff';
     ctx.font = '14px system-ui, sans-serif';
-    ctx.fillText('Choose a course to play', WIDTH/2, 86);
-    // Dev Levels option
-    const dev = getCourseDevRect();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = hoverCourseDev ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = hoverCourseDev ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
-    ctx.fillRect(dev.x, dev.y, dev.w, dev.h);
-    ctx.strokeRect(dev.x, dev.y, dev.w, dev.h);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '18px system-ui, sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('Dev Levels', dev.x + dev.w/2, dev.y + dev.h/2 + 0.5);
-    // User Made Levels option
-    const userLevels = getCourseUserLevelsRect();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = hoverCourseUserLevels ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = hoverCourseUserLevels ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
-    ctx.fillRect(userLevels.x, userLevels.y, userLevels.w, userLevels.h);
-    ctx.strokeRect(userLevels.x, userLevels.y, userLevels.w, userLevels.h);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '18px system-ui, sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('User Made Levels', userLevels.x + userLevels.w/2, userLevels.y + userLevels.h/2 + 0.5);
-    // Back button
-    const back = getCourseBackRect();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = hoverCourseBack ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = hoverCourseBack ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
-    ctx.fillRect(back.x, back.y, back.w, back.h);
-    ctx.strokeRect(back.x, back.y, back.w, back.h);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '16px system-ui, sans-serif';
-    ctx.fillText('Back', back.x + back.w/2, back.y + back.h/2 + 0.5);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Back', backX + backBtnW / 2, buttonY + buttonH / 2);
+    courseSelectHotspots.push({ kind: 'btn', action: 'back', x: backX, y: buttonY, w: backBtnW, h: buttonH });
+    
     // Version bottom-left
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.font = '12px system-ui, sans-serif';
@@ -5926,65 +6025,64 @@ function renderGlobalOverlays(): void {
   }
 }
 
-// Support wheel scrolling for DnD list and Course Editor overlays
+// Support wheel scrolling for DnD list, Course Editor, Course Creator, and Course Select
 function handleOverlayWheel(e: WheelEvent) {
   if (!isOverlayActive()) return;
   
   if (uiOverlay.kind === 'dndList') {
     try { e.preventDefault(); } catch {}
     try { e.stopPropagation(); } catch {}
+    const scrollDelta = e.deltaY > 0 ? 1 : -1;
     const items = uiOverlay.listItems ?? [];
-    if (items.length === 0) return;
-    const delta = Math.sign(e.deltaY);
-    const rowH = 32;
-    // Estimate rows visible based on last render calculation (~10)
-    const maxRows = 10;
-    const maxScroll = Math.max(0, items.length - maxRows);
-    const next = Math.max(0, Math.min(maxScroll, Math.floor((uiOverlay.dndScroll ?? 0) + delta)));
-    uiOverlay.dndScroll = next;
+    const maxScroll = Math.max(0, items.length - 8); // Assume 8 visible items
+    uiOverlay.dndScroll = Math.max(0, Math.min(maxScroll, (uiOverlay.dndScroll ?? 0) + scrollDelta));
     return;
   }
   
   if (uiOverlay.kind === 'courseEditor') {
     try { e.preventDefault(); } catch {}
     try { e.stopPropagation(); } catch {}
+    const scrollDelta = e.deltaY > 0 ? 1 : -1;
     const levels = uiOverlay.courseData?.levelIds || [];
     const rowHeight = 40;
-    const editorPanelH = Math.min(600, HEIGHT - 120);
-    const listHeight = editorPanelH - 200; // Account for title, buttons, etc.
+    const listHeight = Math.min(600, HEIGHT - 120) - 200; // Panel height minus title/buttons
     const maxVisibleRows = Math.floor(listHeight / rowHeight);
-    
-    if (levels.length <= maxVisibleRows) return; // No scrolling needed
-    
-    const delta = Math.sign(e.deltaY);
-    const currentScroll = uiOverlay.scrollOffset ?? 0;
     const maxScroll = Math.max(0, levels.length - maxVisibleRows);
-    const newScroll = Math.max(0, Math.min(maxScroll, currentScroll + delta));
-    uiOverlay.scrollOffset = newScroll;
+    uiOverlay.scrollOffset = Math.max(0, Math.min(maxScroll, (uiOverlay.scrollOffset ?? 0) + scrollDelta));
     return;
   }
   
   if (uiOverlay.kind === 'courseCreator') {
     try { e.preventDefault(); } catch {}
     try { e.stopPropagation(); } catch {}
+    const scrollDelta = e.deltaY > 0 ? 1 : -1;
     const courses = uiOverlay.courseList || [];
     const totalItems = courses.length + 1; // +1 for "New Course" item
     const rowHeight = 40;
-    const editorPanelH = Math.min(600, HEIGHT - 120);
-    const listHeight = editorPanelH - 200;
+    const listHeight = Math.min(600, HEIGHT - 120) - 200; // Panel height minus title/buttons
     const maxVisibleRows = Math.floor(listHeight / rowHeight);
-    
-    if (totalItems <= maxVisibleRows) return; // No scrolling needed
-    
-    const delta = Math.sign(e.deltaY);
-    const currentScroll = uiOverlay.courseScrollOffset ?? 0;
     const maxScroll = Math.max(0, totalItems - maxVisibleRows);
-    const newScroll = Math.max(0, Math.min(maxScroll, currentScroll + delta));
-    uiOverlay.courseScrollOffset = newScroll;
+    uiOverlay.courseScrollOffset = Math.max(0, Math.min(maxScroll, (uiOverlay.courseScrollOffset ?? 0) + scrollDelta));
     return;
   }
 }
+
+// Course Select wheel scrolling
+function handleCourseSelectWheel(e: WheelEvent) {
+  if (gameState !== 'course') return;
+  try { e.preventDefault(); } catch {}
+  try { e.stopPropagation(); } catch {}
+  
+  const scrollDelta = e.deltaY > 0 ? 1 : -1;
+  const courses = courseSelectState.courses;
+  const rowHeight = 40;
+  const listHeight = Math.min(600, HEIGHT - 120) - 200; // Panel height minus title/buttons
+  const maxVisibleRows = Math.floor(listHeight / rowHeight);
+  const maxScroll = Math.max(0, courses.length - maxVisibleRows);
+  courseSelectState.scrollOffset = Math.max(0, Math.min(maxScroll, courseSelectState.scrollOffset + scrollDelta));
+}
 try { canvas.addEventListener('wheel', handleOverlayWheel as any, { capture: true, passive: false }); } catch {}
+try { canvas.addEventListener('wheel', handleCourseSelectWheel as any, { capture: true, passive: false }); } catch {}
 
 // Test function to diagnose overlay rendering
 function testOverlay() {

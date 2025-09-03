@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added capture-phase `keydown` listener and `stopImmediatePropagation()` in overlay handlers to ensure no other key listeners execute while a modal is active.
   - Prevents underlying UI (menus, gameplay pause, editor shortcuts) from reacting to keys when an overlay is active.
 
+- TypeScript: removed a duplicate `getUserId` property from `editorEnv` in `src/main.ts` that caused a duplicate property error in object literal. Kept the shorthand `getUserId` reference used elsewhere.
+
 ### Technical
 - EditorEnv UI wiring: Added `showDnDList` to all editor environment constructions in `src/main.ts` via a type-safe adapter that bridges to `showUiDnDList` (whose `UiListItem.value` is optional). The adapter guarantees `value` on return to satisfy `EditorEnv.showDnDList()` type and resolves prior TS mismatches.
 

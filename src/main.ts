@@ -79,7 +79,7 @@ function newLevelId(): string {
 // ------------------------------
 // In-Game Modal Overlay System
 // ------------------------------
-type UiOverlayKind = 'none' | 'toast' | 'confirm' | 'prompt' | 'list' | 'dndList';
+type UiOverlayKind = 'none' | 'toast' | 'confirm' | 'prompt' | 'list' | 'dndList' | 'courseEditor';
 type UiToast = { id: number; message: string; expiresAt: number };
 type UiListItem = { id?: string; label: string; value?: any; disabled?: boolean };
 type UiOverlayState = {
@@ -105,6 +105,16 @@ type UiOverlayState = {
   dndTargetIndex?: number;
   dndPointerY?: number;
   dndScroll?: number;
+  // Course Editor
+  courseData?: {
+    id: string;
+    title: string;
+    levelIds: string[];
+    levelTitles: string[];
+  };
+  courseEditingTitle?: boolean;
+  courseNewTitle?: string;
+  selectedLevelIndex?: number;
   // Resolution
   resolve?: (value: any) => void;
   reject?: (reason?: any) => void;
@@ -153,6 +163,21 @@ function showUiDnDList(title: string, items: UiListItem[]): Promise<UiListItem[]
   });
 }
 
+function showUiCourseEditor(courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] }): Promise<{ action: string; courseData?: any } | null> {
+  return new Promise<{ action: string; courseData?: any } | null>((resolve) => {
+    uiOverlay = {
+      kind: 'courseEditor',
+      title: `Edit Course: ${courseData.title}`,
+      courseData: { ...courseData },
+      courseEditingTitle: false,
+      courseNewTitle: courseData.title,
+      selectedLevelIndex: -1,
+      cancelable: true,
+      resolve
+    };
+  });
+}
+
 // Overlay input handling
 function handleOverlayKey(e: KeyboardEvent) {
   if (!isOverlayActive()) return;
@@ -184,54 +209,57 @@ function handleOverlayKey(e: KeyboardEvent) {
       uiOverlay.resolve?.(items[idx] ?? null); uiOverlay = { kind: 'none' }; return;
     }
     if (e.code === 'Escape') { uiOverlay.resolve?.(null); uiOverlay = { kind: 'none' }; return; }
+  } else if (k === 'courseEditor') {
+    if (uiOverlay.courseEditingTitle) {
+      if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+        uiOverlay.courseEditingTitle = false;
+        if (uiOverlay.courseData && uiOverlay.courseNewTitle) {
+          uiOverlay.courseData.title = uiOverlay.courseNewTitle;
+          uiOverlay.title = `Edit Course: ${uiOverlay.courseNewTitle}`;
+        }
+        return;
+      }
+      if (e.code === 'Escape') {
+        uiOverlay.courseEditingTitle = false;
+        uiOverlay.courseNewTitle = uiOverlay.courseData?.title || '';
+        return;
+      }
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+        uiOverlay.courseNewTitle = (uiOverlay.courseNewTitle || '') + e.key;
+        return;
+      }
+      if (e.code === 'Backspace') {
+        const t = (uiOverlay.courseNewTitle || '');
+        uiOverlay.courseNewTitle = t.slice(0, Math.max(0, t.length - 1));
+        return;
+      }
+    } else {
+      const levels = uiOverlay.courseData?.levelIds || [];
+      if (e.code === 'ArrowDown') {
+        uiOverlay.selectedLevelIndex = Math.min(levels.length - 1, (uiOverlay.selectedLevelIndex ?? -1) + 1);
+        return;
+      }
+      if (e.code === 'ArrowUp') {
+        uiOverlay.selectedLevelIndex = Math.max(-1, (uiOverlay.selectedLevelIndex ?? -1) - 1);
+        return;
+      }
+      if (e.code === 'Escape') {
+        uiOverlay.resolve?.(null);
+        uiOverlay = { kind: 'none' };
+        return;
+      }
+    }
   } else if (k === 'dndList') {
     const items = uiOverlay.listItems ?? [];
-    const idx = uiOverlay.listIndex ?? 0;
-    // Navigation
-    if (e.code === 'ArrowDown' && !e.ctrlKey) { uiOverlay.listIndex = Math.min(items.length - 1, idx + 1); return; }
-    if (e.code === 'ArrowUp' && !e.ctrlKey) { uiOverlay.listIndex = Math.max(0, idx - 1); return; }
-    if (e.code === 'Home') { uiOverlay.listIndex = 0; return; }
-    if (e.code === 'End') { uiOverlay.listIndex = Math.max(0, items.length - 1); return; }
-    if (e.code === 'PageDown') { uiOverlay.dndScroll = Math.min((uiOverlay.dndScroll ?? 0) + 1, Math.max(0, items.length - 10)); return; }
-    if (e.code === 'PageUp') { uiOverlay.dndScroll = Math.max((uiOverlay.dndScroll ?? 0) - 1, 0); return; }
-
-    // Inline reorder with Ctrl+Arrow
-    if (e.ctrlKey && !e.shiftKey && (e.code === 'ArrowUp' || e.code === 'ArrowDown')) {
-      if (items.length > 1 && idx >= 0 && idx < items.length) {
-        const to = e.code === 'ArrowUp' ? Math.max(0, idx - 1) : Math.min(items.length - 1, idx + 1);
-        if (to !== idx) {
-          const tmp = items[idx];
-          items[idx] = items[to];
-          items[to] = tmp;
-          uiOverlay.listItems = items;
-          uiOverlay.listIndex = to;
-        }
-      }
-      return;
-    }
-
-    // Save / Cancel
-    if (e.code === 'Enter' || e.code === 'NumpadEnter' || (e.ctrlKey && e.code === 'KeyS')) {
+    if (e.code === 'ArrowDown') { uiOverlay.listIndex = Math.min(items.length - 1, (uiOverlay.listIndex ?? 0) + 1); return; }
+    if (e.code === 'ArrowUp') { uiOverlay.listIndex = Math.max(0, (uiOverlay.listIndex ?? 0) - 1); return; }
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+      // Save
       uiOverlay.resolve?.(items);
       uiOverlay = { kind: 'none' };
       return;
     }
     if (e.code === 'Escape') { uiOverlay.resolve?.(null); uiOverlay = { kind: 'none' }; return; }
-
-    // Remove selected item
-    if (e.code === 'Delete' || e.code === 'Backspace') {
-      const sel = typeof uiOverlay.listIndex === 'number' ? uiOverlay.listIndex : 0;
-      uiOverlay.resolve?.({ __action: 'remove', index: sel });
-      uiOverlay = { kind: 'none' };
-      return;
-    }
-
-    // Toolbar shortcuts
-    if (e.ctrlKey && !e.shiftKey && !e.altKey) {
-      if (e.code === 'KeyR') { uiOverlay.resolve?.({ __action: 'rename' }); uiOverlay = { kind: 'none' }; return; }
-      if (e.code === 'KeyN') { uiOverlay.resolve?.({ __action: 'add' }); uiOverlay = { kind: 'none' }; return; }
-      if (e.code === 'KeyD') { uiOverlay.resolve?.({ __action: 'delete' }); uiOverlay = { kind: 'none' }; return; }
-    }
   }
 }
 // Use capture phase so we intercept before other global handlers
@@ -250,7 +278,7 @@ window.addEventListener('keypress', swallowOverlayKey as any, true);
 document.addEventListener('keypress', swallowOverlayKey as any, true);
 try { canvas.addEventListener('keypress', swallowOverlayKey as any, true); } catch {}
 
-type OverlayHotspot = { kind: 'btn' | 'listItem' | 'input' | 'drag'; index?: number; x: number; y: number; w: number; h: number };
+type OverlayHotspot = { kind: 'btn' | 'listItem' | 'input' | 'drag' | 'levelItem'; index?: number; action?: string; x: number; y: number; w: number; h: number };
 let overlayHotspots: OverlayHotspot[] = [];
 
 function handleOverlayMouseDown(e: MouseEvent) {
@@ -305,24 +333,54 @@ function handleOverlayMouseDown(e: MouseEvent) {
           return;
         }
         if (hs.kind === 'btn' && typeof hs.index === 'number') {
-          // Button index mapping for dndList toolbar:
-          // 0: Save, 1: Cancel, 2: Rename Course, 3: Add Level, 4: Remove Level, 5: Delete Course
-          const idx = hs.index;
-          if (idx === 0) {
+          const isSave = hs.index === 0; // 0: Save, 1: Cancel
+          if (isSave) {
             uiOverlay.resolve?.(uiOverlay.listItems ?? []);
-          } else if (idx === 1) {
+          } else {
             uiOverlay.resolve?.(null);
-          } else if (idx === 2) {
-            uiOverlay.resolve?.({ __action: 'rename' });
-          } else if (idx === 3) {
-            uiOverlay.resolve?.({ __action: 'add' });
-          } else if (idx === 4) {
-            const sel = typeof uiOverlay.listIndex === 'number' ? uiOverlay.listIndex : 0;
-            uiOverlay.resolve?.({ __action: 'remove', index: sel });
-          } else if (idx === 5) {
-            uiOverlay.resolve?.({ __action: 'delete' });
           }
           uiOverlay = { kind: 'none' };
+          return;
+        }
+      }
+      if (uiOverlay.kind === 'courseEditor') {
+        if (hs.kind === 'btn') {
+          const action = hs.action || '';
+          if (action === 'renameCourse') {
+            uiOverlay.courseEditingTitle = true;
+            return;
+          }
+          if (action === 'addLevel') {
+            uiOverlay.resolve?.({ action: 'addLevel', courseData: uiOverlay.courseData });
+            uiOverlay = { kind: 'none' };
+            return;
+          }
+          if (action === 'removeLevel') {
+            const idx = uiOverlay.selectedLevelIndex ?? -1;
+            if (idx >= 0) {
+              uiOverlay.resolve?.({ action: 'removeLevel', levelIndex: idx, courseData: uiOverlay.courseData });
+              uiOverlay = { kind: 'none' };
+            }
+            return;
+          }
+          if (action === 'deleteCourse') {
+            uiOverlay.resolve?.({ action: 'deleteCourse', courseData: uiOverlay.courseData });
+            uiOverlay = { kind: 'none' };
+            return;
+          }
+          if (action === 'save') {
+            uiOverlay.resolve?.({ action: 'save', courseData: uiOverlay.courseData });
+            uiOverlay = { kind: 'none' };
+            return;
+          }
+          if (action === 'cancel') {
+            uiOverlay.resolve?.(null);
+            uiOverlay = { kind: 'none' };
+            return;
+          }
+        }
+        if (hs.kind === 'levelItem' && typeof hs.index === 'number') {
+          uiOverlay.selectedLevelIndex = hs.index;
           return;
         }
       }
@@ -346,16 +404,6 @@ function handleOverlayMouseMove(e: MouseEvent) {
   try { e.preventDefault(); } catch {}
   try { e.stopPropagation(); } catch {}
   const p = worldFromEvent(e);
-  // Track hover over buttons
-  (uiOverlay as any).hoverBtnIndex = undefined;
-  for (const hs of overlayHotspots) {
-    if (hs.kind === 'btn') {
-      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
-        (uiOverlay as any).hoverBtnIndex = hs.index;
-        break;
-      }
-    }
-  }
   // Overlay panel dragging
   if (uiOverlay.dragActive) {
     const panelW = Math.min(640, WIDTH - 80);
@@ -385,17 +433,6 @@ function handleOverlayMouseMove(e: MouseEvent) {
       }
     }
     if (target !== null) uiOverlay.dndTargetIndex = target;
-  }
-  // DnD list hover highlight (when not dragging)
-  if (uiOverlay.kind === 'dndList' && typeof uiOverlay.dndDragIndex !== 'number') {
-    for (const hs of overlayHotspots) {
-      if (hs.kind === 'listItem') {
-        if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
-          uiOverlay.listIndex = hs.index ?? 0;
-          break;
-        }
-      }
-    }
   }
 }
 canvas.addEventListener('mousemove', handleOverlayMouseMove, { capture: true });
@@ -2235,6 +2272,7 @@ canvas.addEventListener('mousedown', (e) => {
               const res = await showUiDnDList(title, items as any);
               return res ? res.map(it => ({ label: it.label, value: (it as any).value })) : null;
             },
+            showCourseEditor: (courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] }) => showUiCourseEditor(courseData),
             getGlobalState: () => ({
               WIDTH,
               HEIGHT,
@@ -2476,6 +2514,7 @@ canvas.addEventListener('mousedown', (e) => {
         const res = await showUiDnDList(title, items as any);
         return res ? res.map(it => ({ label: it.label, value: (it as any).value })) : null;
       },
+      showCourseEditor: (courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] }) => showUiCourseEditor(courseData),
       getGlobalState: () => ({
         WIDTH,
         HEIGHT,
@@ -3066,14 +3105,15 @@ function handleLevelEditorKeys(e: KeyboardEvent) {
     setGridSize: () => {},
     getShowGrid: () => true,
     setShowGrid: () => {},
-      showToast: (msg: string) => showUiToast(msg),
-      showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
-      showPrompt: (msg: string, def?: string, title?: string) => showUiPrompt(msg, def, title),
-      showList: (title: string, items: Array<{label: string; value: any}>, startIndex?: number) => showUiList(title, items, startIndex),
-      showDnDList: async (title: string, items: Array<{label: string; value: any}>) => {
-        const res = await showUiDnDList(title, items as any);
-        return res ? res.map(it => ({ label: it.label, value: (it as any).value })) : null;
-      },
+    showToast: (msg: string) => showUiToast(msg),
+    showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
+    showPrompt: (msg: string, def?: string, title?: string) => showUiPrompt(msg, def, title),
+    showList: (title: string, items: Array<{label: string; value: any}>, startIndex?: number) => showUiList(title, items, startIndex),
+    showDnDList: async (title: string, items: Array<{label: string; value: any}>) => {
+      const res = await showUiDnDList(title, items as any);
+      return res ? res.map(it => ({ label: it.label, value: (it as any).value })) : null;
+    },
+    showCourseEditor: (courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] }) => showUiCourseEditor(courseData),
     getGlobalState: () => ({
       WIDTH,
       HEIGHT,
@@ -5221,33 +5261,12 @@ function renderGlobalOverlays(): void {
         const ix = px + pad;
         const iw = panelW - pad * 2;
         const selected = (uiOverlay.listIndex ?? 0) === i;
-        // Row background
-        ctx.fillStyle = selected ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.28)';
+        ctx.fillStyle = selected ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.25)';
         ctx.fillRect(ix, iy, iw, rowH - 4);
-        // Selected left accent bar
-        if (selected) {
-          ctx.fillStyle = '#88d4ff';
-          ctx.fillRect(ix, iy, 3, rowH - 4);
-        }
-        // Border
-        ctx.strokeStyle = selected ? '#bde6ff' : '#cfd2cf';
-        ctx.lineWidth = selected ? 1.5 : 1;
-        ctx.strokeRect(ix + 0.5, iy + 0.5, iw - 1, rowH - 4 - 1);
-        // Drag handle (grip) on left
-        const handleX = ix + 8;
-        const handleY = iy + (rowH - 4) / 2 - 6;
-        ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-        ctx.lineWidth = 1;
-        for (let d = 0; d < 3; d++) {
-          ctx.beginPath();
-          ctx.moveTo(handleX + d * 3, handleY);
-          ctx.lineTo(handleX + d * 3, handleY + 12);
-          ctx.stroke();
-        }
-        // Label
+        ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(ix + 0.5, iy + 0.5, iw - 1, rowH - 4 - 1);
         ctx.fillStyle = item.disabled ? '#a0a0a0' : '#ffffff';
         ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-        ctx.fillText(item.label, ix + 8 + 14, iy + (rowH - 4) / 2 + 0.5);
+        ctx.fillText(item.label, ix + 8, iy + (rowH - 4) / 2 + 0.5);
         overlayHotspots.push({ kind: 'listItem', index: i, x: ix, y: iy, w: iw, h: rowH - 4 });
       }
       // If dragging, draw insertion indicator
@@ -5263,57 +5282,217 @@ function renderGlobalOverlays(): void {
           ctx.stroke();
         }
       }
-      // Keyboard hint (small, above buttons)
-      {
-        const hint = 'Shortcuts: ↑/↓ select, Ctrl+↑/↓ move, Enter/Ctrl+S save, Esc cancel, Del remove, Ctrl+R rename, Ctrl+N add, Ctrl+D delete';
-        ctx.font = '12px system-ui, sans-serif';
-        ctx.fillStyle = 'rgba(255,255,255,0.75)';
-        ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
-        const hx = px + pad;
-        const hy = py + panelH - pad - 34; // a bit above buttons row
-        ctx.fillText(hint, hx, hy);
-      }
-      // Toolbar buttons (left): Rename (2), Add Level (3), Remove Level (4), Delete Course (5)
-      const bwSmall = 130, bh = 30, gap = 12;
+      // Buttons: Save (index 0) and Cancel (index 1)
+      const bw = 120, bh = 30, gap = 12;
       const by = py + panelH - pad - bh;
-      let leftX = px + pad;
-      const toolbarButtons: Array<{ label: string; index: number }> = [
-        { label: 'Rename Course', index: 2 },
-        { label: 'Add Level', index: 3 },
-        { label: 'Remove Level', index: 4 },
-        { label: 'Delete Course', index: 5 },
-      ];
-      for (const b of toolbarButtons) {
-        const hovered = (uiOverlay as any).hoverBtnIndex === b.index;
-        ctx.fillStyle = hovered ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.10)';
-        ctx.fillRect(leftX, by, bwSmall, bh);
-        ctx.strokeStyle = hovered ? '#e8f6ff' : '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(leftX, by, bwSmall, bh);
-        ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '15px system-ui, sans-serif';
-        ctx.fillText(b.label, leftX + bwSmall / 2, by + bh / 2 + 0.5);
-        overlayHotspots.push({ kind: 'btn', index: b.index, x: leftX, y: by, w: bwSmall, h: bh });
-        leftX += bwSmall + gap;
-      }
-
-      // Buttons (right): Save (index 0) and Cancel (index 1)
-      const bw = 120;
       const saveX = px + panelW - pad - bw * 2 - gap;
       const cancelX = px + panelW - pad - bw;
       // Save
-      const saveHovered = (uiOverlay as any).hoverBtnIndex === 0;
-      ctx.fillStyle = saveHovered ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.10)';
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
       ctx.fillRect(saveX, by, bw, bh);
-      ctx.strokeStyle = saveHovered ? '#e8f6ff' : '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(saveX, by, bw, bh);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(saveX, by, bw, bh);
       ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '15px system-ui, sans-serif';
       ctx.fillText('Save', saveX + bw / 2, by + bh / 2 + 0.5);
       overlayHotspots.push({ kind: 'btn', index: 0, x: saveX, y: by, w: bw, h: bh });
       // Cancel
-      const cancelHovered = (uiOverlay as any).hoverBtnIndex === 1;
-      ctx.fillStyle = cancelHovered ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.10)';
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
       ctx.fillRect(cancelX, by, bw, bh);
-      ctx.strokeStyle = cancelHovered ? '#e8f6ff' : '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(cancelX, by, bw, bh);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(cancelX, by, bw, bh);
       ctx.fillStyle = '#ffffff'; ctx.font = '15px system-ui, sans-serif';
       ctx.fillText('Cancel', cancelX + bw / 2, by + bh / 2 + 0.5);
       overlayHotspots.push({ kind: 'btn', index: 1, x: cancelX, y: by, w: bw, h: bh });
+    } else if (uiOverlay.kind === 'courseEditor') {
+      // Course Editor UI - single screen with center-listed levels
+      const courseData = uiOverlay.courseData;
+      if (!courseData) return;
+      
+      // Adjust panel size for Course Editor
+      const editorPanelW = Math.min(800, WIDTH - 80);
+      const editorPanelH = Math.min(600, HEIGHT - 120);
+      
+      // Recalculate position for larger panel
+      px = Math.floor(WIDTH / 2 - editorPanelW / 2);
+      py = Math.floor(HEIGHT / 2 - editorPanelH / 2);
+      px = Math.max(margin, Math.min(WIDTH - editorPanelW - margin, px));
+      py = Math.max(margin, Math.min(HEIGHT - editorPanelH - margin, py));
+      
+      // Redraw panel with new dimensions
+      ctx.fillStyle = 'rgba(0,0,0,0.85)';
+      ctx.fillRect(px, py, editorPanelW, editorPanelH);
+      ctx.strokeStyle = '#cfd2cf';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(px + 0.5, py + 0.5, editorPanelW - 1, editorPanelH - 1);
+      
+      // Title area
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '20px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      const titleText = uiOverlay.courseEditingTitle ? 'Edit Course Name:' : uiOverlay.title || 'Edit Course';
+      ctx.fillText(titleText, px + pad, py + pad);
+      
+      let contentY = py + pad + 32;
+      
+      // Course title editing area
+      if (uiOverlay.courseEditingTitle) {
+        const inputH = 32;
+        const inputW = editorPanelW - pad * 2;
+        const inputX = px + pad;
+        
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        ctx.fillRect(inputX, contentY, inputW, inputH);
+        ctx.strokeStyle = '#88d4ff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(inputX + 0.5, contentY + 0.5, inputW - 1, inputH - 1);
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '16px system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        const editText = uiOverlay.courseNewTitle || '';
+        ctx.fillText(editText, inputX + 8, contentY + inputH / 2);
+        
+        // Cursor
+        const textWidth = ctx.measureText(editText).width;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(inputX + 8 + textWidth + 2, contentY + 6);
+        ctx.lineTo(inputX + 8 + textWidth + 2, contentY + inputH - 6);
+        ctx.stroke();
+        
+        contentY += inputH + 16;
+      }
+      
+      // Level list area
+      const listStartY = contentY;
+      const listEndY = py + editorPanelH - 80; // Leave space for buttons
+      const listHeight = listEndY - listStartY;
+      const rowHeight = 40;
+      const maxVisibleRows = Math.floor(listHeight / rowHeight);
+      
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '16px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      
+      // Render level rows
+      const levels = courseData.levelIds || [];
+      const levelTitles = courseData.levelTitles || [];
+      
+      for (let i = 0; i < Math.min(levels.length, maxVisibleRows); i++) {
+        const rowY = listStartY + i * rowHeight;
+        const rowX = px + pad;
+        const rowW = editorPanelW - pad * 2;
+        const isSelected = (uiOverlay.selectedLevelIndex === i);
+        
+        // Row background
+        ctx.fillStyle = isSelected ? 'rgba(136, 212, 255, 0.2)' : 'rgba(255,255,255,0.05)';
+        ctx.fillRect(rowX, rowY, rowW, rowHeight - 2);
+        
+        // Row border
+        ctx.strokeStyle = isSelected ? '#88d4ff' : '#666666';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(rowX + 0.5, rowY + 0.5, rowW - 1, rowHeight - 2 - 1);
+        
+        // Level text
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '14px system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        const levelTitle = levelTitles[i] || levels[i] || 'level';
+        ctx.fillText(levelTitle, rowX + 12, rowY + (rowHeight - 2) / 2);
+        
+        // Add hotspot for level selection
+        overlayHotspots.push({ kind: 'levelItem', index: i, x: rowX, y: rowY, w: rowW, h: rowHeight - 2 });
+      }
+      
+      // Control buttons (left side)
+      const buttonY = py + editorPanelH - 60;
+      const buttonH = 28;
+      const buttonGap = 8;
+      let buttonX = px + pad;
+      
+      // Rename Course button
+      const renameBtnW = 120;
+      ctx.fillStyle = 'rgba(255,165,0,0.2)';
+      ctx.fillRect(buttonX, buttonY, renameBtnW, buttonH);
+      ctx.strokeStyle = '#ffa500';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(buttonX + 0.5, buttonY + 0.5, renameBtnW - 1, buttonH - 1);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '13px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('📝 Rename Course', buttonX + renameBtnW / 2, buttonY + buttonH / 2);
+      overlayHotspots.push({ kind: 'btn', action: 'renameCourse', x: buttonX, y: buttonY, w: renameBtnW, h: buttonH });
+      buttonX += renameBtnW + buttonGap;
+      
+      // Add Level button
+      const addBtnW = 100;
+      ctx.fillStyle = 'rgba(0,255,0,0.2)';
+      ctx.fillRect(buttonX, buttonY, addBtnW, buttonH);
+      ctx.strokeStyle = '#00ff00';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(buttonX + 0.5, buttonY + 0.5, addBtnW - 1, buttonH - 1);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('➕ Add Level', buttonX + addBtnW / 2, buttonY + buttonH / 2);
+      overlayHotspots.push({ kind: 'btn', action: 'addLevel', x: buttonX, y: buttonY, w: addBtnW, h: buttonH });
+      buttonX += addBtnW + buttonGap;
+      
+      // Remove Level button
+      const removeBtnW = 120;
+      const hasSelection = (uiOverlay.selectedLevelIndex ?? -1) >= 0;
+      ctx.fillStyle = hasSelection ? 'rgba(255,0,0,0.2)' : 'rgba(100,100,100,0.2)';
+      ctx.fillRect(buttonX, buttonY, removeBtnW, buttonH);
+      ctx.strokeStyle = hasSelection ? '#ff0000' : '#666666';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(buttonX + 0.5, buttonY + 0.5, removeBtnW - 1, buttonH - 1);
+      ctx.fillStyle = hasSelection ? '#ffffff' : '#999999';
+      ctx.fillText('➖ Remove Level', buttonX + removeBtnW / 2, buttonY + buttonH / 2);
+      if (hasSelection) {
+        overlayHotspots.push({ kind: 'btn', action: 'removeLevel', x: buttonX, y: buttonY, w: removeBtnW, h: buttonH });
+      }
+      buttonX += removeBtnW + buttonGap;
+      
+      // Delete Course button
+      const deleteBtnW = 120;
+      ctx.fillStyle = 'rgba(139,0,0,0.3)';
+      ctx.fillRect(buttonX, buttonY, deleteBtnW, buttonH);
+      ctx.strokeStyle = '#8b0000';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(buttonX + 0.5, buttonY + 0.5, deleteBtnW - 1, buttonH - 1);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('🗑️ Delete Course', buttonX + deleteBtnW / 2, buttonY + buttonH / 2);
+      overlayHotspots.push({ kind: 'btn', action: 'deleteCourse', x: buttonX, y: buttonY, w: deleteBtnW, h: buttonH });
+      
+      // Save/Cancel buttons (bottom right)
+      const saveCancelY = buttonY;
+      const saveCancelW = 80;
+      const saveCancelGap = 12;
+      
+      // Save button
+      const saveX = px + editorPanelW - pad - saveCancelW * 2 - saveCancelGap;
+      ctx.fillStyle = 'rgba(0,128,0,0.3)';
+      ctx.fillRect(saveX, saveCancelY, saveCancelW, buttonH);
+      ctx.strokeStyle = '#008000';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(saveX + 0.5, saveCancelY + 0.5, saveCancelW - 1, buttonH - 1);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '14px system-ui, sans-serif';
+      ctx.fillText('Save', saveX + saveCancelW / 2, saveCancelY + buttonH / 2);
+      overlayHotspots.push({ kind: 'btn', action: 'save', x: saveX, y: saveCancelY, w: saveCancelW, h: buttonH });
+      
+      // Cancel button
+      const cancelX = px + editorPanelW - pad - saveCancelW;
+      ctx.fillStyle = 'rgba(128,128,128,0.3)';
+      ctx.fillRect(cancelX, saveCancelY, saveCancelW, buttonH);
+      ctx.strokeStyle = '#808080';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(cancelX + 0.5, saveCancelY + 0.5, saveCancelW - 1, buttonH - 1);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('Cancel', cancelX + saveCancelW / 2, saveCancelY + buttonH / 2);
+      overlayHotspots.push({ kind: 'btn', action: 'cancel', x: cancelX, y: saveCancelY, w: saveCancelW, h: buttonH });
     }
   }
 }

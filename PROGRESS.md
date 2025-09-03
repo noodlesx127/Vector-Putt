@@ -18,12 +18,8 @@ As of 2025-08-25, focus these open items migrated from `TODO.md`:
    - [x] Overlay flow edge cases and error handling
      - [x] Fix: fully swallow keyboard events while modal overlays are active (stopPropagation in `handleOverlayKey()`, plus capture-phase keyup/keypress listeners). Underlying UI no longer reacts during modals.
    - [x] Usability polish: drag-and-drop reordering implemented in Course Creator overlay
-   - [ ] Course Editor UI redesign: single-screen layout with levels listed in the center for easy inline reorder/add/remove. Mirror the provided screenshot: central editable rows for levels, controls for Rename Course, Add Level, Remove Level, Delete Course, and bottom-aligned Save/Cancel.
-    - [x] Initial implementation: enhanced `dndList` overlay with left-aligned toolbar (Rename/Add/Remove/Delete) and Save/Cancel on the right; integrated into `openCourseCreator()` single-screen loop with working copy and persistence on Save.
-    - [ ] UI polish (spacing, selection visuals, hover states) and keyboard affordances.
-      - [x] Keyboard affordances implemented for Course Editor DnD overlay: Arrow/Home/End/PageUp/PageDown navigation, Ctrl+Arrow to reorder inline, Enter/Ctrl+S to Save, Esc to Cancel, Del/Backspace to Remove selected, Ctrl+R rename, Ctrl+N add level, Ctrl+D delete course.
-      - [x] UI polish implemented: hover highlight updates `listIndex`, clearer selected row (accent bar, border), drag handle glyph, and button hover styles for toolbar and Save/Cancel.
-    - [ ] Add tests for the new flow (happy path + edge cases).
+   - [x] Course Editor UI redesign: single-screen layout with levels listed in the center for easy inline reorder/add/remove. Mirror the provided screenshot: central editable rows for levels, controls for Rename Course, Add Level, Remove Level, Delete Course, and bottom-aligned Save/Cancel.
+   - [x] Fix: duplicate `getUserId` property in `editorEnv` object literal in `src/main.ts` removed (kept shorthand reference); TypeScript lint/build clean.
    - [ ] Course Select integration (consume `courses` to build runtime lists)
   
 - **Level System**

@@ -1144,7 +1144,7 @@ let gameState: 'menu' | 'course' | 'options' | 'users' | 'changelog' | 'loading'
 let courseSelectState = {
   selectedCourseIndex: -1,
   scrollOffset: 0,
-  courses: [] as Array<{ id: string; title: string; type: 'dev' | 'user'; levelCount: number }>
+  courses: [] as Array<{ id: string; title: string; type: 'dev' | 'user' | 'firebase'; levelCount: number; courseData?: any }>
 };
 let levelPaths: string[] = [];
 let currentLevelIndex = 0;
@@ -2228,59 +2228,144 @@ async function startCourseFromFile(courseJsonPath: string): Promise<void> {
       gameState = 'play';
     }
   } catch (err: unknown) {
-    console.error('Failed to load course', err);
+    console.error('Failed to start course:', err);
+  }
+}
+
+// Load courses from Firebase for Course Select screen
+async function loadCoursesFromFirebase(): Promise<void> {
+  if (!firebaseReady) {
+    console.warn('Firebase not ready; cannot load courses from Firebase');
+    // Fallback to dev levels only
+    courseSelectState.courses = [
+      { id: 'dev', title: 'Dev Levels', type: 'dev', levelCount: 8 }
+    ];
+    return;
+  }
+  
+  try {
+    // Load courses from Firebase
+    const courses = await firebaseManager.courses.getCourses();
+    
+    // Convert Firebase courses to course select format
+    const courseList: Array<{ id: string; title: string; type: 'dev' | 'user' | 'firebase'; levelCount: number; courseData?: any }> = courses.map(course => ({
+      id: course.id,
+      title: course.title,
+      type: 'firebase',
+      levelCount: course.levelIds.length,
+      courseData: course
+    }));
+    
+    // Add dev levels as a fallback course
+    const devLevelsEntry = await firebaseManager.levels.getAllLevels(undefined);
+    const devEntries = devLevelsEntry.filter((e: any) => {
+      try { return (e?.data?.meta?.authorId === 'system') || (e?.author === 'Game Developer'); } catch { return false; }
+    });
+    
+    if (devEntries.length > 0) {
+      courseList.unshift({
+        id: 'dev',
+        title: 'Dev Levels',
+        type: 'dev' as const,
+        levelCount: devEntries.length
+      });
+    }
+    
+    courseSelectState.courses = courseList;
+    console.log('Loaded', courseList.length, 'courses from Firebase');
+    
+  } catch (error) {
+    console.error('Failed to load courses from Firebase:', error);
+    // Fallback to dev levels only
+    courseSelectState.courses = [
+      { id: 'dev', title: 'Dev Levels', type: 'dev', levelCount: 8 }
+    ];
   }
 }
 
 // Start Dev Levels course from Firebase public levels (avoids fetching /levels in production)
 async function startDevCourseFromFirebase(): Promise<void> {
+  if (!firebaseReady) {
+    console.warn('Firebase not ready; cannot load Dev Levels from Firebase');
+    return;
+  }
+  const entries = await firebaseManager.levels.getAllLevels(undefined);
+  // Heuristic: Dev/bundled levels authored by system
+  const devEntries = entries.filter((e: any) => {
+    try { return (e?.data?.meta?.authorId === 'system') || (e?.author === 'Game Developer'); } catch { return false; }
+  });
+  if (devEntries.length === 0) {
+    showUiToast('No dev levels found in Firebase', 3000);
+    return;
+  }
+  const devLevels = devEntries.map((entry: any) => adaptFirebaseLevelToMain(entry.data));
+  // Start course with dev levels
+  levelPaths = devLevels.map((_, i) => `dev:level${i}`);
+  devLevels.forEach((level, i) => levelCache.set(`dev:level${i}`, level));
+  courseScores = [];
+  coursePars = [];
+  currentLevelIndex = 0;
+  singleLevelMode = false;
+  gameState = 'loading';
+  await loadLevel(levelPaths[0]);
+  gameState = 'play';
+}
+
+// Start Firebase course from CourseEntry
+async function startFirebaseCourse(courseData: any): Promise<void> {
+  if (!firebaseReady) {
+    console.warn('Firebase not ready; cannot load Firebase course');
+    return;
+  }
+  
   try {
-    if (!firebaseReady) {
-      console.warn('Firebase not ready; cannot load Dev Levels from Firebase');
+    // Load levels for this course
+    const levelIds = courseData.levelIds || [];
+    if (levelIds.length === 0) {
+      showUiToast('Course has no levels', 3000);
       return;
     }
-    const entries = await firebaseManager.levels.getAllLevels(undefined);
-    // Heuristic: Dev/bundled levels authored by system
-    const devEntries = entries.filter((e: any) => {
-      try { return (e?.data?.meta?.authorId === 'system') || (e?.author === 'Game Developer'); } catch { return false; }
-    });
-    if (devEntries.length === 0) {
-      console.warn('No Dev (public) levels found in Firebase');
-      return;
-    }
-    // Sort by course index if present; then by title
-    devEntries.sort((a: any, b: any) => {
-      const ai = (a?.data?.course?.index ?? 0); const bi = (b?.data?.course?.index ?? 0);
-      if (ai !== bi) return ai - bi;
-      const at = (a?.title || '').toString(); const bt = (b?.title || '').toString();
-      return at.localeCompare(bt);
-    });
-    // Build synthetic paths and seed cache so loadLevel() reads from cache (no network)
-    const paths: string[] = [];
-    for (const ent of devEntries) {
-      const key = `dev:${ent.name}`;
-      paths.push(key);
+    
+    // Load all levels once, then find the ones we need in order
+    const allLevels = await firebaseManager.levels.getAllLevels(undefined);
+    const levels = [];
+    
+    for (const levelId of levelIds) {
       try {
-        const lvl = adaptFirebaseLevelToMain(ent.data);
-        levelCache.set(key, lvl);
+        const levelEntry = allLevels.find(l => l.name === levelId);
+        if (levelEntry) {
+          levels.push(adaptFirebaseLevelToMain(levelEntry.data));
+        } else {
+          console.warn('Level not found:', levelId);
+        }
       } catch (e) {
-        console.warn('Failed to adapt dev level; skipping', ent?.name, e);
+        console.warn('Failed to adapt level', levelId, e);
       }
     }
-    if (paths.length === 0) {
-      console.warn('Dev levels adaptation produced no playable levels');
+    
+    if (levels.length === 0) {
+      showUiToast('Failed to load course levels', 3000);
       return;
     }
-    levelPaths = paths;
-    courseScores = [];
-    coursePars = [];
+    
+    // Start course with Firebase levels
+    levelPaths = levels.map((_, i) => `course:${courseData.id}:${i}`);
+    levels.forEach((level, i) => levelCache.set(`course:${courseData.id}:${i}`, level));
+    courseScores = new Array(levels.length).fill(0);
+    coursePars = levels.map(level => level.par || 3);
     currentLevelIndex = 0;
+    singleLevelMode = false;
     gameState = 'loading';
     await loadLevel(levelPaths[0]);
-    // Set state to play after first level is loaded
     gameState = 'play';
-  } catch (e) {
-    console.error('Failed to start Dev Levels from Firebase:', e);
+    
+    console.log(`Started Firebase course "${courseData.title}" with ${levels.length} levels`);
+    console.log('Level paths:', levelPaths);
+    console.log('Course pars:', coursePars);
+    
+  } catch (error) {
+    console.error('Failed to start Firebase course:', error);
+    showUiToast('Failed to load course', 3000);
   }
 }
 
@@ -2398,11 +2483,9 @@ canvas.addEventListener('mousedown', (e) => {
     if (canStart && p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h) {
       // Go to Course Select
       gameState = 'course';
-      // Initialize course list
-      courseSelectState.courses = [
-        { id: 'dev', title: 'Dev Levels', type: 'dev', levelCount: 8 },
-        { id: 'user', title: 'User Made Levels', type: 'user', levelCount: 0 }
-      ];
+      // Initialize course list - load from Firebase
+      courseSelectState.courses = [];
+      void loadCoursesFromFirebase();
       courseSelectState.selectedCourseIndex = -1;
       courseSelectState.scrollOffset = 0;
       // On Start: sync active profile with UsersStore (login by name)
@@ -2561,16 +2644,27 @@ canvas.addEventListener('mousedown', (e) => {
           if (course) {
             if (course.type === 'dev') {
               void startDevCourseFromFirebase();
-            } else if (course.type === 'user') {
-              gameState = 'userLevels';
-              void loadUserLevelsList();
+            } else if (course.type === 'firebase' && course.courseData) {
+              void startFirebaseCourse(course.courseData);
             }
           }
           return;
         }
-        if (hs.kind === 'btn' && hs.action === 'back') {
-          gameState = 'menu';
-          return;
+        if (hs.kind === 'btn') {
+          if (hs.action === 'back') {
+            gameState = 'menu';
+            return;
+          }
+          if (hs.action === 'userLevels') {
+            gameState = 'userLevels';
+            void loadUserLevelsList();
+            return;
+          }
+          if (hs.action === 'courseCreator' && userProfile.role === 'admin') {
+            // Open Course Creator overlay for admin users
+            void showUiCourseCreator([]);
+            return;
+          }
         }
       }
     }
@@ -4392,11 +4486,48 @@ function draw() {
       courseSelectHotspots.push({ kind: 'courseItem', index: actualIndex, x: rowX, y: rowY, w: rowW, h: rowHeight - 2 });
     }
     
-    // Back button (bottom right)
+    // Bottom buttons
     const buttonY = py + panelH - 60;
     const buttonH = 28;
+    const buttonGap = 12;
+    
+    // User Made Levels button (bottom right)
+    const userLevelsBtnW = 140;
+    const userLevelsX = px + panelW - pad - userLevelsBtnW;
+    
+    ctx.fillStyle = 'rgba(33, 150, 243, 0.3)';
+    ctx.fillRect(userLevelsX, buttonY, userLevelsBtnW, buttonH);
+    ctx.strokeStyle = '#2196f3';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(userLevelsX + 0.5, buttonY + 0.5, userLevelsBtnW - 1, buttonH - 1);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('User Made Levels', userLevelsX + userLevelsBtnW / 2, buttonY + buttonH / 2);
+    courseSelectHotspots.push({ kind: 'btn', action: 'userLevels', x: userLevelsX, y: buttonY, w: userLevelsBtnW, h: buttonH });
+    
+    // Course Creator button (for admin users, left of User Made Levels)
+    let backX = userLevelsX - buttonGap;
+    if (userProfile.role === 'admin') {
+      const creatorBtnW = 120;
+      const creatorX = backX - creatorBtnW;
+      
+      ctx.fillStyle = 'rgba(255, 152, 0, 0.3)';
+      ctx.fillRect(creatorX, buttonY, creatorBtnW, buttonH);
+      ctx.strokeStyle = '#ff9800';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(creatorX + 0.5, buttonY + 0.5, creatorBtnW - 1, buttonH - 1);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('Course Creator', creatorX + creatorBtnW / 2, buttonY + buttonH / 2);
+      courseSelectHotspots.push({ kind: 'btn', action: 'courseCreator', x: creatorX, y: buttonY, w: creatorBtnW, h: buttonH });
+      
+      backX = creatorX - buttonGap;
+    }
+    
+    // Back button (left of other buttons)
     const backBtnW = 80;
-    const backX = px + panelW - pad - backBtnW;
+    backX -= backBtnW;
     
     ctx.fillStyle = 'rgba(128,128,128,0.3)';
     ctx.fillRect(backX, buttonY, backBtnW, buttonH);
@@ -4404,9 +4535,6 @@ function draw() {
     ctx.lineWidth = 1.5;
     ctx.strokeRect(backX + 0.5, buttonY + 0.5, backBtnW - 1, buttonH - 1);
     ctx.fillStyle = '#ffffff';
-    ctx.font = '14px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
     ctx.fillText('Back', backX + backBtnW / 2, buttonY + buttonH / 2);
     courseSelectHotspots.push({ kind: 'btn', action: 'back', x: backX, y: buttonY, w: backBtnW, h: buttonH });
     
@@ -6150,7 +6278,17 @@ async function loadLevel(path: string) {
       levelCache.set(path, lvl);
     }
   }
-  courseInfo = { index: lvl.course.index, total: lvl.course.total, par: lvl.par, title: lvl.course.title };
+  // For Firebase courses, calculate course info from current state
+  if (!singleLevelMode && levelPaths.length > 0) {
+    courseInfo = { 
+      index: currentLevelIndex + 1, 
+      total: levelPaths.length, 
+      par: lvl.par, 
+      title: lvl.course?.title 
+    };
+  } else {
+    courseInfo = { index: lvl.course?.index || 1, total: lvl.course?.total || 1, par: lvl.par, title: lvl.course?.title };
+  }
   levelCanvas = { width: (lvl.canvas?.width ?? WIDTH), height: (lvl.canvas?.height ?? HEIGHT) };
   walls = lvl.walls ?? [];
   sands = lvl.sand ?? [];

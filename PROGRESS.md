@@ -25,7 +25,8 @@ As of 2025-08-25, focus these open items migrated from `TODO.md`:
    - [x] Rendering/TS cleanup: guarded `item.data` when rendering list items in `src/main.ts` (strict null checks)
    - [x] Course Editor drag-and-drop: Added missing level reordering with drag state, visual feedback, and proper array manipulation
    - [x] Course Select UI redesign: Redesigned to match Course Editor visual design (centered panel, scrollable list, mouse wheel support)
-   - [ ] Course Select integration (consume `courses` to build runtime lists)
+   - [x] Course Select integration: Firebase course loading, Course Creator button for admins, User Made Levels separation
+   - [x] Firebase course playback fixes: Level progression, UI display, optimized loading
    - [ ] Test pass: end-to-end Course Creator UI interactions (mouse/keyboard, scrolling, buttons, cancel)
   
 - **Level System**

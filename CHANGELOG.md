@@ -13,8 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    - Centered 800x600 panel with dark translucent background and border, scrollable course list with custom scrollbar.
    - Keyboard and mouse support: Up/Down with auto-scroll, Enter/Esc, mouse wheel scrolling, clickable rows and buttons.
    - Bottom-aligned actions: Edit Course, New Course, Delete Course, Cancel.
+- **Firebase course integration**: Added full Firebase course loading and playback support in Course Select screen
+- **Course Creator integration**: Added admin-only Course Creator button in Course Select screen for seamless course management
 
 ### Changed
+- **Course Select UI redesign**: Transformed from simple buttons to centered panel design with `courseSelectState`, `courseSelectHotspots`, mouse wheel scrolling, and hover states
+- **User Made Levels**: Moved to separate button on bottom right of Course Select screen, distinguishing individual levels from structured courses
+- **Firebase course loading**: Optimized to load all levels in single Firebase call instead of individual requests per level
 - Level Editor • Course Creator: Reorder overlay now validates results before saving and skips no-op updates.
   - Validation: checks item count, duplicate IDs, and unknown IDs; shows toast on invalid submissions.
   - Optimization: if order is unchanged, no Firebase write is performed; shows "No changes" toast.
@@ -27,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Mouse wheel scrolling support and hover states for better UX.
 
 ### Fixed
+- **Course Editor drag-and-drop**: Fixed missing level reordering with comprehensive drag state tracking, visual feedback (orange borders, green drop indicators), mouse event handling, and drag threshold implementation
+- **Firebase course playback**: Fixed level progression issues where courses would loop after 4 levels instead of playing all levels in correct order
+- **Course UI display**: Fixed "Hole X/Y" display to show correct total number of levels for Firebase courses instead of defaulting to individual level metadata
 - Overlays: fully swallow keyboard events while a modal is open.
   - Added `stopPropagation()` in `handleOverlayKey()`.
   - Added capture-phase `keyup`/`keypress` listeners on `window`/`document`/`canvas` to intercept early.

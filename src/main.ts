@@ -1086,6 +1086,28 @@ type UsersHotspot = {
 
 let usersUiHotspots: UsersHotspot[] = [];
 
+// Admin Menu state and hotspots
+type AdminMenuHotspot = {
+  kind: 'levelManagement' | 'userManagement' | 'back';
+  x: number; y: number; w: number; h: number;
+};
+
+let adminMenuHotspots: AdminMenuHotspot[] = [];
+
+// Level Management state and hotspots
+type LevelManagementHotspot = {
+  kind: 'back' | 'delete' | 'levelItem';
+  x: number; y: number; w: number; h: number;
+  levelId?: string;
+};
+
+let levelManagementHotspots: LevelManagementHotspot[] = [];
+let levelManagementState = {
+  selectedLevelIndex: -1,
+  scrollOffset: 0,
+  levels: [] as Array<{ id: string; title: string; author: string; lastModified: number; data: any }>
+};
+
 function clampToFairway(x: number, y: number): { x: number; y: number } {
   const fairX = COURSE_MARGIN;
   const fairY = COURSE_MARGIN;
@@ -1138,7 +1160,7 @@ window.addEventListener('unhandledrejection', (ev) => {
 
 // Game state
 let lastTime = performance.now();
-let gameState: 'menu' | 'course' | 'options' | 'users' | 'changelog' | 'loading' | 'play' | 'sunk' | 'summary' | 'levelEditor' | 'userLevels' = 'menu';
+let gameState: 'menu' | 'course' | 'options' | 'users' | 'changelog' | 'loading' | 'play' | 'sunk' | 'summary' | 'levelEditor' | 'userLevels' | 'adminMenu' | 'levelManagement' = 'menu';
 
 // Course Select state
 let courseSelectState = {
@@ -2103,7 +2125,7 @@ let transitioning = false; // prevent double-advance while changing holes
 let lastAdvanceFromSunkMs = 0; // used to swallow trailing click after mousedown
 const CLICK_SWALLOW_MS = 180; // shorten delay for snappier feel
 
-let previousGameState: 'menu' | 'course' | 'options' | 'users' | 'changelog' | 'loading' | 'play' | 'sunk' | 'summary' | 'levelEditor' = 'menu';
+let previousGameState: 'menu' | 'course' | 'options' | 'users' | 'changelog' | 'loading' | 'play' | 'sunk' | 'summary' | 'levelEditor' | 'adminMenu' | 'levelManagement' = 'menu';
 
 // Changelog screen state and helpers
 let changelogText: string | null = (typeof CHANGELOG_RAW === 'string' && CHANGELOG_RAW.trim().length > 0) ? CHANGELOG_RAW : null;
@@ -2815,6 +2837,82 @@ canvas.addEventListener('mousedown', (e) => {
     }
     // Users button removed from Options (access via Shift+F after Start)
   }
+  
+  // Admin Menu actions
+  if (gameState === 'adminMenu') {
+    for (const hs of adminMenuHotspots) {
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
+        if (hs.kind === 'levelManagement') {
+          gameState = 'levelManagement';
+          // Load all levels for admin management
+          (async () => {
+            try {
+              if (firebaseReady) {
+                const allLevels = await firebaseManager.levels.getAllLevels();
+                levelManagementState.levels = allLevels.map(level => ({
+                  id: level.name,
+                  title: level.title,
+                  author: level.author,
+                  lastModified: level.lastModified || 0,
+                  data: level.data
+                }));
+                levelManagementState.selectedLevelIndex = -1;
+                levelManagementState.scrollOffset = 0;
+              }
+            } catch (e) {
+              console.error('Failed to load levels for management:', e);
+              showUiToast('Failed to load levels');
+            }
+          })();
+          return;
+        } else if (hs.kind === 'userManagement') {
+          gameState = 'users';
+          return;
+        } else if (hs.kind === 'back') {
+          gameState = previousGameState;
+          return;
+        }
+      }
+    }
+  }
+  
+  // Level Management actions
+  if (gameState === 'levelManagement') {
+    for (const hs of levelManagementHotspots) {
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
+        if (hs.kind === 'back') {
+          gameState = 'adminMenu';
+          return;
+        } else if (hs.kind === 'levelItem' && hs.levelId) {
+          const levelIndex = levelManagementState.levels.findIndex(l => l.id === hs.levelId);
+          if (levelIndex >= 0) {
+            levelManagementState.selectedLevelIndex = levelIndex;
+          }
+          return;
+        } else if (hs.kind === 'delete' && hs.levelId) {
+          const level = levelManagementState.levels.find(l => l.id === hs.levelId);
+          if (level) {
+            (async () => {
+              const confirmed = await showUiConfirm(`Delete level "${level.title}" by ${level.author}?`, 'Delete Level');
+              if (confirmed && firebaseReady) {
+                try {
+                  await firebaseManager.levels.deleteLevel(level.id);
+                  levelManagementState.levels = levelManagementState.levels.filter(l => l.id !== level.id);
+                  levelManagementState.selectedLevelIndex = -1;
+                  showUiToast(`Deleted "${level.title}"`);
+                } catch (e) {
+                  console.error('Failed to delete level:', e);
+                  showUiToast('Failed to delete level');
+                }
+              }
+            })();
+          }
+          return;
+        }
+      }
+    }
+  }
+  
   // Users admin actions
   if (gameState === 'users') {
     for (const hs of usersUiHotspots) {
@@ -2823,7 +2921,7 @@ canvas.addEventListener('mousedown', (e) => {
         try {
           switch (hs.kind) {
             case 'back':
-              gameState = previousGameState;
+              gameState = 'adminMenu';
               break;
             case 'addUser': {
               (async () => {
@@ -3126,6 +3224,27 @@ canvas.addEventListener('mousemove', (e) => {
     canvas.style.cursor = over ? 'pointer' : 'default';
     return;
   }
+  
+  // Admin Menu hover feedback
+  if (gameState === 'adminMenu') {
+    let over = false;
+    for (const hs of adminMenuHotspots) {
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) { over = true; break; }
+    }
+    canvas.style.cursor = over ? 'pointer' : 'default';
+    return;
+  }
+  
+  // Level Management hover feedback
+  if (gameState === 'levelManagement') {
+    let over = false;
+    for (const hs of levelManagementHotspots) {
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) { over = true; break; }
+    }
+    canvas.style.cursor = over ? 'pointer' : 'default';
+    return;
+  }
+  
   // Hover state for Menu button
   const r = getMenuRect();
   const over = !paused && p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
@@ -3277,13 +3396,24 @@ canvas.addEventListener('click', (e) => {
   }
 });
 
-// Scroll wheel support (changelog)
+// Scroll wheel support (changelog, level management)
 canvas.addEventListener('wheel', (e) => {
-  if (gameState !== 'changelog') return;
-  e.preventDefault();
-  const delta = Math.sign(e.deltaY) * 40;
-  changelogScrollY += delta;
-  clampChangelogScroll();
+  if (gameState === 'changelog') {
+    e.preventDefault();
+    const delta = Math.sign(e.deltaY) * 40;
+    changelogScrollY += delta;
+    clampChangelogScroll();
+    return;
+  }
+  
+  if (gameState === 'levelManagement') {
+    e.preventDefault();
+    const scrollDelta = Math.sign(e.deltaY);
+    const visibleItems = Math.floor(400 / 52); // listH / (itemH + itemGap)
+    const maxScroll = Math.max(0, levelManagementState.levels.length - visibleItems);
+    levelManagementState.scrollOffset = Math.max(0, Math.min(maxScroll, levelManagementState.scrollOffset + scrollDelta));
+    return;
+  }
 }, { passive: false });
 
 // Dev-only: toggle bank-shot preview (robust across targets with per-event guard)
@@ -3432,11 +3562,11 @@ function handleAdminUsersShortcut(e: KeyboardEvent) {
   const keyLower = (e.key || '').toLowerCase();
   const isShiftF = !!e.shiftKey && (e.code === 'KeyF' || keyLower === 'f');
   if (!isShiftF) return;
-  // Only admins can open Users UI
+  // Only admins can open Admin Menu
   if (userProfile.role !== 'admin') return;
-  // Transition into Users UI
+  // Transition into Admin Menu
   previousGameState = gameState;
-  gameState = 'users';
+  gameState = 'adminMenu';
   try { e.preventDefault(); } catch {}
 }
 window.addEventListener('keydown', handleAdminUsersShortcut);
@@ -4171,6 +4301,189 @@ function draw() {
     renderGlobalOverlays();
     return;
   }
+  
+  // Admin Menu screen
+  if (gameState === 'adminMenu') {
+    adminMenuHotspots = [];
+    
+    // Background panel (centered 800x600)
+    const panelW = 800, panelH = 600;
+    const panelX = WIDTH/2 - panelW/2, panelY = HEIGHT/2 - panelH/2;
+    
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(panelX, panelY, panelW, panelH);
+    ctx.strokeStyle = '#cfd2cf';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(panelX, panelY, panelW, panelH);
+    
+    // Title
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.font = 'bold 32px system-ui, sans-serif';
+    ctx.fillText('Admin Menu', panelX + panelW/2, panelY + 40);
+    
+    // Menu buttons
+    const btnW = 300, btnH = 60, btnGap = 30;
+    const startY = panelY + 150;
+    
+    function drawAdminMenuBtn(label: string, kind: AdminMenuHotspot['kind'], y: number) {
+      const btnX = panelX + panelW/2 - btnW/2;
+      ctx.fillStyle = 'rgba(255,255,255,0.1)';
+      ctx.fillRect(btnX, y, btnW, btnH);
+      ctx.strokeStyle = '#cfd2cf';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(btnX, y, btnW, btnH);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '20px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, btnX + btnW/2, y + btnH/2);
+      adminMenuHotspots.push({ kind, x: btnX, y, w: btnW, h: btnH });
+    }
+    
+    drawAdminMenuBtn('Level Management', 'levelManagement', startY);
+    drawAdminMenuBtn('User Management', 'userManagement', startY + btnH + btnGap);
+    
+    // Back button
+    const backBtnW = 120, backBtnH = 40;
+    const backX = panelX + 30, backY = panelY + panelH - backBtnH - 30;
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.fillRect(backX, backY, backBtnW, backBtnH);
+    ctx.strokeStyle = '#cfd2cf';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(backX, backY, backBtnW, backBtnH);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Back', backX + backBtnW/2, backY + backBtnH/2);
+    adminMenuHotspots.push({ kind: 'back', x: backX, y: backY, w: backBtnW, h: backBtnH });
+    
+    return;
+  }
+  
+  // Level Management screen
+  if (gameState === 'levelManagement') {
+    levelManagementHotspots = [];
+    
+    // Background panel (centered 800x600)
+    const panelW = 800, panelH = 600;
+    const panelX = WIDTH/2 - panelW/2, panelY = HEIGHT/2 - panelH/2;
+    
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(panelX, panelY, panelW, panelH);
+    ctx.strokeStyle = '#cfd2cf';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(panelX, panelY, panelW, panelH);
+    
+    // Title
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.font = 'bold 28px system-ui, sans-serif';
+    ctx.fillText('Level Management', panelX + panelW/2, panelY + 30);
+    
+    // Level count
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.fillText(`${levelManagementState.levels.length} levels total`, panelX + panelW/2, panelY + 70);
+    
+    // Scrollable level list
+    const listX = panelX + 30, listY = panelY + 110;
+    const listW = panelW - 60, listH = 400;
+    const itemH = 50, itemGap = 2;
+    const visibleItems = Math.floor(listH / (itemH + itemGap));
+    const maxScroll = Math.max(0, levelManagementState.levels.length - visibleItems);
+    levelManagementState.scrollOffset = Math.max(0, Math.min(maxScroll, levelManagementState.scrollOffset));
+    
+    // List background
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(listX, listY, listW, listH);
+    ctx.strokeStyle = '#666';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(listX, listY, listW, listH);
+    
+    // Render visible levels
+    for (let i = 0; i < visibleItems && i + levelManagementState.scrollOffset < levelManagementState.levels.length; i++) {
+      const levelIndex = i + levelManagementState.scrollOffset;
+      const level = levelManagementState.levels[levelIndex];
+      const itemY = listY + i * (itemH + itemGap);
+      const isSelected = levelIndex === levelManagementState.selectedLevelIndex;
+      
+      // Item background
+      ctx.fillStyle = isSelected ? 'rgba(100,150,255,0.3)' : 'rgba(255,255,255,0.05)';
+      ctx.fillRect(listX + 2, itemY, listW - 4, itemH);
+      
+      // Level info
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '16px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(level.title, listX + 10, itemY + 8);
+      
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.fillStyle = '#cccccc';
+      ctx.fillText(`by ${level.author} • ${new Date(level.lastModified).toLocaleDateString()}`, listX + 10, itemY + 26);
+      
+      // Delete button
+      const delBtnW = 60, delBtnH = 24;
+      const delBtnX = listX + listW - delBtnW - 10, delBtnY = itemY + 13;
+      ctx.fillStyle = 'rgba(255,100,100,0.8)';
+      ctx.fillRect(delBtnX, delBtnY, delBtnW, delBtnH);
+      ctx.strokeStyle = '#ff6666';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(delBtnX, delBtnY, delBtnW, delBtnH);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Delete', delBtnX + delBtnW/2, delBtnY + delBtnH/2);
+      
+      // Add hotspots
+      levelManagementHotspots.push({ 
+        kind: 'levelItem', 
+        x: listX + 2, y: itemY, w: listW - delBtnW - 20, h: itemH,
+        levelId: level.id
+      });
+      levelManagementHotspots.push({ 
+        kind: 'delete', 
+        x: delBtnX, y: delBtnY, w: delBtnW, h: delBtnH,
+        levelId: level.id
+      });
+    }
+    
+    // Scrollbar if needed
+    if (levelManagementState.levels.length > visibleItems) {
+      const scrollbarX = listX + listW - 12;
+      const scrollbarW = 8;
+      const scrollbarH = listH;
+      const thumbH = Math.max(20, (visibleItems / levelManagementState.levels.length) * scrollbarH);
+      const thumbY = listY + (levelManagementState.scrollOffset / maxScroll) * (scrollbarH - thumbH);
+      
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.fillRect(scrollbarX, listY, scrollbarW, scrollbarH);
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.fillRect(scrollbarX, thumbY, scrollbarW, thumbH);
+    }
+    
+    // Back button
+    const backBtnW = 120, backBtnH = 40;
+    const backX = panelX + 30, backY = panelY + panelH - backBtnH - 30;
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.fillRect(backX, backY, backBtnW, backBtnH);
+    ctx.strokeStyle = '#cfd2cf';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(backX, backY, backBtnW, backBtnH);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Back', backX + backBtnW/2, backY + backBtnH/2);
+    levelManagementHotspots.push({ kind: 'back', x: backX, y: backY, w: backBtnW, h: backBtnH });
+    
+    return;
+  }
+  
   // Users admin screen
   if (gameState === 'users') {
     usersUiHotspots = [];

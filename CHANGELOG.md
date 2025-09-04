@@ -13,10 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    - Centered 800x600 panel with dark translucent background and border, scrollable course list with custom scrollbar.
    - Keyboard and mouse support: Up/Down with auto-scroll, Enter/Esc, mouse wheel scrolling, clickable rows and buttons.
    - Bottom-aligned actions: Edit Course, New Course, Delete Course, Cancel.
+- Admin Menu redesign: Shift+F now opens Admin Menu with Level Management and User Management sections
+
+### Fixed
+- Level Management delete button freeze issue caused by async scope problems
 - **Firebase course integration**: Added full Firebase course loading and playback support in Course Select screen
 - **Course Creator integration**: Added admin-only Course Creator button in Course Select screen for seamless course management
 - **Level Editor Load Level**: Enhanced with filtering system (My Levels, Other Users, Dev Levels, All Levels) and proper admin/user permissions
-- **Admin Menu redesign**: Replaced direct Shift+F access to Users with structured Admin Menu containing Level Management and User Management sections
 
 ### Changed
 - **Course Select UI redesign**: Transformed from simple buttons to centered panel design with `courseSelectState`, `courseSelectHotspots`, mouse wheel scrolling, and hover states

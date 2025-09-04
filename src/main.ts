@@ -2891,21 +2891,29 @@ canvas.addEventListener('mousedown', (e) => {
           return;
         } else if (hs.kind === 'delete' && hs.levelId) {
           const level = levelManagementState.levels.find(l => l.id === hs.levelId);
-          if (level) {
-            (async () => {
-              const confirmed = await showUiConfirm(`Delete level "${level.title}" by ${level.author}?`, 'Delete Level');
-              if (confirmed && firebaseReady) {
-                try {
-                  await firebaseManager.levels.deleteLevel(level.id);
-                  levelManagementState.levels = levelManagementState.levels.filter(l => l.id !== level.id);
-                  levelManagementState.selectedLevelIndex = -1;
-                  showUiToast(`Deleted "${level.title}"`);
-                } catch (e) {
-                  console.error('Failed to delete level:', e);
-                  showUiToast('Failed to delete level');
+          if (level && firebaseReady) {
+            // Store the level info for the async operation
+            const levelToDelete = { id: level.id, title: level.title, author: level.author };
+            
+            // Use the same pattern as other delete operations in the codebase
+            showUiConfirm(`Delete level "${levelToDelete.title}" by ${levelToDelete.author}?`, 'Delete Level')
+              .then(confirmed => {
+                if (confirmed) {
+                  return firebaseManager.levels.deleteLevel(levelToDelete.id)
+                    .then(() => {
+                      // Update state after successful deletion
+                      levelManagementState.levels = levelManagementState.levels.filter(l => l.id !== levelToDelete.id);
+                      levelManagementState.selectedLevelIndex = -1;
+                      showUiToast(`Deleted "${levelToDelete.title}"`);
+                    });
                 }
-              }
-            })();
+                // If not confirmed, do nothing
+                return Promise.resolve();
+              })
+              .catch(e => {
+                console.error('Failed to delete level:', e);
+                showUiToast('Failed to delete level');
+              });
           }
           return;
         }

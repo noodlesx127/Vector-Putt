@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    - Bottom-aligned actions: Edit Course, New Course, Delete Course, Cancel.
 - **Firebase course integration**: Added full Firebase course loading and playback support in Course Select screen
 - **Course Creator integration**: Added admin-only Course Creator button in Course Select screen for seamless course management
+- **Level Editor Load Level**: Enhanced with filtering system (My Levels, Other Users, Dev Levels, All Levels) and proper admin/user permissions
 
 ### Changed
 - **Course Select UI redesign**: Transformed from simple buttons to centered panel design with `courseSelectState`, `courseSelectHotspots`, mouse wheel scrolling, and hover states
@@ -39,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - State managed via `userLevelsState` (selection, scroll, search, filter) and `userLevelsHotspots` for hit testing.
 
 ### Fixed
+- **Level Editor Load Level bug**: Fixed issue where admins couldn't find levels and regular users only saw limited results. Now properly loads all accessible levels based on user permissions and provides filtering options.
 - **Course Editor drag-and-drop**: Fixed missing level reordering with comprehensive drag state tracking, visual feedback (orange borders, green drop indicators), mouse event handling, and drag threshold implementation
 - **Firebase course playback**: Fixed level progression issues where courses would loop after 4 levels instead of playing all levels in correct order
 - **Course UI display**: Fixed "Hole X/Y" display to show correct total number of levels for Firebase courses instead of defaulting to individual level metadata

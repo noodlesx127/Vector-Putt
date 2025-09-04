@@ -2903,19 +2903,91 @@ class LevelEditorImpl implements LevelEditor {
     if (!this.env) return;
     const env = this.env;
     const username = env.getUserId();
+    const userRole = env.getUserRole?.() || 'user';
+    const isAdmin = userRole === 'admin';
 
-    const entries = await firebaseLevelStore.getUserLevels(username);
-    if (!entries || entries.length === 0) {
+    // Load all available levels based on permissions
+    let allEntries: FirebaseLevelEntry[] = [];
+    
+    try {
+      if (isAdmin) {
+        // Admin can see all levels
+        allEntries = await firebaseLevelStore.getAllLevels(username);
+      } else {
+        // Regular users see their own levels + public levels
+        const userLevels = await firebaseLevelStore.getUserLevels(username);
+        const publicLevels = await firebaseLevelStore.getAllLevels(username);
+        // Filter to avoid duplicates and only show accessible levels
+        const userLevelIds = new Set(userLevels.map(l => l.name));
+        const accessiblePublic = publicLevels.filter(l => !userLevelIds.has(l.name));
+        allEntries = [...userLevels, ...accessiblePublic];
+      }
+    } catch (error) {
+      console.error('Failed to load levels for picker:', error);
+      env.showToast('Failed to load levels');
+      return;
+    }
+
+    if (!allEntries || allEntries.length === 0) {
       env.showToast('No levels found');
       return;
     }
 
-    const items = entries.map((e) => ({
-      label: `${e.title} (${new Date(e.lastModified || 0).toLocaleString()})`,
+    // Categorize levels for filtering
+    const myLevels = allEntries.filter(e => e.author === username || 
+      (e.data?.meta?.authorId === username) || (e.data?.meta?.authorName === username));
+    const otherUserLevels = allEntries.filter(e => 
+      e.author !== username && e.author !== 'Unknown' && e.author !== 'Dev' &&
+      e.data?.meta?.authorId !== username && e.data?.meta?.authorName !== username);
+    const devLevels = allEntries.filter(e => 
+      e.author === 'Dev' || e.author === 'Unknown' || 
+      (!e.data?.meta?.authorId && !e.data?.meta?.authorName));
+
+    // Create filter options
+    const filterOptions = [
+      { label: `All Levels (${allEntries.length})`, value: 'all' },
+      { label: `My Levels (${myLevels.length})`, value: 'mine' },
+      { label: `Other Users (${otherUserLevels.length})`, value: 'others' },
+      { label: `Dev Levels (${devLevels.length})`, value: 'dev' }
+    ];
+
+    // Show filter selection first
+    const filterChoice = await env.showList('Load Level - Select Filter', filterOptions, 0);
+    if (!filterChoice) return;
+
+    const filterValue = (filterChoice as any)?.value || 'all';
+    
+    // Apply filter
+    let filteredEntries: FirebaseLevelEntry[];
+    switch (filterValue) {
+      case 'mine':
+        filteredEntries = myLevels;
+        break;
+      case 'others':
+        filteredEntries = otherUserLevels;
+        break;
+      case 'dev':
+        filteredEntries = devLevels;
+        break;
+      default:
+        filteredEntries = allEntries;
+    }
+
+    if (filteredEntries.length === 0) {
+      env.showToast('No levels found for selected filter');
+      return;
+    }
+
+    // Sort by last modified (newest first)
+    filteredEntries.sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0));
+
+    // Create level selection items
+    const items = filteredEntries.map((e) => ({
+      label: `${e.title} by ${e.author} (${new Date(e.lastModified || 0).toLocaleDateString()})`,
       value: e
     }));
 
-    const chosen = await env.showList('Load Level', items, 0);
+    const chosen = await env.showList('Load Level - Select Level', items, 0);
     if (!chosen) return;
 
     const ok = await env.showConfirm('Load selected level and discard current changes?', 'Load Level');
@@ -2923,9 +2995,9 @@ class LevelEditorImpl implements LevelEditor {
 
     const chosenItem: any = chosen as any;
     const le: FirebaseLevelEntry = (chosenItem && chosenItem.value) ? chosenItem.value : (chosen as FirebaseLevelEntry);
-    console.log('Editor load: selected level', { id: (le as any)?.name, title: (le as any)?.title, user: username });
-    // Some older saves or migrations may store data as a JSON string or omit it in the listing.
-    // Prefer embedded data from the list value
+    console.log('Editor load: selected level', { id: (le as any)?.name, title: (le as any)?.title, user: username, filter: filterValue });
+    
+    // Load level data
     let levelData: any = (le as any)?.data ?? (chosenItem && chosenItem.value ? chosenItem.value.data : undefined);
     if (typeof levelData === 'string') {
       try {
@@ -2937,28 +3009,25 @@ class LevelEditorImpl implements LevelEditor {
     }
 
     if (!levelData || typeof levelData !== 'object') {
-      // Fallback: fetch the full level by ID from Firebase (scoped to user)
-      console.log('Editor load: fetching by id with user scope', le.name, username);
-      let source = 'user';
+      // Fallback: fetch the full level by ID from Firebase
+      console.log('Editor load: fetching by id', le.name);
       let fetched = await firebaseLevelStore.loadLevel(le.name, username);
-      if (!fetched) {
-        // Secondary fallback: try without user scope (public path)
-        console.log('Editor load: user-scoped fetch returned null; trying public path');
+      if (!fetched && isAdmin) {
+        // Admin fallback: try without user scope
         fetched = await firebaseLevelStore.loadLevel(le.name);
-        source = 'public';
       }
       if (!fetched) {
-        env.showToast('Failed to load level');
+        env.showToast('Failed to load level data');
         return;
       }
-      console.log('Editor load: fetched level OK', { id: le.name, source });
+      console.log('Editor load: fetched level OK', { id: le.name });
       levelData = fetched;
     }
 
     const fixed = applyLevelDataFixups(levelData);
     this.applyLevelToEnv(fixed, env);
     this.editorCurrentSavedId = le.name; // Firebase ID
-    env.showToast(`Loaded "${le.title}"`);
+    env.showToast(`Loaded "${le.title}" by ${le.author}`);
   }
 
   async openDeletePicker(): Promise<void> {

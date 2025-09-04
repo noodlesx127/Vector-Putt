@@ -31,6 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `courseSelectState` for selection tracking and `courseSelectHotspots` for click detection.
   - Mouse wheel scrolling support and hover states for better UX.
 
+- User Made Levels UI redesign: Updated to match the centered panel design used by Course Creator and Course Select.
+  - Centered 800x600 panel with dark translucent background and blue border; consistent typography and spacing.
+  - Integrated search bar, filter buttons (All/Bundled/User/Local), and results count.
+  - Scrollable level list with selection highlight, hover states, and precise click hotspots.
+  - Bottom Back button and concise keyboard hints; mouse wheel scrolling supported.
+  - State managed via `userLevelsState` (selection, scroll, search, filter) and `userLevelsHotspots` for hit testing.
+
 ### Fixed
 - **Course Editor drag-and-drop**: Fixed missing level reordering with comprehensive drag state tracking, visual feedback (orange borders, green drop indicators), mouse event handling, and drag threshold implementation
 - **Firebase course playback**: Fixed level progression issues where courses would loop after 4 levels instead of playing all levels in correct order

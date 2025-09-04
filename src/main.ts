@@ -1146,6 +1146,15 @@ let courseSelectState = {
   scrollOffset: 0,
   courses: [] as Array<{ id: string; title: string; type: 'dev' | 'user' | 'firebase'; levelCount: number; courseData?: any }>
 };
+
+// User Levels state
+let userLevelsState = {
+  selectedLevelIndex: -1,
+  scrollOffset: 0,
+  searchQuery: '',
+  filterSource: 'all' as 'all' | 'bundled' | 'filesystem' | 'localStorage'
+};
+let userLevelsHotspots: Array<{ kind: 'levelItem' | 'btn' | 'filter' | 'search'; index?: number; action?: string; filterId?: string; x: number; y: number; w: number; h: number }> = [];
 let levelPaths: string[] = [];
 let currentLevelIndex = 0;
 let paused = false;
@@ -2671,125 +2680,40 @@ canvas.addEventListener('mousedown', (e) => {
   }
   // Handle User Levels screen clicks
   if (gameState === 'userLevels') {
-    const back = getCourseBackRect();
-    if (p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h) {
-      gameState = 'course';
-      return;
-    }
-    
-    // Handle search bar clicks
-    const searchBarX = WIDTH/2 - 200;
-    const searchBarY = 70;
-    const searchBarW = 300;
-    const searchBarH = 24;
-    
-    if (p.x >= searchBarX && p.x <= searchBarX + searchBarW && p.y >= searchBarY && p.y <= searchBarY + searchBarH) {
-      // Focus search bar - show prompt for search input
-      (async () => {
-        const query = await showUiPrompt('Search levels by name or author:', levelSearchQuery, 'Search Levels');
-        if (query !== null) {
-          levelSearchQuery = query;
+    // Check for level item clicks and button clicks
+    for (const hs of userLevelsHotspots) {
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
+        if (hs.kind === 'levelItem' && typeof hs.index === 'number') {
+          userLevelsState.selectedLevelIndex = hs.index;
+          // Double-click to play level
+          const level = filteredUserLevelsList[hs.index];
+          if (level) {
+            void playUserLevel(level);
+          }
+          return;
+        }
+        if (hs.kind === 'btn') {
+          if (hs.action === 'back') {
+            gameState = 'course';
+            return;
+          }
+        }
+        if (hs.kind === 'filter' && hs.filterId) {
+          userLevelsState.filterSource = hs.filterId as any;
+          levelFilterSource = hs.filterId;
           applyLevelFilters();
-        }
-      })();
-      return;
-    }
-    
-    // Handle filter button clicks
-    const filterY = searchBarY;
-    const filterButtonW = 60;
-    const filterButtonH = 24;
-    const filterSpacing = 4;
-    let filterX = searchBarX + searchBarW + 20;
-    
-    const filterOptions = [
-      { id: 'all', label: 'All' },
-      { id: 'bundled', label: 'Built-in' },
-      { id: 'filesystem', label: 'User' },
-      { id: 'localStorage', label: 'Local' }
-    ];
-    
-    for (const filter of filterOptions) {
-      if (p.x >= filterX && p.x <= filterX + filterButtonW && p.y >= filterY && p.y <= filterY + filterButtonH) {
-        levelFilterSource = filter.id;
-        applyLevelFilters();
-        return;
-      }
-      filterX += filterButtonW + filterSpacing;
-    }
-
-    // Handle level list clicks
-    if (filteredUserLevelsList.length > 0) {
-      const listY = 130;
-      const itemHeight = 60; // Updated to match rendering
-      const maxVisible = 7; // Updated to match rendering
-      const startIndex = Math.max(0, selectedUserLevelIndex - Math.floor(maxVisible / 2));
-      const endIndex = Math.min(filteredUserLevelsList.length, startIndex + maxVisible);
-      
-      for (let i = startIndex; i < endIndex; i++) {
-        const y = listY + (i - startIndex) * itemHeight;
-        const cardX = 40, cardW = WIDTH - 80;
-        
-        if (p.x >= cardX && p.x <= cardX + cardW && p.y >= y && p.y <= y + itemHeight) {
-          
-          if (i === selectedUserLevelIndex) {
-            // Double-click behavior: play the level
-            void playUserLevel(filteredUserLevelsList[i]);
-          } else {
-            // Single click: select the level
-            selectedUserLevelIndex = i;
-          }
           return;
         }
-      }
-      
-      // Handle action button clicks when a level is selected
-      if (selectedUserLevelIndex >= startIndex && selectedUserLevelIndex < endIndex) {
-        const level = filteredUserLevelsList[selectedUserLevelIndex];
-        const isOwner = (level.author || '').toLowerCase() === (userProfile?.name || '').toLowerCase();
-        const isAdmin = userProfile?.role === 'admin';
-        const canEdit = isOwner || isAdmin;
-        
-        const selectedY = listY + (selectedUserLevelIndex - startIndex) * itemHeight;
-        const buttonY = selectedY + 6;
-        const buttonH = 12;
-        const cardX = 40, cardW = WIDTH - 80;
-        let buttonX = cardX + cardW - 12;
-        
-        // Play button (always available)
-        const playW = 40;
-        buttonX -= playW;
-        if (p.x >= buttonX && p.x <= buttonX + playW && p.y >= buttonY && p.y <= buttonY + buttonH) {
-          void playUserLevel(level);
+        if (hs.kind === 'search') {
+          (async () => {
+            const query = await showUiPrompt('Search levels by name or author:', userLevelsState.searchQuery, 'Search Levels');
+            if (query !== null) {
+              userLevelsState.searchQuery = query;
+              levelSearchQuery = query;
+              applyLevelFilters();
+            }
+          })();
           return;
-        }
-        
-        // Duplicate button
-        const dupW = 35;
-        buttonX -= dupW + 4;
-        if (p.x >= buttonX && p.x <= buttonX + dupW && p.y >= buttonY && p.y <= buttonY + buttonH) {
-          void duplicateUserLevel(level);
-          return;
-        }
-        
-        // Edit button (if can edit)
-        if (canEdit) {
-          const editW = 30;
-          buttonX -= editW + 4;
-          if (p.x >= buttonX && p.x <= buttonX + editW && p.y >= buttonY && p.y <= buttonY + buttonH) {
-            void editUserLevel(level);
-            return;
-          }
-        }
-        
-        // Delete button (if can edit)
-        if (canEdit) {
-          const delW = 30;
-          buttonX -= delW + 4;
-          if (p.x >= buttonX && p.x <= buttonX + delW && p.y >= buttonY && p.y <= buttonY + buttonH) {
-            void deleteUserLevel(level);
-            return;
-          }
         }
       }
     }
@@ -4545,41 +4469,60 @@ function draw() {
     renderGlobalOverlays();
     return;
   }
-  // User Levels screen
+  // User Levels screen - centered panel design
   if (gameState === 'userLevels') {
+    // Clear hotspots for this frame
+    userLevelsHotspots = [];
+    
+    // Dark background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    
+    // Main panel (800x600 centered)
+    const panelW = 800;
+    const panelH = 600;
+    const panelX = (WIDTH - panelW) / 2;
+    const panelY = (HEIGHT - panelH) / 2;
+    
+    // Panel background
+    ctx.fillStyle = 'rgba(20, 30, 40, 0.95)';
+    ctx.fillRect(panelX, panelY, panelW, panelH);
+    ctx.strokeStyle = 'rgba(100, 150, 200, 0.5)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(panelX, panelY, panelW, panelH);
+    
+    // Title
     ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.font = '28px system-ui, sans-serif';
-    ctx.fillText('Level Browser', WIDTH/2, 40);
+    ctx.font = '24px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('Level Browser', panelX + panelW/2, panelY + 20);
     
-    // Search bar
-    const searchBarX = WIDTH/2 - 200;
-    const searchBarY = 70;
-    const searchBarW = 300;
-    const searchBarH = 24;
+    // Search and filter bar
+    const searchY = panelY + 60;
+    const searchX = panelX + 20;
+    const searchW = 300;
+    const searchH = 32;
     
-    ctx.fillStyle = 'rgba(255,255,255,0.1)';
-    ctx.fillRect(searchBarX, searchBarY, searchBarW, searchBarH);
-    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    // Search box
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.fillRect(searchX, searchY, searchW, searchH);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(searchBarX, searchBarY, searchBarW, searchBarH);
+    ctx.strokeRect(searchX, searchY, searchW, searchH);
     
-    ctx.fillStyle = '#ffffff';
+    // Search text
+    ctx.fillStyle = userLevelsState.searchQuery ? '#ffffff' : '#888888';
     ctx.font = '14px system-ui, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    const searchText = levelSearchQuery || 'Search levels...';
-    const searchColor = levelSearchQuery ? '#ffffff' : '#888888';
-    ctx.fillStyle = searchColor;
-    ctx.fillText(searchText, searchBarX + 8, searchBarY + searchBarH/2);
+    const searchText = userLevelsState.searchQuery || 'Search levels...';
+    ctx.fillText(searchText, searchX + 12, searchY + searchH/2);
+    
+    // Add search hotspot
+    userLevelsHotspots.push({ kind: 'search', x: searchX, y: searchY, w: searchW, h: searchH });
     
     // Filter buttons
-    const filterY = searchBarY;
-    const filterButtonW = 60;
-    const filterButtonH = 24;
-    const filterSpacing = 4;
-    let filterX = searchBarX + searchBarW + 20;
-    
     const filterOptions = [
       { id: 'all', label: 'All' },
       { id: 'bundled', label: 'Built-in' },
@@ -4587,262 +4530,178 @@ function draw() {
       { id: 'localStorage', label: 'Local' }
     ];
     
+    let filterX = searchX + searchW + 20;
+    const filterW = 70;
+    const filterH = 32;
+    
     for (const filter of filterOptions) {
-      const isActive = levelFilterSource === filter.id;
+      const isActive = userLevelsState.filterSource === filter.id;
       
-      ctx.fillStyle = isActive ? 'rgba(33, 150, 243, 0.8)' : 'rgba(255,255,255,0.1)';
-      ctx.fillRect(filterX, filterY, filterButtonW, filterButtonH);
-      ctx.strokeStyle = isActive ? 'rgba(33, 150, 243, 1)' : 'rgba(255,255,255,0.3)';
+      ctx.fillStyle = isActive ? 'rgba(100, 150, 200, 0.8)' : 'rgba(255, 255, 255, 0.1)';
+      ctx.fillRect(filterX, searchY, filterW, filterH);
+      ctx.strokeStyle = isActive ? 'rgba(100, 150, 200, 1)' : 'rgba(255, 255, 255, 0.3)';
       ctx.lineWidth = 1;
-      ctx.strokeRect(filterX, filterY, filterButtonW, filterButtonH);
+      ctx.strokeRect(filterX, searchY, filterW, filterH);
       
       ctx.fillStyle = '#ffffff';
       ctx.font = '12px system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(filter.label, filterX + filterButtonW/2, filterY + filterButtonH/2);
+      ctx.fillText(filter.label, filterX + filterW/2, searchY + filterH/2);
       
-      filterX += filterButtonW + filterSpacing;
+      // Add filter hotspot
+      userLevelsHotspots.push({ kind: 'filter', filterId: filter.id, x: filterX, y: searchY, w: filterW, h: filterH });
+      
+      filterX += filterW + 8;
     }
     
     // Results count
     ctx.fillStyle = '#cccccc';
     ctx.font = '12px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(`${filteredUserLevelsList.length} of ${userLevelsList.length} levels`, WIDTH/2, 104);
+    ctx.textAlign = 'left';
+    ctx.fillText(`${filteredUserLevelsList.length} of ${userLevelsList.length} levels`, searchX, searchY + filterH + 15);
+    
+    // Level list area
+    const listY = searchY + filterH + 35;
+    const listH = panelH - (listY - panelY) - 60; // Leave space for back button
+    const itemH = 50;
+    const maxVisible = Math.floor(listH / itemH);
     
     if (filteredUserLevelsList.length === 0) {
-      // Empty state with better styling
-      ctx.fillStyle = 'rgba(255,255,255,0.1)';
-      ctx.fillRect(WIDTH/2 - 200, 140, 400, 120);
-      ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+      // Empty state
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.fillRect(panelX + 20, listY, panelW - 40, listH);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
       ctx.lineWidth = 1;
-      ctx.strokeRect(WIDTH/2 - 200, 140, 400, 120);
+      ctx.strokeRect(panelX + 20, listY, panelW - 40, listH);
       
       ctx.fillStyle = '#ffffff';
-      ctx.font = '18px system-ui, sans-serif';
-      const emptyMessage = levelSearchQuery || levelFilterSource !== 'all' 
+      ctx.font = '16px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const emptyMessage = userLevelsState.searchQuery || userLevelsState.filterSource !== 'all' 
         ? 'No levels match your search/filter'
         : 'No user levels found';
-      ctx.fillText(emptyMessage, WIDTH/2, 170);
+      ctx.fillText(emptyMessage, panelX + panelW/2, listY + listH/2 - 20);
       
-      if (!levelSearchQuery && levelFilterSource === 'all') {
-        ctx.font = '14px system-ui, sans-serif';
-        ctx.fillStyle = '#cccccc';
-        ctx.fillText('Create levels in the Level Editor to see them here', WIDTH/2, 200);
-        ctx.fillText('Click Level Editor from the main menu to get started', WIDTH/2, 220);
-      } else {
-        ctx.font = '14px system-ui, sans-serif';
-        ctx.fillStyle = '#cccccc';
-        ctx.fillText('Try adjusting your search terms or filters', WIDTH/2, 200);
-      }
-    } else {
-      // Instructions with better styling
       ctx.font = '12px system-ui, sans-serif';
       ctx.fillStyle = '#cccccc';
-      ctx.fillText('Click to select • Double-click to play • Keyboard: ↑↓ Navigate • Enter Play • E Edit • Del Delete • D Duplicate • / Search', WIDTH/2, 118);
-      
-      // Level list with improved design and thumbnails
-      const listY = 130;
-      const itemHeight = 60; // Increased height for thumbnails
-      const maxVisible = 7; // Reduced to fit larger items
-      const startIndex = Math.max(0, selectedUserLevelIndex - Math.floor(maxVisible / 2));
+      if (!userLevelsState.searchQuery && userLevelsState.filterSource === 'all') {
+        ctx.fillText('Create levels in the Level Editor to see them here', panelX + panelW/2, listY + listH/2 + 10);
+      } else {
+        ctx.fillText('Try adjusting your search terms or filters', panelX + panelW/2, listY + listH/2 + 10);
+      }
+    } else {
+      // Level list with scrolling
+      const startIndex = Math.max(0, Math.min(filteredUserLevelsList.length - maxVisible, userLevelsState.selectedLevelIndex - Math.floor(maxVisible / 2)));
       const endIndex = Math.min(filteredUserLevelsList.length, startIndex + maxVisible);
       
       for (let i = startIndex; i < endIndex; i++) {
         const level = filteredUserLevelsList[i];
-        const y = listY + (i - startIndex) * itemHeight;
-        const isSelected = i === selectedUserLevelIndex;
-        const isOwner = (level.author || '').toLowerCase() === (userProfile?.name || '').toLowerCase();
-        const isAdmin = userProfile?.role === 'admin';
-        const canEdit = isOwner || isAdmin;
+        const itemY = listY + (i - startIndex) * itemH;
+        const isSelected = i === userLevelsState.selectedLevelIndex;
         
-        // Card-style background
-        const cardX = 40, cardW = WIDTH - 80;
-        ctx.fillStyle = isSelected ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.05)';
-        ctx.fillRect(cardX, y, cardW, itemHeight - 2);
+        // Item background
+        ctx.fillStyle = isSelected ? 'rgba(100, 150, 200, 0.3)' : 'rgba(255, 255, 255, 0.05)';
+        ctx.fillRect(panelX + 20, itemY, panelW - 40, itemH - 2);
         
-        // Border
-        ctx.strokeStyle = isSelected ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.1)';
+        // Item border
+        ctx.strokeStyle = isSelected ? 'rgba(100, 150, 200, 0.8)' : 'rgba(255, 255, 255, 0.1)';
         ctx.lineWidth = 1;
-        ctx.strokeRect(cardX, y, cardW, itemHeight - 2);
+        ctx.strokeRect(panelX + 20, itemY, panelW - 40, itemH - 2);
         
-        // Thumbnail
-        const thumbnailSize = 48;
-        const thumbnailX = cardX + 8;
-        const thumbnailY = y + (itemHeight - thumbnailSize) / 2;
-        
-        try {
-          const thumbnailDataUrl = getLevelThumbnail(level);
-          if (thumbnailDataUrl) {
-            // Create image element if not cached
-            if (!level.thumbnailImage) {
-              level.thumbnailImage = new Image();
-              level.thumbnailImage.src = thumbnailDataUrl;
-            }
-            
-            // Draw thumbnail if image is loaded
-            if (level.thumbnailImage.complete) {
-              ctx.save();
-              ctx.beginPath();
-              ctx.rect(thumbnailX, thumbnailY, thumbnailSize, thumbnailSize);
-              ctx.clip();
-              ctx.drawImage(level.thumbnailImage, thumbnailX, thumbnailY, thumbnailSize, thumbnailSize);
-              ctx.restore();
-              
-              // Thumbnail border
-              ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-              ctx.lineWidth = 1;
-              ctx.strokeRect(thumbnailX, thumbnailY, thumbnailSize, thumbnailSize);
-            } else {
-              // Loading placeholder
-              ctx.fillStyle = 'rgba(255,255,255,0.1)';
-              ctx.fillRect(thumbnailX, thumbnailY, thumbnailSize, thumbnailSize);
-              ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-              ctx.lineWidth = 1;
-              ctx.strokeRect(thumbnailX, thumbnailY, thumbnailSize, thumbnailSize);
-              ctx.fillStyle = '#888888';
-              ctx.font = '10px system-ui, sans-serif';
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'middle';
-              ctx.fillText('...', thumbnailX + thumbnailSize/2, thumbnailY + thumbnailSize/2);
-            }
-          } else {
-            // No thumbnail available
-            ctx.fillStyle = 'rgba(255,255,255,0.05)';
-            ctx.fillRect(thumbnailX, thumbnailY, thumbnailSize, thumbnailSize);
-            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(thumbnailX, thumbnailY, thumbnailSize, thumbnailSize);
-          }
-        } catch (error) {
-          // Error placeholder
-          ctx.fillStyle = 'rgba(255,0,0,0.1)';
-          ctx.fillRect(thumbnailX, thumbnailY, thumbnailSize, thumbnailSize);
-          ctx.strokeStyle = 'rgba(255,0,0,0.3)';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(thumbnailX, thumbnailY, thumbnailSize, thumbnailSize);
-        }
-        
-        // Level name (moved right to accommodate thumbnail)
-        const textX = thumbnailX + thumbnailSize + 12;
+        // Level name
         ctx.fillStyle = '#ffffff';
         ctx.font = '16px system-ui, sans-serif';
-        ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-        ctx.fillText(level.name, textX, y + 8);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText(level.name, panelX + 35, itemY + 8);
         
-        // Author and source with better formatting
+        // Author and source
         ctx.font = '12px system-ui, sans-serif';
         ctx.fillStyle = '#aaaaaa';
-        const sourceLabel = level.source === 'bundled' ? 'bundled' : 
+        const sourceLabel = level.source === 'bundled' ? 'built-in' : 
                            level.source === 'filesystem' ? 'user' : 'local';
-        const sourceColor = level.source === 'bundled' ? '#4CAF50' : 
-                           level.source === 'filesystem' ? '#2196F3' : '#FF9800';
+        ctx.fillText(`by ${level.author} • ${sourceLabel}`, panelX + 35, itemY + 28);
         
-        ctx.fillText(`by ${level.author}`, textX, y + 28);
-        
-        // Source badge
-        const badgeX = textX + ctx.measureText(`by ${level.author} `).width;
-        ctx.fillStyle = sourceColor;
-        ctx.fillRect(badgeX, y + 26, ctx.measureText(sourceLabel).width + 8, 14);
-        ctx.fillStyle = '#000000';
-        ctx.font = '10px system-ui, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(sourceLabel, badgeX + (ctx.measureText(sourceLabel).width + 8) / 2, y + 36);
-        
-        // Quick-play indicator
-        if (isSelected) {
-          ctx.fillStyle = '#4CAF50';
-          ctx.font = '10px system-ui, sans-serif';
-          ctx.textAlign = 'left';
-          ctx.fillText('Double-click to quick-play', textX, y + 44);
-        }
-        
-        // Action buttons (if selected)
-        if (isSelected) {
-          const buttonY = y + 6;
-          const buttonH = 12;
-          let buttonX = cardX + cardW - 12;
-          
-          // Play button (always available)
-          const playW = 40;
-          buttonX -= playW;
-          ctx.fillStyle = 'rgba(76, 175, 80, 0.8)';
-          ctx.fillRect(buttonX, buttonY, playW, buttonH);
-          ctx.fillStyle = '#ffffff';
-          ctx.font = '10px system-ui, sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText('PLAY', buttonX + playW/2, buttonY + buttonH - 2);
-          
-          // Duplicate button
-          const dupW = 35;
-          buttonX -= dupW + 4;
-          ctx.fillStyle = 'rgba(255, 152, 0, 0.8)';
-          ctx.fillRect(buttonX, buttonY, dupW, buttonH);
-          ctx.fillStyle = '#ffffff';
-          ctx.fillText('DUP', buttonX + dupW/2, buttonY + buttonH - 2);
-          
-          // Edit button (if can edit)
-          if (canEdit) {
-            const editW = 30;
-            buttonX -= editW + 4;
-            ctx.fillStyle = 'rgba(33, 150, 243, 0.8)';
-            ctx.fillRect(buttonX, buttonY, editW, buttonH);
-            ctx.fillStyle = '#ffffff';
-            ctx.fillText('EDIT', buttonX + editW/2, buttonY + buttonH - 2);
-          }
-          
-          // Delete button (if can edit)
-          if (canEdit) {
-            const delW = 30;
-            buttonX -= delW + 4;
-            ctx.fillStyle = 'rgba(244, 67, 54, 0.8)';
-            ctx.fillRect(buttonX, buttonY, delW, buttonH);
-            ctx.fillStyle = '#ffffff';
-            ctx.fillText('DEL', buttonX + delW/2, buttonY + buttonH - 2);
-          }
-          
-          // Permission hint for non-owners
-          if (!canEdit) {
-            ctx.textAlign = 'right';
-            ctx.fillStyle = '#666666';
-            ctx.font = '10px system-ui, sans-serif';
-            ctx.fillText('(owner/admin only)', cardX + cardW - 12, y + 30);
-          }
-        }
+        // Add level item hotspot
+        userLevelsHotspots.push({ kind: 'levelItem', index: i, x: panelX + 20, y: itemY, w: panelW - 40, h: itemH - 2 });
       }
       
-      // Modern scroll indicator
+      // Scroll indicator
       if (filteredUserLevelsList.length > maxVisible) {
-        const scrollBarHeight = maxVisible * itemHeight;
-        const scrollBarY = listY;
-        const scrollBarX = WIDTH - 16;
-        const thumbHeight = Math.max(20, scrollBarHeight * maxVisible / filteredUserLevelsList.length);
-        const thumbY = scrollBarY + (selectedUserLevelIndex / filteredUserLevelsList.length) * (scrollBarHeight - thumbHeight);
+        const scrollBarX = panelX + panelW - 15;
+        const scrollBarW = 8;
+        const scrollBarH = listH;
         
         // Track
-        ctx.fillStyle = 'rgba(255,255,255,0.1)';
-        ctx.fillRect(scrollBarX, scrollBarY, 6, scrollBarHeight);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.fillRect(scrollBarX, listY, scrollBarW, scrollBarH);
         
         // Thumb
-        ctx.fillStyle = 'rgba(255,255,255,0.6)';
-        ctx.fillRect(scrollBarX, thumbY, 6, thumbHeight);
+        const thumbH = Math.max(20, scrollBarH * maxVisible / filteredUserLevelsList.length);
+        const thumbY = listY + (startIndex / Math.max(1, filteredUserLevelsList.length - maxVisible)) * (scrollBarH - thumbH);
+        ctx.fillStyle = 'rgba(100, 150, 200, 0.8)';
+        ctx.fillRect(scrollBarX, thumbY, scrollBarW, thumbH);
       }
     }
     
     // Back button
-    const back = getCourseBackRect();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = hoverUserLevelsBack ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = hoverUserLevelsBack ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
-    ctx.fillRect(back.x, back.y, back.w, back.h);
-    ctx.strokeRect(back.x, back.y, back.w, back.h);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '16px system-ui, sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('Back', back.x + back.w/2, back.y + back.h/2 + 0.5);
+    const backBtnW = 100;
+    const backBtnH = 36;
+    const backBtnX = panelX + 20;
+    const backBtnY = panelY + panelH - backBtnH - 20;
     
-    // Version bottom-left
+    ctx.fillStyle = 'rgba(100, 150, 200, 0.8)';
+    ctx.fillRect(backBtnX, backBtnY, backBtnW, backBtnH);
+    ctx.strokeStyle = 'rgba(100, 150, 200, 1)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(backBtnX, backBtnY, backBtnW, backBtnH);
+    
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Back', backBtnX + backBtnW/2, backBtnY + backBtnH/2);
+    
+    // Add back button hotspot
+    userLevelsHotspots.push({ kind: 'btn', action: 'back', x: backBtnX, y: backBtnY, w: backBtnW, h: backBtnH });
+    
+    // Instructions
+    ctx.fillStyle = '#888888';
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('Click to play • ↑↓ Navigate • Enter Play • Esc Back', panelX + panelW - 20, backBtnY + backBtnH/2);
+    
+    renderGlobalOverlays();
+    return;
+  }
+  // Main Menu
+  if ((gameState as any) === 'menu') {
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.font = '32px system-ui, sans-serif';
+    ctx.fillText('Vector Putt', WIDTH/2, 100);
+    
+    const startRect = getMainStartRect();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = hoverMainStart ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverMainStart ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillRect(startRect.x, startRect.y, startRect.w, startRect.h);
+    ctx.strokeRect(startRect.x, startRect.y, startRect.w, startRect.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '18px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Start', startRect.x + startRect.w/2, startRect.y + startRect.h/2 + 0.5);
+    
+    const editorRect = getMainLevelEditorRect();
+    ctx.strokeStyle = hoverMainLevelEditor ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverMainLevelEditor ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillRect(editorRect.x, editorRect.y, editorRect.w, editorRect.h);
+    ctx.strokeRect(editorRect.x, editorRect.y, editorRect.w, editorRect.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('Level Editor', editorRect.x + editorRect.w/2, editorRect.y + editorRect.h/2 + 0.5);
+    
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.font = '12px system-ui, sans-serif';
     ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);

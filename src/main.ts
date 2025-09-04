@@ -2718,6 +2718,7 @@ canvas.addEventListener('mousedown', (e) => {
     for (const hs of userLevelsHotspots) {
       if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
         if (hs.kind === 'levelItem' && typeof hs.index === 'number') {
+          selectedUserLevelIndex = hs.index;
           userLevelsState.selectedLevelIndex = hs.index;
           // Show confirmation before loading level
           const level = filteredUserLevelsList[hs.index];
@@ -4956,14 +4957,15 @@ function draw() {
         ctx.fillText('Try adjusting your search terms or filters', panelX + panelW/2, listY + listH/2 + 10);
       }
     } else {
-      // Level list with scrolling
-      const startIndex = Math.max(0, Math.min(filteredUserLevelsList.length - maxVisible, userLevelsState.selectedLevelIndex - Math.floor(maxVisible / 2)));
+      // Level list with scrolling - use scrollOffset from userLevelsState
+      const scrollOffset = userLevelsState.scrollOffset || 0;
+      const startIndex = Math.max(0, Math.min(filteredUserLevelsList.length - maxVisible, scrollOffset));
       const endIndex = Math.min(filteredUserLevelsList.length, startIndex + maxVisible);
       
       for (let i = startIndex; i < endIndex; i++) {
         const level = filteredUserLevelsList[i];
         const itemY = listY + (i - startIndex) * itemH;
-        const isSelected = i === userLevelsState.selectedLevelIndex;
+        const isSelected = i === selectedUserLevelIndex;
         
         // Item background
         ctx.fillStyle = isSelected ? 'rgba(100, 150, 200, 0.3)' : 'rgba(255, 255, 255, 0.05)';
@@ -6750,14 +6752,16 @@ window.addEventListener('keydown', (e) => {
     if (e.code === 'ArrowDown') {
       if (selectedUserLevelIndex < filteredUserLevelsList.length - 1) {
         selectedUserLevelIndex++;
+        userLevelsState.selectedLevelIndex = selectedUserLevelIndex;
         // Auto-scroll to keep selection visible
-        const rowHeight = 40;
-        const listHeight = Math.min(600, HEIGHT - 120) - 160; // Panel height minus title/search/filters
-        const maxVisibleRows = Math.floor(listHeight / rowHeight);
-        const scrollOffset = Math.floor(selectedUserLevelIndex / maxVisibleRows) * maxVisibleRows;
-        // Update userLevelsState scroll if it exists
-        if (userLevelsState) {
-          userLevelsState.scrollOffset = scrollOffset;
+        const itemH = 50;
+        const listH = 600 - 160; // Panel height minus title/search/filters/buttons
+        const maxVisible = Math.floor(listH / itemH);
+        const currentScrollOffset = userLevelsState.scrollOffset || 0;
+        
+        // Scroll down if selection goes below visible area
+        if (selectedUserLevelIndex >= currentScrollOffset + maxVisible) {
+          userLevelsState.scrollOffset = selectedUserLevelIndex - maxVisible + 1;
         }
       }
       e.preventDefault();
@@ -6766,11 +6770,13 @@ window.addEventListener('keydown', (e) => {
     if (e.code === 'ArrowUp') {
       if (selectedUserLevelIndex > 0) {
         selectedUserLevelIndex--;
+        userLevelsState.selectedLevelIndex = selectedUserLevelIndex;
         // Auto-scroll to keep selection visible
-        const rowHeight = 40;
-        const scrollOffset = Math.floor(selectedUserLevelIndex / Math.floor((Math.min(600, HEIGHT - 120) - 160) / rowHeight)) * Math.floor((Math.min(600, HEIGHT - 120) - 160) / rowHeight);
-        if (userLevelsState) {
-          userLevelsState.scrollOffset = scrollOffset;
+        const currentScrollOffset = userLevelsState.scrollOffset || 0;
+        
+        // Scroll up if selection goes above visible area
+        if (selectedUserLevelIndex < currentScrollOffset) {
+          userLevelsState.scrollOffset = selectedUserLevelIndex;
         }
       }
       e.preventDefault();

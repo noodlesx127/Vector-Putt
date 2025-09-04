@@ -8,7 +8,7 @@
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 
 ## Now (Current Focus)
-As of 2025-08-25, focus these open items migrated from `TODO.md`:
+As of 2025-09-03, focus these open items migrated from `TODO.md`:
 
 - **Physics & Interactions**
   - [ ] Velocity affects terrain (e.g., hard shot may skim sand)

@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    - Centered 800x600 panel with dark translucent background and border, scrollable course list with custom scrollbar.
    - Keyboard and mouse support: Up/Down with auto-scroll, Enter/Esc, mouse wheel scrolling, clickable rows and buttons.
    - Bottom-aligned actions: Edit Course, New Course, Delete Course, Cancel.
+
+### Fixed
+- Course Select: Added arrow key navigation (Up/Down with auto-scroll, Enter to load, Escape to back)
+- Course Select: Added confirmation dialog before loading courses to prevent accidental level loading on misclick
 - Admin Menu redesign: Shift+F now opens Admin Menu with Level Management and User Management sections
 
 ### Fixed

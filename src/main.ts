@@ -2517,7 +2517,7 @@ canvas.addEventListener('mousedown', (e) => {
       // Initialize course list - load from Firebase
       courseSelectState.courses = [];
       void loadCoursesFromFirebase();
-      courseSelectState.selectedCourseIndex = -1;
+      courseSelectState.selectedCourseIndex = 0; // Start with first course selected
       courseSelectState.scrollOffset = 0;
       // On Start: sync active profile with UsersStore (login by name)
       (async () => {
@@ -2671,13 +2671,25 @@ canvas.addEventListener('mousedown', (e) => {
       if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
         if (hs.kind === 'courseItem' && typeof hs.index === 'number') {
           courseSelectState.selectedCourseIndex = hs.index;
+          // Show confirmation before loading course
           const course = courseSelectState.courses[hs.index];
           if (course) {
-            if (course.type === 'dev') {
-              void startDevCourseFromFirebase();
-            } else if (course.type === 'firebase' && course.courseData) {
-              void startFirebaseCourse(course.courseData);
-            }
+            uiOverlay = {
+              kind: 'confirm',
+              title: 'Load Course',
+              message: `Load "${course.title}" (${course.levelCount} levels)?`,
+              cancelable: true,
+              resolve: (confirmed) => {
+                uiOverlay = { kind: 'none' };
+                if (confirmed) {
+                  if (course.type === 'dev') {
+                    void startDevCourseFromFirebase();
+                  } else if (course.type === 'firebase' && course.courseData) {
+                    void startFirebaseCourse(course.courseData);
+                  }
+                }
+              }
+            };
           }
           return;
         }
@@ -6645,6 +6657,65 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   
+  if (gameState === 'course') {
+    // Arrow key navigation for course select
+    if (e.code === 'ArrowDown') {
+      const courses = courseSelectState.courses;
+      if (courseSelectState.selectedCourseIndex < courses.length - 1) {
+        courseSelectState.selectedCourseIndex++;
+        // Auto-scroll to keep selection visible
+        const rowHeight = 40;
+        const listHeight = Math.min(600, HEIGHT - 120) - 200;
+        const maxVisibleRows = Math.floor(listHeight / rowHeight);
+        const maxScroll = Math.max(0, courses.length - maxVisibleRows);
+        if (courseSelectState.selectedCourseIndex >= courseSelectState.scrollOffset + maxVisibleRows) {
+          courseSelectState.scrollOffset = Math.min(maxScroll, courseSelectState.selectedCourseIndex - maxVisibleRows + 1);
+        }
+      }
+      e.preventDefault();
+      return;
+    }
+    if (e.code === 'ArrowUp') {
+      if (courseSelectState.selectedCourseIndex > 0) {
+        courseSelectState.selectedCourseIndex--;
+        // Auto-scroll to keep selection visible
+        if (courseSelectState.selectedCourseIndex < courseSelectState.scrollOffset) {
+          courseSelectState.scrollOffset = courseSelectState.selectedCourseIndex;
+        }
+      }
+      e.preventDefault();
+      return;
+    }
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+      // Load selected course with confirmation
+      const course = courseSelectState.courses[courseSelectState.selectedCourseIndex];
+      if (course) {
+        uiOverlay = {
+          kind: 'confirm',
+          title: 'Load Course',
+          message: `Load "${course.title}" (${course.levelCount} levels)?`,
+          cancelable: true,
+          resolve: (confirmed) => {
+            uiOverlay = { kind: 'none' };
+            if (confirmed) {
+              if (course.type === 'dev') {
+                void startDevCourseFromFirebase();
+              } else if (course.type === 'firebase' && course.courseData) {
+                void startFirebaseCourse(course.courseData);
+              }
+            }
+          }
+        };
+      }
+      e.preventDefault();
+      return;
+    }
+    if (e.code === 'Escape') {
+      gameState = 'menu';
+      e.preventDefault();
+      return;
+    }
+  }
   if (gameState === 'changelog') {
     if (e.code === 'ArrowDown' || e.code === 'PageDown') { changelogScrollY += (e.code === 'PageDown' ? 200 : 40); clampChangelogScroll(); }
     if (e.code === 'ArrowUp' || e.code === 'PageUp') { changelogScrollY -= (e.code === 'PageUp' ? 200 : 40); clampChangelogScroll(); }

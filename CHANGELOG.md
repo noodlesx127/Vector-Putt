@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Course Select: Added arrow key navigation (Up/Down with auto-scroll, Enter to load, Escape to back)
 - Course Select: Added confirmation dialog before loading courses to prevent accidental level loading on misclick
+- User Made Levels: Added arrow key navigation (Up/Down with auto-scroll, Enter to load, Escape to back)
+- User Made Levels: Added confirmation dialog before loading levels to prevent accidental level loading on misclick
+- User Made Levels: Added mouse wheel scrolling support
 - Admin Menu redesign: Shift+F now opens Admin Menu with Level Management and User Management sections
 
 ### Fixed

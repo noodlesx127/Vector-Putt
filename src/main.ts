@@ -2719,10 +2719,21 @@ canvas.addEventListener('mousedown', (e) => {
       if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
         if (hs.kind === 'levelItem' && typeof hs.index === 'number') {
           userLevelsState.selectedLevelIndex = hs.index;
-          // Double-click to play level
+          // Show confirmation before loading level
           const level = filteredUserLevelsList[hs.index];
           if (level) {
-            void playUserLevel(level);
+            uiOverlay = {
+              kind: 'confirm',
+              title: 'Load Level',
+              message: `Load "${level.name}" by ${level.author || 'Unknown'}?`,
+              cancelable: true,
+              resolve: (confirmed) => {
+                uiOverlay = { kind: 'none' };
+                if (confirmed) {
+                  void playUserLevel(level);
+                }
+              }
+            };
           }
           return;
         }
@@ -6424,6 +6435,24 @@ function handleCourseSelectWheel(e: WheelEvent) {
 try { canvas.addEventListener('wheel', handleOverlayWheel as any, { capture: true, passive: false }); } catch {}
 try { canvas.addEventListener('wheel', handleCourseSelectWheel as any, { capture: true, passive: false }); } catch {}
 
+// User Levels wheel scrolling
+function handleUserLevelsWheel(e: WheelEvent) {
+  if (gameState !== 'userLevels') return;
+  try { e.preventDefault(); } catch {}
+  try { e.stopPropagation(); } catch {}
+  
+  const scrollDelta = e.deltaY > 0 ? 1 : -1;
+  const rowHeight = 40;
+  const listHeight = Math.min(600, HEIGHT - 120) - 160; // Panel height minus title/search/filters
+  const maxVisibleRows = Math.floor(listHeight / rowHeight);
+  const maxScroll = Math.max(0, filteredUserLevelsList.length - maxVisibleRows);
+  
+  if (userLevelsState) {
+    userLevelsState.scrollOffset = Math.max(0, Math.min(maxScroll, userLevelsState.scrollOffset + scrollDelta));
+  }
+}
+try { canvas.addEventListener('wheel', handleUserLevelsWheel as any, { capture: true, passive: false }); } catch {}
+
 // Test function to diagnose overlay rendering
 function testOverlay() {
   console.log('testOverlay: Setting test overlay');
@@ -6716,25 +6745,71 @@ window.addEventListener('keydown', (e) => {
       return;
     }
   }
+  if (gameState === 'userLevels') {
+    // Arrow key navigation for user levels
+    if (e.code === 'ArrowDown') {
+      if (selectedUserLevelIndex < filteredUserLevelsList.length - 1) {
+        selectedUserLevelIndex++;
+        // Auto-scroll to keep selection visible
+        const rowHeight = 40;
+        const listHeight = Math.min(600, HEIGHT - 120) - 160; // Panel height minus title/search/filters
+        const maxVisibleRows = Math.floor(listHeight / rowHeight);
+        const scrollOffset = Math.floor(selectedUserLevelIndex / maxVisibleRows) * maxVisibleRows;
+        // Update userLevelsState scroll if it exists
+        if (userLevelsState) {
+          userLevelsState.scrollOffset = scrollOffset;
+        }
+      }
+      e.preventDefault();
+      return;
+    }
+    if (e.code === 'ArrowUp') {
+      if (selectedUserLevelIndex > 0) {
+        selectedUserLevelIndex--;
+        // Auto-scroll to keep selection visible
+        const rowHeight = 40;
+        const scrollOffset = Math.floor(selectedUserLevelIndex / Math.floor((Math.min(600, HEIGHT - 120) - 160) / rowHeight)) * Math.floor((Math.min(600, HEIGHT - 120) - 160) / rowHeight);
+        if (userLevelsState) {
+          userLevelsState.scrollOffset = scrollOffset;
+        }
+      }
+      e.preventDefault();
+      return;
+    }
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+      // Load selected level with confirmation
+      const level = filteredUserLevelsList[selectedUserLevelIndex];
+      if (level) {
+        uiOverlay = {
+          kind: 'confirm',
+          title: 'Load Level',
+          message: `Load "${level.name}" by ${level.author || 'Unknown'}?`,
+          cancelable: true,
+          resolve: (confirmed) => {
+            uiOverlay = { kind: 'none' };
+            if (confirmed) {
+              void playUserLevel(level);
+            }
+          }
+        };
+      }
+      e.preventDefault();
+      return;
+    }
+    if (e.code === 'Escape') {
+      gameState = 'course';
+      e.preventDefault();
+      return;
+    }
+  }
   if (gameState === 'changelog') {
     if (e.code === 'ArrowDown' || e.code === 'PageDown') { changelogScrollY += (e.code === 'PageDown' ? 200 : 40); clampChangelogScroll(); }
     if (e.code === 'ArrowUp' || e.code === 'PageUp') { changelogScrollY -= (e.code === 'PageUp' ? 200 : 40); clampChangelogScroll(); }
     if (e.code === 'Escape') { gameState = 'menu'; }
     return;
   }
+  // Legacy userLevels handlers (keeping E and Delete keys)
   if (gameState === 'userLevels') {
-    if (e.code === 'ArrowUp') {
-      selectedUserLevelIndex = Math.max(0, selectedUserLevelIndex - 1);
-      e.preventDefault();
-    }
-    if (e.code === 'ArrowDown') {
-      selectedUserLevelIndex = Math.min(filteredUserLevelsList.length - 1, selectedUserLevelIndex + 1);
-      e.preventDefault();
-    }
-    if (e.code === 'Enter' && filteredUserLevelsList.length > 0) {
-      void playUserLevel(filteredUserLevelsList[selectedUserLevelIndex]);
-      e.preventDefault();
-    }
     if (e.code === 'KeyE' && filteredUserLevelsList.length > 0) {
       void editUserLevel(filteredUserLevelsList[selectedUserLevelIndex]);
       e.preventDefault();

@@ -1,0 +1,2093 @@
+{
+  "courses": {
+    "-OZ7WLQt-B5iqAp0SyJQ": {
+      "createdAt": 1756784583964,
+      "isPublic": true,
+      "lastModified": 1756873987447,
+      "levelIds": [
+        "-OZ77GXgavX-oiOK1fD_",
+        "-OZ77GYYP-RvrmsFisoW",
+        "-OZ77GZTP6O3PaDXcani",
+        "-OZ77Gbxm255eSlNVJye",
+        "-OZ77Gb4slANYoFOytEC",
+        "-OZ77GaD57JtJxAL9TlE",
+        "-OZ77G_KE39wsH0qY6fw",
+        "noodles",
+        "-OZ6bUR_p9mQG_ayaIIp",
+        "-OZ77GWnUq1bdQ6xftVg"
+      ],
+      "title": "Dev Levs"
+    }
+  },
+  "levels": {
+    "-OZ77GWnUq1bdQ6xftVg": {
+      "authorId": "system",
+      "authorName": "Game Developer",
+      "createdAt": 1756778010343,
+      "data": {
+        "canvas": {
+          "height": 600,
+          "width": 800
+        },
+        "course": {
+          "index": 1,
+          "total": 8
+        },
+        "cup": {
+          "r": 12,
+          "x": 600,
+          "y": 240
+        },
+        "decorations": [
+          {
+            "h": 16,
+            "kind": "flowers",
+            "w": 720,
+            "x": 40,
+            "y": 16
+          },
+          {
+            "h": 16,
+            "kind": "flowers",
+            "w": 720,
+            "x": 40,
+            "y": 568
+          }
+        ],
+        "par": 3,
+        "tee": {
+          "x": 240,
+          "y": 340
+        },
+        "walls": [
+          {
+            "h": 20,
+            "w": 720,
+            "x": 40,
+            "y": 40
+          },
+          {
+            "h": 20,
+            "w": 720,
+            "x": 40,
+            "y": 540
+          },
+          {
+            "h": 480,
+            "w": 20,
+            "x": 40,
+            "y": 60
+          },
+          {
+            "h": 480,
+            "w": 20,
+            "x": 740,
+            "y": 60
+          },
+          {
+            "h": 260,
+            "w": 20,
+            "x": 300,
+            "y": 60
+          },
+          {
+            "h": 20,
+            "w": 200,
+            "x": 300,
+            "y": 360
+          }
+        ]
+      },
+      "isPublic": true,
+      "lastModified": 1756778010343,
+      "title": "level1"
+    },
+    "-OZ77GXgavX-oiOK1fD_": {
+      "authorId": "system",
+      "authorName": "Game Developer",
+      "createdAt": 1756778010400,
+      "data": {
+        "canvas": {
+          "height": 600,
+          "width": 800
+        },
+        "course": {
+          "index": 2,
+          "total": 8
+        },
+        "cup": {
+          "r": 12,
+          "x": 520,
+          "y": 300
+        },
+        "par": 2,
+        "sand": [
+          {
+            "h": 80,
+            "w": 120,
+            "x": 420,
+            "y": 260
+          }
+        ],
+        "tee": {
+          "x": 100,
+          "y": 300
+        },
+        "walls": [
+          {
+            "h": 20,
+            "w": 720,
+            "x": 40,
+            "y": 40
+          },
+          {
+            "h": 20,
+            "w": 720,
+            "x": 40,
+            "y": 540
+          },
+          {
+            "h": 480,
+            "w": 20,
+            "x": 40,
+            "y": 60
+          },
+          {
+            "h": 480,
+            "w": 20,
+            "x": 740,
+            "y": 60
+          },
+          {
+            "h": 20,
+            "w": 400,
+            "x": 200,
+            "y": 200
+          },
+          {
+            "h": 20,
+            "w": 400,
+            "x": 200,
+            "y": 380
+          },
+          {
+            "h": 60,
+            "w": 20,
+            "x": 200,
+            "y": 220
+          },
+          {
+            "h": 60,
+            "w": 20,
+            "x": 200,
+            "y": 320
+          },
+          {
+            "h": 30,
+            "w": 20,
+            "x": 580,
+            "y": 220
+          },
+          {
+            "h": 60,
+            "w": 20,
+            "x": 580,
+            "y": 320
+          }
+        ],
+        "water": [
+          {
+            "h": 40,
+            "w": 720,
+            "x": 40,
+            "y": 500
+          }
+        ]
+      },
+      "isPublic": true,
+      "lastModified": 1756778010400,
+      "title": "level2"
+    },
+    "-OZ77GYYP-RvrmsFisoW": {
+      "authorId": "system",
+      "authorName": "Game Developer",
+      "createdAt": 1756778010455,
+      "data": {
+        "canvas": {
+          "height": 600,
+          "width": 800
+        },
+        "course": {
+          "index": 3,
+          "total": 8
+        },
+        "cup": {
+          "r": 12,
+          "x": 420,
+          "y": 360
+        },
+        "hills": [
+          {
+            "dir": "SE",
+            "falloff": 1.2,
+            "h": 160,
+            "strength": 0.65,
+            "w": 260,
+            "x": 260,
+            "y": 240
+          }
+        ],
+        "par": 4,
+        "tee": {
+          "x": 120,
+          "y": 120
+        },
+        "walls": [
+          {
+            "h": 20,
+            "w": 720,
+            "x": 40,
+            "y": 40
+          },
+          {
+            "h": 20,
+            "w": 720,
+            "x": 40,
+            "y": 540
+          },
+          {
+            "h": 480,
+            "w": 20,
+            "x": 40,
+            "y": 60
+          },
+          {
+            "h": 480,
+            "w": 20,
+            "x": 740,
+            "y": 60
+          },
+          {
+            "h": 320,
+            "w": 20,
+            "x": 180,
+            "y": 100
+          },
+          {
+            "h": 20,
+            "w": 360,
+            "x": 180,
+            "y": 420
+          },
+          {
+            "h": 220,
+            "w": 20,
+            "x": 520,
+            "y": 220
+          },
+          {
+            "h": 20,
+            "w": 280,
+            "x": 260,
+            "y": 220
+          }
+        ]
+      },
+      "isPublic": true,
+      "lastModified": 1756778010455,
+      "title": "level3"
+    },
+    "-OZ77G_KE39wsH0qY6fw": {
+      "authorId": "system",
+      "authorName": "Game Developer",
+      "createdAt": 1756778010569,
+      "data": {
+        "bridges": [
+          {
+            "h": 40,
+            "w": 80,
+            "x": 360,
+            "y": 260
+          },
+          {
+            "h": 40,
+            "w": 80,
+            "x": 640,
+            "y": 420
+          }
+        ],
+        "canvas": {
+          "height": 600,
+          "width": 800
+        },
+        "course": {
+          "index": 5,
+          "title": "Zig & Splash",
+          "total": 8
+        },
+        "cup": {
+          "r": 12,
+          "x": 380,
+          "y": 300
+        },
+        "hills": [
+          {
+            "dir": "SE",
+            "h": 80,
+            "strength": 0.5,
+            "w": 160,
+            "x": 300,
+            "y": 200
+          }
+        ],
+        "par": 3,
+        "sandPoly": [
+          {
+            "points": [
+              300,
+              380,
+              360,
+              360,
+              380,
+              400,
+              320,
+              420
+            ]
+          }
+        ],
+        "tee": {
+          "x": 140,
+          "y": 120
+        },
+        "walls": [
+          {
+            "h": 20,
+            "w": 720,
+            "x": 40,
+            "y": 40
+          },
+          {
+            "h": 20,
+            "w": 720,
+            "x": 40,
+            "y": 540
+          },
+          {
+            "h": 480,
+            "w": 20,
+            "x": 40,
+            "y": 60
+          },
+          {
+            "h": 480,
+            "w": 20,
+            "x": 740,
+            "y": 60
+          },
+          {
+            "h": 260,
+            "w": 20,
+            "x": 200,
+            "y": 160
+          },
+          {
+            "h": 20,
+            "w": 260,
+            "x": 200,
+            "y": 160
+          },
+          {
+            "h": 200,
+            "w": 20,
+            "x": 440,
+            "y": 180
+          },
+          {
+            "h": 20,
+            "w": 260,
+            "x": 300,
+            "y": 360
+          }
+        ],
+        "wallsPoly": [
+          {
+            "points": [
+              460,
+              240,
+              420,
+              280,
+              460,
+              280
+            ]
+          }
+        ],
+        "water": [
+          {
+            "h": 40,
+            "w": 260,
+            "x": 240,
+            "y": 260
+          },
+          {
+            "h": 40,
+            "w": 220,
+            "x": 520,
+            "y": 420
+          }
+        ]
+      },
+      "isPublic": true,
+      "lastModified": 1756778010569,
+      "title": "Zig & Splash"
+    },
+    "-OZ77GaD57JtJxAL9TlE": {
+      "authorId": "system",
+      "authorName": "Game Developer",
+      "createdAt": 1756778010626,
+      "data": {
+        "canvas": {
+          "height": 600,
+          "width": 800
+        },
+        "course": {
+          "index": 6,
+          "title": "Cross Banks",
+          "total": 8
+        },
+        "cup": {
+          "r": 12,
+          "x": 660,
+          "y": 160
+        },
+        "par": 3,
+        "sand": [
+          {
+            "h": 50,
+            "w": 100,
+            "x": 520,
+            "y": 240
+          }
+        ],
+        "tee": {
+          "x": 120,
+          "y": 460
+        },
+        "walls": [
+          {
+            "h": 20,
+            "w": 720,
+            "x": 40,
+            "y": 40
+          },
+          {
+            "h": 20,
+            "w": 720,
+            "x": 40,
+            "y": 540
+          },
+          {
+            "h": 480,
+            "w": 20,
+            "x": 40,
+            "y": 60
+          },
+          {
+            "h": 480,
+            "w": 20,
+            "x": 740,
+            "y": 60
+          }
+        ],
+        "wallsPoly": [
+          {
+            "points": [
+              260,
+              160,
+              280,
+              160,
+              560,
+              440,
+              540,
+              440
+            ]
+          },
+          {
+            "points": [
+              320,
+              220,
+              340,
+              220,
+              620,
+              500,
+              600,
+              500
+            ]
+          },
+          {
+            "points": [
+              600,
+              200,
+              640,
+              180,
+              640,
+              220
+            ]
+          }
+        ],
+        "water": [
+          {
+            "h": 40,
+            "w": 120,
+            "x": 440,
+            "y": 360
+          }
+        ]
+      },
+      "isPublic": true,
+      "lastModified": 1756778010626,
+      "title": "Cross Banks"
+    },
+    "-OZ77Gb4slANYoFOytEC": {
+      "authorId": "system",
+      "authorName": "Game Developer",
+      "createdAt": 1756778010681,
+      "data": {
+        "canvas": {
+          "height": 600,
+          "width": 800
+        },
+        "course": {
+          "index": 7,
+          "title": "Triangle Alley",
+          "total": 8
+        },
+        "cup": {
+          "r": 12,
+          "x": 680,
+          "y": 180
+        },
+        "par": 3,
+        "sandPoly": [
+          {
+            "points": [
+              300,
+              470,
+              360,
+              450,
+              380,
+              490,
+              320,
+              510
+            ]
+          }
+        ],
+        "tee": {
+          "x": 120,
+          "y": 460
+        },
+        "walls": [
+          {
+            "h": 20,
+            "w": 720,
+            "x": 40,
+            "y": 40
+          },
+          {
+            "h": 20,
+            "w": 720,
+            "x": 40,
+            "y": 540
+          },
+          {
+            "h": 480,
+            "w": 20,
+            "x": 40,
+            "y": 60
+          },
+          {
+            "h": 480,
+            "w": 20,
+            "x": 740,
+            "y": 60
+          },
+          {
+            "h": 20,
+            "w": 360,
+            "x": 200,
+            "y": 420
+          }
+        ],
+        "wallsPoly": [
+          {
+            "points": [
+              240,
+              360,
+              280,
+              320,
+              280,
+              400
+            ]
+          },
+          {
+            "points": [
+              340,
+              300,
+              380,
+              260,
+              380,
+              340
+            ]
+          },
+          {
+            "points": [
+              460,
+              260,
+              500,
+              220,
+              500,
+              300
+            ]
+          },
+          {
+            "points": [
+              560,
+              220,
+              600,
+              200,
+              600,
+              260
+            ]
+          },
+          {
+            "points": [
+              620,
+              220,
+              660,
+              240,
+              640,
+              260
+            ]
+          }
+        ],
+        "water": [
+          {
+            "h": 40,
+            "w": 120,
+            "x": 520,
+            "y": 320
+          }
+        ]
+      },
+      "isPublic": true,
+      "lastModified": 1756778010682,
+      "title": "Triangle Alley"
+    },
+    "-OZ77Gbxm255eSlNVJye": {
+      "authorId": "system",
+      "authorName": "Game Developer",
+      "createdAt": 1756778010737,
+      "data": {
+        "bridges": [
+          {
+            "h": 40,
+            "w": 80,
+            "x": 380,
+            "y": 280
+          }
+        ],
+        "canvas": {
+          "height": 600,
+          "width": 800
+        },
+        "course": {
+          "index": 8,
+          "title": "River Run",
+          "total": 8
+        },
+        "cup": {
+          "r": 12,
+          "x": 680,
+          "y": 300
+        },
+        "par": 3,
+        "posts": [
+          {
+            "r": 10,
+            "x": 460,
+            "y": 270
+          },
+          {
+            "r": 10,
+            "x": 460,
+            "y": 330
+          },
+          {
+            "r": 10,
+            "x": 620,
+            "y": 260
+          },
+          {
+            "r": 10,
+            "x": 620,
+            "y": 340
+          }
+        ],
+        "tee": {
+          "x": 120,
+          "y": 300
+        },
+        "walls": [
+          {
+            "h": 20,
+            "w": 720,
+            "x": 40,
+            "y": 40
+          },
+          {
+            "h": 20,
+            "w": 720,
+            "x": 40,
+            "y": 540
+          },
+          {
+            "h": 480,
+            "w": 20,
+            "x": 40,
+            "y": 60
+          },
+          {
+            "h": 480,
+            "w": 20,
+            "x": 740,
+            "y": 60
+          }
+        ],
+        "wallsPoly": [
+          {
+            "points": [
+              420,
+              280,
+              440,
+              300,
+              420,
+              320
+            ]
+          }
+        ],
+        "waterPoly": [
+          {
+            "points": [
+              260,
+              180,
+              540,
+              180,
+              540,
+              260,
+              500,
+              300,
+              540,
+              340,
+              540,
+              420,
+              260,
+              420,
+              260,
+              340,
+              300,
+              300,
+              260,
+              260
+            ]
+          }
+        ]
+      },
+      "isPublic": true,
+      "lastModified": 1756778010737,
+      "title": "River Run"
+    }
+  },
+  "scores": {
+    "-OYOXbolKvUfZIkoZqjp": {
+      "-OZ2OLMVJb8I9J_jaC-C": {
+        "levelId": "/levels/level1.json",
+        "strokes": 4,
+        "timestamp": 1756698616269,
+        "userId": "-OYOXbolKvUfZIkoZqjp"
+      },
+      "-OZ73bFGiKplV9IMHlEW": {
+        "levelId": "dev:-OYTB6IGpQHeXWLZjger",
+        "strokes": 3,
+        "timestamp": 1756777050781,
+        "userId": "-OYOXbolKvUfZIkoZqjp"
+      },
+      "-OZCzELWYI8VlSkqgGEP": {
+        "levelId": "course:-OZ7WLQt-B5iqAp0SyJQ:0",
+        "strokes": 2,
+        "timestamp": 1756876306591,
+        "userId": "-OYOXbolKvUfZIkoZqjp"
+      },
+      "-OZCzGvl0soFnKOvmeZs": {
+        "levelId": "course:-OZ7WLQt-B5iqAp0SyJQ:1",
+        "strokes": 3,
+        "timestamp": 1756876317167,
+        "userId": "-OYOXbolKvUfZIkoZqjp"
+      },
+      "-OZCzJU9GPfOzRoggkyD": {
+        "levelId": "course:-OZ7WLQt-B5iqAp0SyJQ:2",
+        "strokes": 3,
+        "timestamp": 1756876327624,
+        "userId": "-OYOXbolKvUfZIkoZqjp"
+      },
+      "-OZCzMZItXYvlvMvkUjr": {
+        "levelId": "course:-OZ7WLQt-B5iqAp0SyJQ:3",
+        "strokes": 5,
+        "timestamp": 1756876340241,
+        "userId": "-OYOXbolKvUfZIkoZqjp"
+      },
+      "-OZCzOs10EPColXFPj5l": {
+        "levelId": "course:-OZ7WLQt-B5iqAp0SyJQ:0",
+        "strokes": 2,
+        "timestamp": 1756876349696,
+        "userId": "-OYOXbolKvUfZIkoZqjp"
+      },
+      "-OZCzSY3Se7it0crYKDG": {
+        "levelId": "course:-OZ7WLQt-B5iqAp0SyJQ:1",
+        "strokes": 3,
+        "timestamp": 1756876364738,
+        "userId": "-OYOXbolKvUfZIkoZqjp"
+      },
+      "-OZCzXSu5jdNYrJ4NY0T": {
+        "levelId": "course:-OZ7WLQt-B5iqAp0SyJQ:2",
+        "strokes": 5,
+        "timestamp": 1756876384888,
+        "userId": "-OYOXbolKvUfZIkoZqjp"
+      },
+      "-OZCzbkDA8KIQJR10Dlo": {
+        "levelId": "course:-OZ7WLQt-B5iqAp0SyJQ:3",
+        "strokes": 7,
+        "timestamp": 1756876406540,
+        "userId": "-OYOXbolKvUfZIkoZqjp"
+      },
+      "-OZD-EVD2Hw76ez5YHrf": {
+        "levelId": "course:-OZ7WLQt-B5iqAp0SyJQ:0",
+        "strokes": 2,
+        "timestamp": 1756876569365,
+        "userId": "-OYOXbolKvUfZIkoZqjp"
+      },
+      "-OZHUurislaxQFH31oS4": {
+        "levelId": "dev:level0",
+        "strokes": 4,
+        "timestamp": 1756951984202,
+        "userId": "-OYOXbolKvUfZIkoZqjp"
+      },
+      "-OZHUxPqzviOwQeqcnIH": {
+        "levelId": "dev:level1",
+        "strokes": 3,
+        "timestamp": 1756951994642,
+        "userId": "-OYOXbolKvUfZIkoZqjp"
+      },
+      "-OZHV0cjAbFPS8jKuKPq": {
+        "levelId": "dev:level2",
+        "strokes": 4,
+        "timestamp": 1756952011915,
+        "userId": "-OYOXbolKvUfZIkoZqjp"
+      },
+      "-OZHV8x7mRXWtYHOz8Oc": {
+        "levelId": "dev:level3",
+        "strokes": 7,
+        "timestamp": 1756952045988,
+        "userId": "-OYOXbolKvUfZIkoZqjp"
+      }
+    },
+    "-OYOyh3XOL72kMhdePyu": {
+      "-OZ6fCG0qsVIPMx9ZGXM": {
+        "levelId": "/levels/level1.json",
+        "strokes": 9,
+        "timestamp": 1756770390842,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      },
+      "-OZ72kJh2g7DsSIrNGyY": {
+        "levelId": "dev:-OYTB6IGpQHeXWLZjger",
+        "strokes": 2,
+        "timestamp": 1756776825785,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      },
+      "-OZ72lshdIMtOwrCVuPD": {
+        "levelId": "dev:-OYTB6IGpQHeXWLZjger",
+        "strokes": 2,
+        "timestamp": 1756776832185,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      },
+      "-OZ72pg2wroiTsoGsyoJ": {
+        "levelId": "dev:-OYTB6IGpQHeXWLZjger",
+        "strokes": 2,
+        "timestamp": 1756776847760,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      },
+      "-OZ77R4_FGVbguZ4dx0r": {
+        "levelId": "dev:-OYTB6IGpQHeXWLZjger",
+        "strokes": 2,
+        "timestamp": 1756778053614,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      },
+      "-OZ77ZbC6RBSAhUzARAL": {
+        "levelId": "dev:-OYTB6IGpQHeXWLZjger",
+        "strokes": 4,
+        "timestamp": 1756778088534,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      },
+      "-OZCwxmO2LlZDbG6NmVW": {
+        "levelId": "dev:-OZ77GWnUq1bdQ6xftVg",
+        "strokes": 4,
+        "timestamp": 1756875710364,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      },
+      "-OZCwzD_aF6_G-_6kdqH": {
+        "levelId": "dev:-OZ77GXgavX-oiOK1fD_",
+        "strokes": 2,
+        "timestamp": 1756875716264,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      },
+      "-OZCx5pknju2vv7afUyt": {
+        "levelId": "dev:-OZ77GYYP-RvrmsFisoW",
+        "strokes": 8,
+        "timestamp": 1756875747443,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      },
+      "-OZCxAxpAW-6GBzqtkXk": {
+        "levelId": "dev:-OZ77GZTP6O3PaDXcani",
+        "strokes": 3,
+        "timestamp": 1756875768440,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      },
+      "-OZCxH_l8L2O6oUH941B": {
+        "levelId": "dev:-OZ77G_KE39wsH0qY6fw",
+        "strokes": 6,
+        "timestamp": 1756875795572,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      },
+      "-OZCxLixbrYnoYkevu68": {
+        "levelId": "dev:-OZ77GaD57JtJxAL9TlE",
+        "strokes": 4,
+        "timestamp": 1756875812544,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      },
+      "-OZCxOCNoEyK8mebfRED": {
+        "levelId": "dev:-OZ77Gb4slANYoFOytEC",
+        "strokes": 2,
+        "timestamp": 1756875822683,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      },
+      "-OZCxRhojUOZGGx24NAI": {
+        "levelId": "dev:-OZ77Gbxm255eSlNVJye",
+        "strokes": 5,
+        "timestamp": 1756875837047,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      },
+      "-OZD28oV3oQ_P7k23hCw": {
+        "levelId": "course:-OZ7WLQt-B5iqAp0SyJQ:0",
+        "strokes": 3,
+        "timestamp": 1756877332500,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      },
+      "-OZD2Bv7ndjbcQ-oSnR-": {
+        "levelId": "course:-OZ7WLQt-B5iqAp0SyJQ:1",
+        "strokes": 3,
+        "timestamp": 1756877345212,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      },
+      "-OZD2FwF9iPBVNZuvX3i": {
+        "levelId": "course:-OZ7WLQt-B5iqAp0SyJQ:2",
+        "strokes": 4,
+        "timestamp": 1756877361668,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      },
+      "-OZD2Ii7dyjl-uwDds9Y": {
+        "levelId": "course:-OZ7WLQt-B5iqAp0SyJQ:3",
+        "strokes": 3,
+        "timestamp": 1756877373052,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      },
+      "-OZD2LHjASX2YsSLfi0v": {
+        "levelId": "course:-OZ7WLQt-B5iqAp0SyJQ:4",
+        "strokes": 3,
+        "timestamp": 1756877383587,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      },
+      "-OZD2NpKjNav8jcd16kR": {
+        "levelId": "course:-OZ7WLQt-B5iqAp0SyJQ:5",
+        "strokes": 3,
+        "timestamp": 1756877393994,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      },
+      "-OZD2RbyM1oFhiSjczlE": {
+        "levelId": "course:-OZ7WLQt-B5iqAp0SyJQ:6",
+        "strokes": 4,
+        "timestamp": 1756877409522,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      },
+      "-OZD2bF97h9-dBxjmMVJ": {
+        "levelId": "course:-OZ7WLQt-B5iqAp0SyJQ:7",
+        "strokes": 8,
+        "timestamp": 1756877453054,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      },
+      "-OZD2kiW_LTfCLljsRIA": {
+        "levelId": "course:-OZ7WLQt-B5iqAp0SyJQ:8",
+        "strokes": 11,
+        "timestamp": 1756877491861,
+        "userId": "-OYOyh3XOL72kMhdePyu"
+      }
+    },
+    "-OYSi_rwpWFDMTh1Gsw5": {
+      "-OYo-zDLPjXc4ih-SJoX": {
+        "levelId": "/levels/level1.json",
+        "strokes": 4,
+        "timestamp": 1756440463090,
+        "userId": "-OYSi_rwpWFDMTh1Gsw5"
+      },
+      "-OYo-zgr8xH040fxQgb6": {
+        "levelId": "/levels/level1.json",
+        "strokes": 4,
+        "timestamp": 1756440465043,
+        "userId": "-OYSi_rwpWFDMTh1Gsw5"
+      },
+      "-OYo07XtwKDpATrGk_BP": {
+        "levelId": "/levels/level1.json",
+        "strokes": 7,
+        "timestamp": 1756440501267,
+        "userId": "-OYSi_rwpWFDMTh1Gsw5"
+      },
+      "-OYo0JpM5JyctZNbp6Fg": {
+        "levelId": "/levels/level1.json",
+        "strokes": 8,
+        "timestamp": 1756440551601,
+        "userId": "-OYSi_rwpWFDMTh1Gsw5"
+      },
+      "-OZ73KIrz_3TjbROa6FT": {
+        "levelId": "dev:-OYTB6IGpQHeXWLZjger",
+        "strokes": 4,
+        "timestamp": 1756776977294,
+        "userId": "-OYSi_rwpWFDMTh1Gsw5"
+      }
+    }
+  },
+  "settings": {
+    "-OYOXbolKvUfZIkoZqjp": {
+      "muted": false,
+      "userId": "-OYOXbolKvUfZIkoZqjp",
+      "volume": 0.7
+    },
+    "-OYOyh3XOL72kMhdePyu": {
+      "muted": false,
+      "userId": "-OYOyh3XOL72kMhdePyu",
+      "volume": 0.7
+    },
+    "-OYSi_rwpWFDMTh1Gsw5": {
+      "muted": false,
+      "userId": "-OYSi_rwpWFDMTh1Gsw5",
+      "volume": 0.7
+    }
+  },
+  "userLevels": {
+    "-OYOXbolKvUfZIkoZqjp": {
+      "-OZ77GZTP6O3PaDXcani": {
+        "authorId": "-OYOXbolKvUfZIkoZqjp",
+        "authorName": "Dev",
+        "createdAt": 1756952147032,
+        "data": {
+          "bridges": [
+            {
+              "h": 40,
+              "rot": 1.5707963267948966,
+              "w": 80,
+              "x": 360,
+              "y": 260
+            }
+          ],
+          "canvas": {
+            "height": 600,
+            "width": 800
+          },
+          "course": {
+            "index": 4,
+            "title": "Straightaway",
+            "total": 8
+          },
+          "cup": {
+            "r": 12,
+            "x": 280,
+            "y": 220
+          },
+          "decorations": [
+            {
+              "h": 32,
+              "kind": "flowers",
+              "w": 32,
+              "x": 200,
+              "y": 460
+            },
+            {
+              "h": 32,
+              "kind": "flowers",
+              "w": 32,
+              "x": 200,
+              "y": 460
+            },
+            {
+              "h": 32,
+              "kind": "flowers",
+              "w": 32,
+              "x": 200,
+              "y": 500
+            },
+            {
+              "h": 32,
+              "kind": "flowers",
+              "w": 32,
+              "x": 200,
+              "y": 500
+            }
+          ],
+          "meta": {
+            "authorName": "Dev",
+            "created": "2025-09-04T02:15:47.032Z",
+            "lastModified": 1756951654704,
+            "modified": "2025-09-04T02:15:47.032Z"
+          },
+          "par": 3,
+          "posts": [
+            {
+              "r": 12,
+              "x": 360,
+              "y": 320
+            },
+            {
+              "r": 12,
+              "x": 440,
+              "y": 320
+            }
+          ],
+          "sand": [
+            {
+              "h": 20,
+              "w": 100,
+              "x": 440,
+              "y": 240
+            },
+            {
+              "h": 20,
+              "rot": 0,
+              "w": 100,
+              "x": 260,
+              "y": 240
+            },
+            {
+              "h": 1,
+              "rot": 0,
+              "w": 1,
+              "x": 360,
+              "y": 260
+            },
+            {
+              "h": 20,
+              "rot": 0,
+              "w": 300,
+              "x": 260,
+              "y": 460
+            },
+            {
+              "h": 80,
+              "rot": 0,
+              "w": 40,
+              "x": 560,
+              "y": 460
+            }
+          ],
+          "tee": {
+            "r": 8,
+            "x": 120,
+            "y": 300
+          },
+          "walls": [
+            {
+              "h": 20,
+              "w": 720,
+              "x": 40,
+              "y": 40
+            },
+            {
+              "h": 20,
+              "w": 720,
+              "x": 40,
+              "y": 540
+            },
+            {
+              "h": 480,
+              "w": 20,
+              "x": 40,
+              "y": 60
+            },
+            {
+              "h": 480,
+              "w": 20,
+              "x": 740,
+              "y": 60
+            },
+            {
+              "h": 300,
+              "rot": 0,
+              "w": 20,
+              "x": 240,
+              "y": 180
+            },
+            {
+              "h": 220,
+              "w": 20,
+              "x": 540,
+              "y": 180
+            },
+            {
+              "h": 20,
+              "rot": 0,
+              "w": 280,
+              "x": 260,
+              "y": 180
+            }
+          ],
+          "water": [
+            {
+              "h": 40,
+              "w": 280,
+              "x": 260,
+              "y": 260
+            },
+            {
+              "h": 60,
+              "rot": 0,
+              "w": 320,
+              "x": 240,
+              "y": 480
+            }
+          ]
+        },
+        "isPublic": false,
+        "lastModified": 1756952147032,
+        "title": "Untitled Level"
+      }
+    },
+    "-OYOyh3XOL72kMhdePyu": {
+      "-OZ6bUR_p9mQG_ayaIIp": {
+        "authorId": "-OYOyh3XOL72kMhdePyu",
+        "authorName": "Toupee",
+        "createdAt": 1756769416812,
+        "data": {
+          "bridges": [
+            {
+              "h": 60,
+              "w": 120,
+              "x": 140,
+              "y": 280
+            },
+            {
+              "h": 200,
+              "w": 60,
+              "x": 260,
+              "y": 200
+            },
+            {
+              "h": 40,
+              "w": 80,
+              "x": 320,
+              "y": 220
+            },
+            {
+              "h": 40,
+              "w": 100,
+              "x": 500,
+              "y": 80
+            },
+            {
+              "h": 20,
+              "w": 60,
+              "x": 600,
+              "y": 100
+            }
+          ],
+          "canvas": {
+            "height": 600,
+            "width": 960
+          },
+          "course": {
+            "index": 1,
+            "title": "toupee",
+            "total": 1
+          },
+          "cup": {
+            "r": 12,
+            "x": 860,
+            "y": 300
+          },
+          "meta": {
+            "authorId": "Toupee",
+            "authorName": "Toupee",
+            "created": "2025-09-01T23:30:12.255Z",
+            "lastModified": 1755960047109,
+            "modified": "2025-09-01T23:30:15.593Z",
+            "title": "toupee"
+          },
+          "par": 3,
+          "posts": [
+            {
+              "r": 10,
+              "x": 880,
+              "y": 120
+            },
+            {
+              "r": 10,
+              "x": 880,
+              "y": 120
+            },
+            {
+              "r": 6,
+              "x": 280,
+              "y": 300
+            },
+            {
+              "r": 6,
+              "x": 280,
+              "y": 300
+            },
+            {
+              "r": 20,
+              "x": 840,
+              "y": 400
+            },
+            {
+              "r": 20,
+              "x": 840,
+              "y": 400
+            }
+          ],
+          "sand": [
+            {
+              "h": 60,
+              "w": 220,
+              "x": 260,
+              "y": 60
+            },
+            {
+              "h": 60,
+              "w": 160,
+              "x": 680,
+              "y": 100
+            },
+            {
+              "h": 20,
+              "w": 140,
+              "x": 220,
+              "y": 500
+            }
+          ],
+          "tee": {
+            "r": 8,
+            "x": 100,
+            "y": 300
+          },
+          "waterPoly": [
+            {
+              "points": [
+                60,
+                80,
+                60,
+                120,
+                140,
+                120,
+                140,
+                520,
+                180,
+                520,
+                180,
+                120,
+                240,
+                120,
+                240,
+                80
+              ]
+            },
+            {
+              "points": [
+                60,
+                80,
+                60,
+                120,
+                140,
+                120,
+                140,
+                520,
+                180,
+                520,
+                180,
+                120,
+                240,
+                120,
+                240,
+                80
+              ]
+            },
+            {
+              "points": [
+                280,
+                140,
+                220,
+                200,
+                220,
+                400,
+                260,
+                440,
+                320,
+                440,
+                360,
+                400,
+                360,
+                160
+              ]
+            },
+            {
+              "points": [
+                280,
+                140,
+                220,
+                200,
+                220,
+                400,
+                260,
+                440,
+                320,
+                440,
+                360,
+                400,
+                360,
+                160
+              ]
+            },
+            {
+              "points": [
+                380,
+                160,
+                380,
+                460,
+                400,
+                520,
+                460,
+                520,
+                480,
+                460,
+                480,
+                160,
+                460,
+                160,
+                460,
+                460,
+                440,
+                500,
+                420,
+                500,
+                400,
+                460,
+                400,
+                160
+              ]
+            },
+            {
+              "points": [
+                380,
+                160,
+                380,
+                460,
+                400,
+                520,
+                460,
+                520,
+                480,
+                460,
+                480,
+                160,
+                460,
+                160,
+                460,
+                460,
+                440,
+                500,
+                420,
+                500,
+                400,
+                460,
+                400,
+                160
+              ]
+            },
+            {
+              "points": [
+                500,
+                560,
+                500,
+                40,
+                580,
+                40,
+                640,
+                60,
+                640,
+                120,
+                620,
+                160,
+                540,
+                160,
+                540,
+                560
+              ]
+            },
+            {
+              "points": [
+                500,
+                560,
+                500,
+                40,
+                580,
+                40,
+                640,
+                60,
+                640,
+                120,
+                620,
+                160,
+                540,
+                160,
+                540,
+                560
+              ]
+            },
+            {
+              "points": [
+                580,
+                180,
+                580,
+                460,
+                640,
+                460,
+                640,
+                420,
+                620,
+                420,
+                620,
+                360,
+                640,
+                360,
+                640,
+                300,
+                620,
+                300,
+                620,
+                220,
+                640,
+                220,
+                640,
+                180
+              ]
+            },
+            {
+              "points": [
+                580,
+                180,
+                580,
+                460,
+                640,
+                460,
+                640,
+                420,
+                620,
+                420,
+                620,
+                360,
+                640,
+                360,
+                640,
+                300,
+                620,
+                300,
+                620,
+                220,
+                640,
+                220,
+                640,
+                180
+              ]
+            },
+            {
+              "points": [
+                680,
+                460,
+                680,
+                180,
+                880,
+                180,
+                880,
+                200,
+                720,
+                200,
+                740,
+                300,
+                800,
+                300,
+                800,
+                340,
+                740,
+                340,
+                720,
+                440,
+                880,
+                440,
+                880,
+                460
+              ]
+            },
+            {
+              "points": [
+                680,
+                460,
+                680,
+                180,
+                880,
+                180,
+                880,
+                200,
+                720,
+                200,
+                740,
+                300,
+                800,
+                300,
+                800,
+                340,
+                740,
+                340,
+                720,
+                440,
+                880,
+                440,
+                880,
+                460
+              ]
+            }
+          ]
+        },
+        "isPublic": false,
+        "lastModified": 1756769416812,
+        "title": "toupee"
+      },
+      "noodles": {
+        "authorId": "-OYOyh3XOL72kMhdePyu",
+        "authorName": "noodles",
+        "createdAt": 1756016328488,
+        "data": {
+          "canvas": {
+            "height": 600,
+            "width": 960
+          },
+          "course": {
+            "index": 1,
+            "title": "Noodles",
+            "total": 1
+          },
+          "cup": {
+            "r": 12,
+            "x": 720,
+            "y": 120
+          },
+          "hills": [
+            {
+              "dir": "S",
+              "h": 200,
+              "w": 40,
+              "x": 620,
+              "y": 140
+            },
+            {
+              "dir": "E",
+              "h": 40,
+              "w": 200,
+              "x": 660,
+              "y": 340
+            },
+            {
+              "dir": "W",
+              "h": 40,
+              "w": 140,
+              "x": 720,
+              "y": 280
+            },
+            {
+              "dir": "E",
+              "h": 40,
+              "w": 140,
+              "x": 720,
+              "y": 220
+            },
+            {
+              "dir": "E",
+              "h": 40,
+              "w": 260,
+              "x": 340,
+              "y": 100
+            }
+          ],
+          "meta": {
+            "authorId": "noodles",
+            "authorName": "noodles",
+            "lastModified": 1756016328488,
+            "title": "Noodles"
+          },
+          "par": 3,
+          "posts": [
+            {
+              "r": 8,
+              "x": 200,
+              "y": 180
+            },
+            {
+              "r": 8,
+              "x": 240,
+              "y": 140
+            },
+            {
+              "r": 8,
+              "x": 200,
+              "y": 140
+            },
+            {
+              "r": 8,
+              "x": 220,
+              "y": 140
+            },
+            {
+              "r": 8,
+              "x": 200,
+              "y": 160
+            },
+            {
+              "r": 8,
+              "x": 200,
+              "y": 380
+            },
+            {
+              "r": 8,
+              "x": 200,
+              "y": 360
+            },
+            {
+              "r": 8,
+              "x": 200,
+              "y": 340
+            },
+            {
+              "r": 8,
+              "x": 200,
+              "y": 320
+            },
+            {
+              "r": 8,
+              "x": 200,
+              "y": 200
+            }
+          ],
+          "sand": [
+            {
+              "h": 20,
+              "w": 140,
+              "x": 760,
+              "y": 140
+            },
+            {
+              "h": 40,
+              "w": 300,
+              "x": 300,
+              "y": 220
+            },
+            {
+              "h": 120,
+              "w": 20,
+              "x": 280,
+              "y": 140
+            },
+            {
+              "h": 40,
+              "w": 400,
+              "x": 200,
+              "y": 300
+            }
+          ],
+          "tee": {
+            "x": 540,
+            "y": 280
+          },
+          "walls": [
+            {
+              "h": 20,
+              "w": 360,
+              "x": 300,
+              "y": 80
+            },
+            {
+              "h": 260,
+              "w": 20,
+              "x": 660,
+              "y": 80
+            },
+            {
+              "h": 20,
+              "w": 320,
+              "x": 300,
+              "y": 140
+            },
+            {
+              "h": 120,
+              "w": 20,
+              "x": 600,
+              "y": 160
+            },
+            {
+              "h": 20,
+              "w": 80,
+              "x": 680,
+              "y": 80
+            },
+            {
+              "h": 60,
+              "w": 20,
+              "x": 740,
+              "y": 100
+            },
+            {
+              "h": 20,
+              "w": 180,
+              "x": 680,
+              "y": 200
+            },
+            {
+              "h": 20,
+              "w": 160,
+              "x": 760,
+              "y": 80
+            },
+            {
+              "h": 20,
+              "w": 180,
+              "x": 720,
+              "y": 260
+            },
+            {
+              "h": 280,
+              "w": 20,
+              "x": 900,
+              "y": 100
+            },
+            {
+              "h": 20,
+              "w": 260,
+              "x": 40,
+              "y": 80
+            },
+            {
+              "h": 120,
+              "w": 20,
+              "x": 600,
+              "y": 280
+            },
+            {
+              "h": 20,
+              "w": 300,
+              "x": 620,
+              "y": 380
+            },
+            {
+              "h": 20,
+              "w": 180,
+              "x": 680,
+              "y": 320
+            },
+            {
+              "h": 300,
+              "w": 40,
+              "x": 100,
+              "y": 100
+            },
+            {
+              "h": 20,
+              "w": 460,
+              "x": 140,
+              "y": 380
+            }
+          ],
+          "wallsPoly": [
+            {
+              "points": [
+                620,
+                340,
+                620,
+                380,
+                660,
+                380
+              ]
+            },
+            {
+              "points": [
+                620,
+                340,
+                620,
+                380,
+                660,
+                380
+              ]
+            },
+            {
+              "points": [
+                620,
+                100,
+                660,
+                100,
+                660,
+                140
+              ]
+            },
+            {
+              "points": [
+                860,
+                380,
+                900,
+                380,
+                900,
+                340
+              ]
+            },
+            {
+              "points": [
+                900,
+                320,
+                900,
+                280,
+                880,
+                280,
+                860,
+                280
+              ]
+            },
+            {
+              "points": [
+                680,
+                280,
+                680,
+                320,
+                720,
+                320
+              ]
+            },
+            {
+              "points": [
+                680,
+                220,
+                680,
+                260,
+                720,
+                220
+              ]
+            },
+            {
+              "points": [
+                860,
+                260,
+                900,
+                260,
+                900,
+                220,
+                900,
+                220
+              ]
+            },
+            {
+              "points": [
+                680,
+                160,
+                680,
+                200,
+                720,
+                200
+              ]
+            }
+          ],
+          "water": [
+            {
+              "h": 40,
+              "w": 140,
+              "x": 760,
+              "y": 100
+            },
+            {
+              "h": 60,
+              "w": 300,
+              "x": 300,
+              "y": 160
+            },
+            {
+              "h": 40,
+              "w": 100,
+              "x": 140,
+              "y": 100
+            },
+            {
+              "h": 240,
+              "w": 60,
+              "x": 140,
+              "y": 140
+            },
+            {
+              "h": 40,
+              "w": 400,
+              "x": 200,
+              "y": 340
+            }
+          ]
+        },
+        "isPublic": false,
+        "lastModified": 1756016328488,
+        "title": "Noodles"
+      }
+    }
+  },
+  "users": {
+    "-OYOXbolKvUfZIkoZqjp": {
+      "createdAt": 1755996388296,
+      "enabled": true,
+      "name": "admin",
+      "role": "admin"
+    },
+    "-OYOyh3XOL72kMhdePyu": {
+      "createdAt": 1756003749701,
+      "enabled": true,
+      "lastActive": 1756003762501,
+      "name": "Noodles",
+      "role": "admin"
+    },
+    "-OYSi_rwpWFDMTh1Gsw5": {
+      "createdAt": 1756066636191,
+      "enabled": true,
+      "name": "toupee",
+      "role": "user"
+    },
+    "-OYTiLnIl8qW4siNL9AD": {
+      "createdAt": 1756083351440,
+      "enabled": true,
+      "name": "Burt",
+      "role": "user"
+    }
+  }
+}

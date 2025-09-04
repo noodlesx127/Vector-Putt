@@ -2848,12 +2848,18 @@ canvas.addEventListener('mousedown', (e) => {
           (async () => {
             try {
               if (firebaseReady) {
-                const allLevels = await firebaseManager.levels.getAllLevels();
-                levelManagementState.levels = allLevels.map(level => ({
-                  id: level.name,
+                // Get raw Firebase levels directly to access authorId
+                const { FirebaseDatabase } = await import('./firebase/database.js');
+                const publicLevels = await FirebaseDatabase.getLevels();
+                const allUserLevels = await FirebaseDatabase.getAllUserLevels();
+                const allRawLevels = [...publicLevels, ...allUserLevels];
+                console.log('Level Management: All raw Firebase levels with authorId:', allRawLevels);
+                
+                levelManagementState.levels = allRawLevels.map(level => ({
+                  id: level.id,
                   title: level.title,
-                  author: level.author,
-                  authorId: level.data?.meta?.authorId,
+                  author: level.authorName || 'Unknown',
+                  authorId: level.authorId,
                   lastModified: level.lastModified || 0,
                   data: level.data
                 }));

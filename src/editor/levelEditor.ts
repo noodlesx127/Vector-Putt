@@ -2839,9 +2839,9 @@ class LevelEditorImpl implements LevelEditor {
     }
 
     // Permission check: prevent overwriting others' levels unless admin
-    const gs = typeof env.getGlobalState === 'function' ? env.getGlobalState() : null;
-    const userRole = (gs?.userProfile?.role === 'admin') ? 'admin' : 'user';
-    if (userRole !== 'admin') {
+    const userRole = env.getUserRole?.() || 'user';
+    const isAdmin = userRole === 'admin';
+    if (!isAdmin) {
       try {
         const existing = await firebaseLevelStore.loadLevel(this.editorCurrentSavedId);
         const ownerId = existing && (existing as any).meta ? (existing as any).meta.authorId : undefined;

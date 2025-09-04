@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - State managed via `userLevelsState` (selection, scroll, search, filter) and `userLevelsHotspots` for hit testing.
 
 ### Fixed
+- **Level Editor Save bug**: Fixed issue where admins were creating new levels instead of updating existing ones. Now properly uses `env.getUserRole?.()` for permission checking, allowing admins to save over any level and users to save over their own levels (with Save As redirect for non-owned levels).
 - **Level Editor Load Level bug**: Fixed issue where admins couldn't find levels and regular users only saw limited results. Now properly loads all accessible levels based on user permissions and provides filtering options.
 - **Course Editor drag-and-drop**: Fixed missing level reordering with comprehensive drag state tracking, visual feedback (orange borders, green drop indicators), mouse event handling, and drag threshold implementation
 - **Firebase course playback**: Fixed level progression issues where courses would loop after 4 levels instead of playing all levels in correct order

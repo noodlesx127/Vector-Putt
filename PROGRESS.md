@@ -27,7 +27,31 @@ As of 2025-08-25, focus these open items migrated from `TODO.md`:
    - [x] Course Select UI redesign: Redesigned to match Course Editor visual design (centered panel, scrollable list, mouse wheel support)
    - [x] Course Select integration: Firebase course loading, Course Creator button for admins, User Made Levels separation
    - [x] Firebase course playback fixes: Level progression, UI display, optimized loading
-   - [ ] Test pass: end-to-end Course Creator UI interactions (mouse/keyboard, scrolling, buttons, cancel)
+  - [ ] Test pass: end-to-end Course Creator UI interactions (mouse/keyboard, scrolling, buttons, cancel)
+  
+ - **UI Consistency — Refresh to match `UI_Design.md`**
+   - Findings: Recent panels (Course Select, Course Editor/Creator overlays) adhere to the new centered 800x600 panel style with `rgba(0,0,0,0.85)` backgrounds and `#cfd2cf` borders. The following screens diverge and need refresh:
+     - User Made Levels (`gameState === 'userLevels'` in `src/main.ts`): currently uses `rgba(20,30,40,0.95)` and blue accent borders; align to standard panel background, border, typography, and button styles.
+     - Options (`gameState === 'options'`): classic freeform screen; convert to centered 800x600 panel with standard header, controls layout, and Back button styling.
+     - Users admin (`gameState === 'users'`): freeform cards and buttons; convert to panelized layout with standard button fills/borders and header.
+     - Changelog (`gameState === 'changelog'`): dimmed background with ad-hoc content area; migrate to standard centered panel with header and consistent scrollbar visuals.
+     - Main Menu: inputs and buttons mostly aligned, but audit borders/fills/hover to ensure parity with standard button spec.
+   - Tasks:
+     - [ ] Refresh User Levels UI to match `UI_Design.md` (colors, borders, title, buttons)
+     - [ ] Refresh Options screen to centered 800x600 panel with standard controls/buttons
+     - [ ] Refresh Users admin screen to panelized layout and standard button styles
+     - [ ] Refresh Changelog screen to use standard panel, header, and scrollbar visuals
+     - [ ] Audit Main Menu input/buttons for style parity (borders, fills, fonts)
+     - Level Editor — Menus & Dialogs (must follow standard panel/button styles and typography; see `UI_Design.md`):
+       - Findings: Menubar and dialogs exist but styling/spacing varies from standard panel spec. Ensure 800x600 overlay panels for modal flows, consistent header, borders `#cfd2cf`, background `rgba(0,0,0,0.85)`, padding/margins, and button hover states.
+       - Tasks:
+         - [ ] File menu parity: New, Load, Save, Save As, Delete, Back/Exit — confirm labels, ordering, and keyboard shortcuts
+         - [ ] Load Level dialog: standard panel layout with scrollable list, search/filter, confirm/cancel buttons
+         - [ ] Save flow: inline Save feedback (toast) and error handling per overlay guidelines
+         - [ ] Save As dialog: name input, validation messages, confirm/cancel, consistent spacing
+         - [ ] Metadata editor dialog: Title and Author fields with validation and standard form styling
+         - [ ] Suggest Par overlay: description text and action buttons styled to spec
+         - [ ] Delete confirmation dialog: warning color accents, explicit level name, confirm/cancel alignment
   
 - **Level System**
   - [ ] Cup placement heuristics

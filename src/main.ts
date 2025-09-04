@@ -1863,10 +1863,19 @@ async function editUserLevel(level: UserLevelEntry): Promise<void> {
   }
   
   try {
-    // Switch to Level Editor and load the level
+    // Switch to Level Editor
     gameState = 'levelEditor';
-    showUiToast(`Opening ${level.name} in Level Editor...`);
-    console.log(`Editing user level: ${level.name}`);
+    
+    // Set the level ID for proper saving - this is the key fix
+    // When the editor initializes, it will have the correct ID to update instead of creating new
+    if (level.id) {
+      // Store the level ID in a way the editor can access it
+      (window as any).pendingEditLevelId = level.id;
+      (window as any).pendingEditLevelData = level.data || level;
+    }
+    
+    showUiToast(`Loading "${level.name}" in Level Editor...`);
+    console.log(`Editing user level: ${level.name} (ID: ${level.id})`);
   } catch (error) {
     console.error('Failed to edit user level:', error);
     showUiToast('Failed to open level in editor');

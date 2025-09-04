@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - User Made Levels: Added confirmation dialog before loading levels to prevent accidental level loading on misclick
 - User Made Levels: Added mouse wheel scrolling support
 - User Made Levels: Fixed scrolling state synchronization between selectedUserLevelIndex and userLevelsState.scrollOffset
+- Level Editor: Fixed admin editing dev levels creating new userLevels instead of updating existing levels (editorCurrentSavedId not set)
 - Admin Menu redesign: Shift+F now opens Admin Menu with Level Management and User Management sections
 
 ### Fixed

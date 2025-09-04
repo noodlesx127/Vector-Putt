@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Level Management delete button freeze issue caused by async scope problems
+- Level Management confirmation dialog not showing (missing renderGlobalOverlays call)
+- Level Management delete not actually removing levels from Firebase (incorrect parameters)
+- Level Management state not refreshing after deletion
 - **Firebase course integration**: Added full Firebase course loading and playback support in Course Select screen
 - **Course Creator integration**: Added admin-only Course Creator button in Course Select screen for seamless course management
 - **Level Editor Load Level**: Enhanced with filtering system (My Levels, Other Users, Dev Levels, All Levels) and proper admin/user permissions

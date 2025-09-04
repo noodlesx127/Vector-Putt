@@ -1105,7 +1105,7 @@ let levelManagementHotspots: LevelManagementHotspot[] = [];
 let levelManagementState = {
   selectedLevelIndex: -1,
   scrollOffset: 0,
-  levels: [] as Array<{ id: string; title: string; author: string; lastModified: number; data: any }>
+  levels: [] as Array<{ id: string; title: string; author: string; authorId?: string; lastModified: number; data: any }>
 };
 
 function clampToFairway(x: number, y: number): { x: number; y: number } {
@@ -2853,6 +2853,7 @@ canvas.addEventListener('mousedown', (e) => {
                   id: level.name,
                   title: level.title,
                   author: level.author,
+                  authorId: level.data?.meta?.authorId,
                   lastModified: level.lastModified || 0,
                   data: level.data
                 }));
@@ -2893,25 +2894,37 @@ canvas.addEventListener('mousedown', (e) => {
           const level = levelManagementState.levels.find(l => l.id === hs.levelId);
           if (level && firebaseReady) {
             // Store the level info for the async operation
-            const levelToDelete = { id: level.id, title: level.title, author: level.author };
+            const levelToDelete = { 
+              id: level.id, 
+              title: level.title, 
+              author: level.author,
+              authorId: level.authorId 
+            };
+            
+            console.log('Level Management: Attempting to delete level:', levelToDelete);
             
             // Use the same pattern as other delete operations in the codebase
             showUiConfirm(`Delete level "${levelToDelete.title}" by ${levelToDelete.author}?`, 'Delete Level')
               .then(confirmed => {
                 if (confirmed) {
-                  return firebaseManager.levels.deleteLevel(levelToDelete.id)
+                  console.log('Level Management: User confirmed deletion, calling Firebase delete');
+                  // Pass authorId as the userId parameter for proper Firebase path
+                  return firebaseManager.levels.deleteLevel(levelToDelete.id, levelToDelete.authorId)
                     .then(() => {
+                      console.log('Level Management: Firebase delete successful, updating state');
                       // Update state after successful deletion
                       levelManagementState.levels = levelManagementState.levels.filter(l => l.id !== levelToDelete.id);
                       levelManagementState.selectedLevelIndex = -1;
                       showUiToast(`Deleted "${levelToDelete.title}"`);
                     });
+                } else {
+                  console.log('Level Management: User cancelled deletion');
                 }
                 // If not confirmed, do nothing
                 return Promise.resolve();
               })
               .catch(e => {
-                console.error('Failed to delete level:', e);
+                console.error('Level Management: Failed to delete level:', e);
                 showUiToast('Failed to delete level');
               });
           }
@@ -4489,6 +4502,7 @@ function draw() {
     ctx.fillText('Back', backX + backBtnW/2, backY + backBtnH/2);
     levelManagementHotspots.push({ kind: 'back', x: backX, y: backY, w: backBtnW, h: backBtnH });
     
+    renderGlobalOverlays();
     return;
   }
   

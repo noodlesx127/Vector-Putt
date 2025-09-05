@@ -168,12 +168,35 @@ export class FirebaseDatabase {
   }
 
   static async updateLevel(levelId: string, updates: Partial<FirebaseLevel>, userId?: string): Promise<void> {
-    const path = userId ? `${PATHS.userLevels}/${userId}/${levelId}` : `${PATHS.levels}/${levelId}`;
+    // First, try to determine if this is a public level or user level
+    let path: string;
+    
+    // Check if level exists in public levels first
+    const publicSnapshot = await get(ref(database, `${PATHS.levels}/${levelId}`));
+    if (publicSnapshot.exists()) {
+      path = `${PATHS.levels}/${levelId}`;
+      console.log(`Updating public level at path: ${path}`);
+    } else if (userId) {
+      // Check if level exists in user levels
+      const userSnapshot = await get(ref(database, `${PATHS.userLevels}/${userId}/${levelId}`));
+      if (userSnapshot.exists()) {
+        path = `${PATHS.userLevels}/${userId}/${levelId}`;
+        console.log(`Updating user level at path: ${path}`);
+      } else {
+        throw new Error(`Level ${levelId} not found in public or user levels`);
+      }
+    } else {
+      // Fallback to public levels path if no userId provided
+      path = `${PATHS.levels}/${levelId}`;
+      console.log(`Fallback: updating at public path: ${path}`);
+    }
     
     await update(ref(database, path), {
       ...updates,
       lastModified: Date.now()
     });
+    
+    console.log(`Successfully updated level ${levelId} at ${path}`);
   }
 
   static async deleteLevel(levelId: string, userId?: string): Promise<void> {

@@ -137,6 +137,8 @@ export class FirebaseLevelStore {
   // Save a level
   async saveLevel(levelData: Level, levelId?: string, userId?: string): Promise<string> {
     try {
+      console.log('FirebaseLevelStore.saveLevel called with:', { levelId, userId, title: levelData.meta?.title });
+      
       const firebaseLevel: Omit<FirebaseLevel, 'id'> = {
         title: levelData.meta?.title || 'Untitled Level',
         authorId: userId || levelData.meta?.authorId || 'unknown',
@@ -151,11 +153,15 @@ export class FirebaseLevelStore {
 
       if (levelId) {
         // Update existing level
+        console.log(`Updating existing level ${levelId}`);
         await FirebaseDatabase.updateLevel(levelId, firebaseLevel, userId);
         savedId = levelId;
+        console.log(`Successfully updated level ${levelId}`);
       } else {
         // Create new level
+        console.log('Creating new level');
         savedId = await FirebaseDatabase.saveLevel(firebaseLevel, true);
+        console.log(`Successfully created new level ${savedId}`);
       }
 
       // Update cache

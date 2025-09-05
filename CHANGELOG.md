@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - User Made Levels: Fixed scrolling state synchronization between selectedUserLevelIndex and userLevelsState.scrollOffset
 - Level Editor: Fixed admin editing dev levels creating new userLevels instead of updating existing levels (editorCurrentSavedId not set)
 - Admin Menu redesign: Shift+F now opens Admin Menu with Level Management and User Management sections
+- Level Editor save bug: Fixed issue where admin edits to dev course levels (like "level1") would show "Level saved" popup but not actually save the level. The problem was in the Firebase database updateLevel() function which incorrectly assumed all existing levels were user levels and tried to update them at the wrong path. Updated updateLevel() to first check if a level exists in public levels before falling back to user levels, ensuring dev course levels are updated in the correct Firebase path.
 
 ### Fixed
 - Level Management delete button freeze issue caused by async scope problems

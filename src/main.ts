@@ -2643,7 +2643,7 @@ canvas.addEventListener('mousedown', (e) => {
             },
             getUserId,
             migrateSingleSlotIfNeeded,
-            exitToMenu: () => { gameState = 'menu'; },
+            exitToMenu: () => { try { levelEditor.reset(); } catch {} gameState = 'menu'; },
             testLevel: testLevelFromEditor,
             getUserName: () => { const n = (userProfile?.name || '').trim(); return n || getUserId(); },
             getUserRole: () => userProfile.role
@@ -2843,7 +2843,7 @@ canvas.addEventListener('mousedown', (e) => {
       },
       getUserId,
       migrateSingleSlotIfNeeded,
-      exitToMenu: () => { gameState = 'menu'; },
+      exitToMenu: () => { try { levelEditor.reset(); } catch {} gameState = 'menu'; },
       testLevel: testLevelFromEditor,
       getUserName: () => ((userProfile?.name ?? getUserId()) + ''),
       getUserRole: () => userProfile.role
@@ -3209,7 +3209,7 @@ canvas.addEventListener('mousemove', (e) => {
       },
       getUserId,
       migrateSingleSlotIfNeeded,
-      exitToMenu: () => { gameState = 'menu'; },
+      exitToMenu: () => { try { levelEditor.reset(); } catch {} gameState = 'menu'; },
       testLevel: testLevelFromEditor,
       getUserName: () => ((userProfile?.name ?? getUserId()) + ''),
       getUserRole: () => userProfile.role

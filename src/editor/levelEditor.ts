@@ -148,6 +148,7 @@ export interface EditorEnv {
 export interface LevelEditor {
   // Lifecycle
   init(env: EditorEnv): void;
+  reset(): void;
 
   // Rendering
   render(env: EditorEnv): void;
@@ -257,6 +258,11 @@ class LevelEditorImpl implements LevelEditor {
       timestamp: Date.now(),
       description
     };
+  }
+
+  // Public API: allow host to reset editor state
+  reset(): void {
+    this.resetEditorSession();
   }
 
   // Resolve a friendly display name for the current user without assuming getUserName exists

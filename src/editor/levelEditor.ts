@@ -2398,65 +2398,99 @@ class LevelEditorImpl implements LevelEditor {
   // General object hit-test used by selection and clicking
   private findObjectAtPoint(px: number, py: number, env: EditorEnv): SelectableObject | null {
     const gs = env.getGlobalState();
-    // Tee
+    // Hit-test order should mirror the reverse of render order (top-most first):
+    // tee, cup, posts, polyWalls, walls, decorations, hills, bridges, sandPoly, sand, waterPoly, water
+    // Also iterate arrays in reverse to prioritize most recently drawn objects.
+
+    // Tee (drawn last)
     {
       const teeObj: SelectableObject = { type: 'tee', object: { x: gs.ball.x, y: gs.ball.y, r: (gs.ball as any).r || 8 } } as any;
       if (this.isPointInObject(px, py, teeObj)) return teeObj;
     }
-    // Cup
+    // Cup (drawn last)
     {
       const cupObj: SelectableObject = { type: 'cup', object: { x: gs.hole.x, y: gs.hole.y, r: (gs.hole as any).r || 8 } } as any;
       if (this.isPointInObject(px, py, cupObj)) return cupObj;
     }
     // Posts
-    for (let i = 0; i < (gs.posts as any[]).length; i++) {
-      const obj: SelectableObject = { type: 'post', object: (gs.posts as any[])[i], index: i } as any;
-      if (this.isPointInObject(px, py, obj)) return obj;
+    {
+      const arr = (gs.posts as any[]) || [];
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const obj: SelectableObject = { type: 'post', object: arr[i], index: i } as any;
+        if (this.isPointInObject(px, py, obj)) return obj;
+      }
+    }
+    // Polygon walls (rendered above walls)
+    {
+      const arr = (gs.polyWalls as any[]) || [];
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const obj: SelectableObject = { type: 'wallsPoly', object: arr[i], index: i } as any;
+        if (this.isPointInObject(px, py, obj)) return obj;
+      }
     }
     // Walls
-    for (let i = 0; i < (gs.walls as any[]).length; i++) {
-      const obj: SelectableObject = { type: 'wall', object: (gs.walls as any[])[i], index: i } as any;
-      if (this.isPointInObject(px, py, obj)) return obj;
-    }
-    // Polygon walls
-    for (let i = 0; i < (gs.polyWalls as any[]).length; i++) {
-      const obj: SelectableObject = { type: 'wallsPoly', object: (gs.polyWalls as any[])[i], index: i } as any;
-      if (this.isPointInObject(px, py, obj)) return obj;
-    }
-    // Water rects
-    for (let i = 0; i < (gs.waters as any[]).length; i++) {
-      const obj: SelectableObject = { type: 'water', object: (gs.waters as any[])[i], index: i } as any;
-      if (this.isPointInObject(px, py, obj)) return obj;
-    }
-    // Water polys
-    for (let i = 0; i < (gs.watersPoly as any[]).length; i++) {
-      const obj: SelectableObject = { type: 'waterPoly', object: (gs.watersPoly as any[])[i], index: i } as any;
-      if (this.isPointInObject(px, py, obj)) return obj;
-    }
-    // Sand rects
-    for (let i = 0; i < (gs.sands as any[]).length; i++) {
-      const obj: SelectableObject = { type: 'sand', object: (gs.sands as any[])[i], index: i } as any;
-      if (this.isPointInObject(px, py, obj)) return obj;
-    }
-    // Sand polys
-    for (let i = 0; i < (gs.sandsPoly as any[]).length; i++) {
-      const obj: SelectableObject = { type: 'sandPoly', object: (gs.sandsPoly as any[])[i], index: i } as any;
-      if (this.isPointInObject(px, py, obj)) return obj;
-    }
-    // Bridges
-    for (let i = 0; i < (gs.bridges as any[]).length; i++) {
-      const obj: SelectableObject = { type: 'bridge', object: (gs.bridges as any[])[i], index: i } as any;
-      if (this.isPointInObject(px, py, obj)) return obj;
-    }
-    // Hills
-    for (let i = 0; i < (gs.hills as any[]).length; i++) {
-      const obj: SelectableObject = { type: 'hill', object: (gs.hills as any[])[i], index: i } as any;
-      if (this.isPointInObject(px, py, obj)) return obj;
+    {
+      const arr = (gs.walls as any[]) || [];
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const obj: SelectableObject = { type: 'wall', object: arr[i], index: i } as any;
+        if (this.isPointInObject(px, py, obj)) return obj;
+      }
     }
     // Decorations
-    for (let i = 0; i < (gs.decorations as any[]).length; i++) {
-      const obj: SelectableObject = { type: 'decoration', object: (gs.decorations as any[])[i], index: i } as any;
-      if (this.isPointInObject(px, py, obj)) return obj;
+    {
+      const arr = (gs.decorations as any[]) || [];
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const obj: SelectableObject = { type: 'decoration', object: arr[i], index: i } as any;
+        if (this.isPointInObject(px, py, obj)) return obj;
+      }
+    }
+    // Hills
+    {
+      const arr = (gs.hills as any[]) || [];
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const obj: SelectableObject = { type: 'hill', object: arr[i], index: i } as any;
+        if (this.isPointInObject(px, py, obj)) return obj;
+      }
+    }
+    // Bridges
+    {
+      const arr = (gs.bridges as any[]) || [];
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const obj: SelectableObject = { type: 'bridge', object: arr[i], index: i } as any;
+        if (this.isPointInObject(px, py, obj)) return obj;
+      }
+    }
+    // Sand polys
+    {
+      const arr = (gs.sandsPoly as any[]) || [];
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const obj: SelectableObject = { type: 'sandPoly', object: arr[i], index: i } as any;
+        if (this.isPointInObject(px, py, obj)) return obj;
+      }
+    }
+    // Sand rects
+    {
+      const arr = (gs.sands as any[]) || [];
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const obj: SelectableObject = { type: 'sand', object: arr[i], index: i } as any;
+        if (this.isPointInObject(px, py, obj)) return obj;
+      }
+    }
+    // Water polys
+    {
+      const arr = (gs.watersPoly as any[]) || [];
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const obj: SelectableObject = { type: 'waterPoly', object: arr[i], index: i } as any;
+        if (this.isPointInObject(px, py, obj)) return obj;
+      }
+    }
+    // Water rects
+    {
+      const arr = (gs.waters as any[]) || [];
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const obj: SelectableObject = { type: 'water', object: arr[i], index: i } as any;
+        if (this.isPointInObject(px, py, obj)) return obj;
+      }
     }
     return null;
   }

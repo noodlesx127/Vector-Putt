@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v0.3.27 — 2025-09-06
+
+### Changed
+- Level Editor • Author display name resolution: editor now derives a friendly `authorName` via a resilient `resolveDisplayName()` that prefers `EditorEnv.getUserName()` (trimmed), then `env.getGlobalState().userProfile.name`, and finally falls back to `getUserId()`. Applies to `newLevel()`, `save()`, and `saveAs()` in `src/editor/levelEditor.ts`.
+- UI • User Levels source label: show `cloud` for Firebase-sourced entries (was `local`). (`src/main.ts`)
+
+### Fixed
+- Level Editor • Overlap selection: selecting when objects overlap now picks the top-most (visually front) object. `findObjectAtPoint()` hit-test order was inverted to mirror render order and iterates arrays in reverse so the most recently drawn object is prioritized. (`src/editor/levelEditor.ts`)
+- Level Editor • Metadata/title persistence: `editMetadata()` now sets both `course.title` and `meta.title`, and `save()` ensures `meta.title` mirrors `course.title` if missing. Prevents Firebase updates with `title: undefined`. (`src/editor/levelEditor.ts`)
+- Level Editor • Save ownership enforcement: for non-admins, `save()` blocks overwriting when the existing level owner is missing or differs, and routes to Save As with a toast. (`src/editor/levelEditor.ts`)
+- Level Editor • Missing getUserName() crash: guarded against environments where `getUserName()` is not provided by the editor env, preventing `TypeError: getUserName is not a function`. (`src/editor/levelEditor.ts`)
+ - Course Creator • Reorder save: saving after reordering levels now persists the new `levelIds` order by using the updated `courseData` returned from the overlay. Added debug logs around the save path for visibility ("CourseEditor: Saving course" / "Save complete"). (`src/editor/levelEditor.ts`)
+
+
 ## v0.3.26 — 2025-09-05
 
 ### Added

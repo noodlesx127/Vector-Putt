@@ -97,6 +97,7 @@ Actions taken in this pass:
 
 - __Fix: Safe updates for levels__ (`src/firebase/FirebaseLevelStore.ts`): avoid overwriting `createdAt`, `isPublic`, or `authorId` when updating existing levels; only update mutable fields (`title`, `data`, optional `authorName`). Lets `FirebaseDatabase.updateLevel()` stamp `lastModified`.
 - __Fix: Correct path detection on update__ (`src/firebase/database.ts`): `updateLevel()` now detects whether a level lives under `levels/` (public) or `userLevels/{userId}/` (private) and updates the correct path. Addresses admin edits to dev levels not persisting.
+ - __Fix: Course Editor reorder save__: `openCourseCreator()` now uses the `courseData` returned by the overlay on Save, ensuring reordered `levelIds` persist. Added debug logs around the save call ("CourseEditor: Saving course" and "CourseEditor: Save complete...") to verify the path. (`src/editor/levelEditor.ts`)
 
 Planned follow-ups (to fully align with `firebase.md`):
 

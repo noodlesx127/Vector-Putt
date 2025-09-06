@@ -383,11 +383,24 @@ class LevelEditorImpl implements LevelEditor {
       const { action } = result;
       
       if (action === 'save') {
-        await firebaseCourseStore.updateCourse(courseData.id, {
-          title: courseData.title,
-          levelIds: courseData.levelIds
-        } as any);
-        env.showToast('Course saved');
+        // Use the potentially updated courseData returned from the overlay
+        const updated = (result as any).courseData || courseData;
+        try {
+          console.log('CourseEditor: Saving course', {
+            id: updated.id,
+            title: updated.title,
+            levelIds: updated.levelIds
+          });
+          await firebaseCourseStore.updateCourse(updated.id, {
+            title: updated.title,
+            levelIds: Array.isArray(updated.levelIds) ? [...updated.levelIds] : []
+          } as any);
+          console.log('CourseEditor: Save complete for course', updated.id);
+          env.showToast('Course saved');
+        } catch (e) {
+          console.error('CourseEditor: Save failed', e);
+          env.showToast('Failed to save course');
+        }
         break;
       }
       
@@ -441,6 +454,23 @@ class LevelEditorImpl implements LevelEditor {
     this.dragMoveStart = null;
     this.isVertexDragging = false;
     this.vertexDrag = null;
+  }
+
+  // Fully reset the editor session so that re-entering starts fresh
+  private resetEditorSession(): void {
+    // Clear geometry and metadata so init() rebuilds defaults
+    this.editorLevelData = null;
+    this.editorCurrentSavedId = null;
+    // Clear selection and UI state
+    this.selectedObjects = [] as any;
+    this.openEditorMenu = null;
+    this.uiHotspots = [];
+    this.editorMenuActiveItemIndex = -1;
+    // Clear transient interaction state
+    this.clearDragState();
+    // Clear undo/redo
+    this.undoStack = [];
+    this.redoStack = [];
   }
 
   private canUndo(): boolean {
@@ -1812,6 +1842,8 @@ class LevelEditorImpl implements LevelEditor {
                 if (ok) {
                   // Clear any open menus before leaving
                   this.openEditorMenu = null;
+                  // Reset session so a fresh level is created on next entry
+                  this.resetEditorSession();
                   env.exitToMenu();
                 }
               })();

@@ -200,8 +200,29 @@ export class FirebaseDatabase {
   }
 
   static async deleteLevel(levelId: string, userId?: string): Promise<void> {
-    const path = userId ? `${PATHS.userLevels}/${userId}/${levelId}` : `${PATHS.levels}/${levelId}`;
-    await remove(ref(database, path));
+    // Prefer deleting from public levels if it exists there
+    const publicPath = `${PATHS.levels}/${levelId}`;
+    const publicRef = ref(database, publicPath);
+    const publicSnapshot = await get(publicRef);
+    if (publicSnapshot.exists()) {
+      console.log(`Deleting public level at path: ${publicPath}`);
+      await remove(publicRef);
+      console.log(`Deleted level ${levelId} from public levels`);
+      return;
+    }
+
+    // Otherwise, delete from user levels if userId provided
+    if (userId) {
+      const userPath = `${PATHS.userLevels}/${userId}/${levelId}`;
+      console.log(`Deleting user level at path: ${userPath}`);
+      await remove(ref(database, userPath));
+      console.log(`Deleted level ${levelId} for user ${userId}`);
+      return;
+    }
+
+    // Fallback: attempt public path removal even if not found (no-op if absent)
+    console.warn(`deleteLevel fallback: level ${levelId} not found in public and no userId provided; attempting public removal anyway`);
+    await remove(publicRef);
   }
 
   // Courses

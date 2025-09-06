@@ -2788,18 +2788,19 @@ class LevelEditorImpl implements LevelEditor {
   async newLevel(): Promise<void> {
     if (!this.env) return;
     const env = this.env;
-
-    const ok = await env.showConfirm('Start a new level? Unsaved changes will be lost.', 'New Level');
-    if (!ok) return;
-
     const gs = env.getGlobalState();
-    const defaultCupR = (gs.hole && (gs.hole as any).r) || 8;
-    const newLevel = {
-      canvas: { width: gs.WIDTH, height: gs.HEIGHT },
-      course: { index: 1, total: 1, title: 'Untitled' },
+    const W = (gs?.WIDTH ?? 800);
+    const H = (gs?.HEIGHT ?? 600);
+    const M = (gs?.COURSE_MARGIN ?? 40);
+    const getUserName = (env as any).getUserName as (() => string) | undefined;
+    const displayName = (typeof getUserName === 'function' ? getUserName() : env.getUserId()) || env.getUserId();
+
+    const newLevel: Level = {
+      canvas: { width: Math.max(600, Math.min(W, 1600)), height: Math.max(400, Math.min(H, 1200)) },
+      course: { index: 1, total: 1 },
       par: 3,
-      tee: { x: gs.COURSE_MARGIN + 60, y: Math.floor(gs.HEIGHT / 2) },
-      cup: { x: gs.WIDTH - gs.COURSE_MARGIN - 60, y: Math.floor(gs.HEIGHT / 2), r: defaultCupR },
+      tee: { x: M + 60, y: Math.floor(H / 2) },
+      cup: { x: W - M - 60, y: Math.floor(H / 2), r: 12 },
       walls: [],
       wallsPoly: [],
       posts: [],
@@ -2810,7 +2811,7 @@ class LevelEditorImpl implements LevelEditor {
       sandPoly: [],
       hills: [],
       decorations: [],
-      meta: { authorId: env.getUserId(), authorName: undefined, created: new Date().toISOString(), modified: new Date().toISOString() }
+      meta: { authorId: env.getUserId(), authorName: displayName || undefined, created: new Date().toISOString(), modified: new Date().toISOString() }
     };
 
     this.editorCurrentSavedId = null;
@@ -2827,6 +2828,7 @@ class LevelEditorImpl implements LevelEditor {
 
     // Ensure meta fields
     const username = env.getUserId();
+    const displayName = (typeof (env as any).getUserName === 'function' ? ((env as any).getUserName() as () => string)() : username) || username;
     const level = applyLevelDataFixups({ ...this.editorLevelData });
     level.meta = level.meta || {};
     // Do NOT overwrite authorId on normal save; preserve original owner
@@ -2866,11 +2868,9 @@ class LevelEditorImpl implements LevelEditor {
     }
 
     try {
-      // Fill missing authorName if available
-      if (!level.meta.authorName) {
-        const getUserName = (env as any).getUserName;
-        const authorName = typeof getUserName === 'function' ? getUserName() : username;
-        level.meta.authorName = authorName;
+      // Fill missing or placeholder authorName with display name
+      if (!level.meta.authorName || level.meta.authorName === 'Unknown' || level.meta.authorName === username) {
+        level.meta.authorName = displayName;
       }
 
       const id = await firebaseLevelStore.saveLevel(level, this.editorCurrentSavedId, username);
@@ -2889,16 +2889,14 @@ class LevelEditorImpl implements LevelEditor {
     this.syncEditorDataFromGlobals(env);
 
     const username = env.getUserId();
+    const getUserName = (env as any).getUserName as (() => string) | undefined;
+    const displayName = (typeof getUserName === 'function' ? getUserName() : username) || username;
     const level = applyLevelDataFixups({ ...this.editorLevelData });
     level.meta = level.meta || {};
     // New copy must always be owned by the current user
     level.meta.authorId = username;
-    // Propagate authorName if available from environment (fallback to userId)
-    {
-      const getUserName = (env as any).getUserName;
-      const authorName = typeof getUserName === 'function' ? getUserName() : username;
-      level.meta.authorName = authorName;
-    }
+    // Propagate authorName from environment (fallback to userId)
+    level.meta.authorName = displayName;
     if (!level.meta.created) level.meta.created = new Date().toISOString();
     level.meta.modified = new Date().toISOString();
     (level.meta as any).lastModified = Date.now();
@@ -3134,11 +3132,17 @@ class LevelEditorImpl implements LevelEditor {
     this.syncEditorDataFromGlobals(env);
 
     const currentTitle = this.editorLevelData?.course?.title || 'Untitled';
-    const currentAuthor = this.editorLevelData?.meta?.authorName || '';
+    const currentAuthor = (this.editorLevelData?.meta?.authorName || '').toString();
+    const currentPar = Number.isFinite(this.editorLevelData?.par) ? String(this.editorLevelData.par) : '3';
     const title = await env.showPrompt('Level Title:', currentTitle, 'Metadata');
     if (title === null) return;
     const author = await env.showPrompt('Author Name:', currentAuthor, 'Metadata');
     if (author === null) return;
+    const parInput = await env.showPrompt('Par (1-20):', currentPar, 'Metadata');
+    if (parInput === null) return;
+    let par = parseInt((parInput || '').trim(), 10);
+    if (!Number.isFinite(par)) par = 3;
+    par = Math.max(1, Math.min(20, Math.round(par)));
 
     this.pushUndoSnapshot('Edit metadata');
     this.editorLevelData.course = this.editorLevelData.course || { index: 1, total: 1 };
@@ -3146,7 +3150,11 @@ class LevelEditorImpl implements LevelEditor {
     this.editorLevelData.meta = this.editorLevelData.meta || {};
     this.editorLevelData.meta.authorName = author || undefined;
     this.editorLevelData.meta.modified = new Date().toISOString();
+    (this.editorLevelData.meta as any).lastModified = Date.now();
+    this.editorLevelData.par = par;
     env.showToast('Metadata updated');
+    // Persist immediately so users see updates reflected in lists
+    await this.save();
   }
 
   async suggestPar(): Promise<void> {

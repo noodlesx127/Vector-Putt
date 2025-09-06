@@ -105,6 +105,8 @@ Planned follow-ups (to fully align with `firebase.md`):
 - [x] __Run schema validation before save__: Call `validateLevelData(level)` and abort with a toast if invalid. Implemented in `src/editor/levelEditor.ts` for both `save()` and `saveAs()`.
 - [x] __Unify LevelData types__: Updated `src/firebase/FirebaseLevelStore.ts` local `Level` interface to match the canonical editor `LevelData` (polygons use `number[]` points; posts use `r`; rects use `rot`; include `course`, `par`, and `meta` timestamps).
 - [x] __Score levelId formats__: Verified existing gameplay paths use standardized IDs (`dev:*` for dev, `course:{courseId}:{index}` for Firebase courses), and legacy `/levels/*.json` is supported per guidance. No code changes required.
+ - [x] __Author name propagation__: New levels and saves now populate `meta.authorName` from `EditorEnv.getUserName()` (trimmed) with fallback to `getUserId()`. Implemented in `src/editor/levelEditor.ts` (`newLevel()`, `save()`, `saveAs()`) and wired via `getUserName()` in all editor env constructions in `src/main.ts`.
+ - [x] __Metadata editor enhancements__: `File → Metadata` now edits Title, Author Name, and Par (1–20). It updates `meta.modified` and `meta.lastModified`, persists immediately by calling `save()`, and reflects changes in lists. Implemented in `src/editor/levelEditor.ts::editMetadata()`.
 
 - [x] __Automatic clamping fixups__: Added clamping and defaults in `src/editor/filesystem.ts::applyLevelDataFixups()`:
   - Clamp tee/cup, rect-like objects, posts, and polygon points into canvas bounds; default tee/cup radii.

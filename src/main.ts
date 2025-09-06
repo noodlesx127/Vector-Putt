@@ -2645,7 +2645,7 @@ canvas.addEventListener('mousedown', (e) => {
             migrateSingleSlotIfNeeded,
             exitToMenu: () => { gameState = 'menu'; },
             testLevel: testLevelFromEditor,
-            getUserName: () => ((userProfile?.name ?? getUserId()) + ''),
+            getUserName: () => { const n = (userProfile?.name || '').trim(); return n || getUserId(); },
             getUserRole: () => userProfile.role
           };
           levelEditor.init(editorEnv);
@@ -5002,7 +5002,8 @@ function draw() {
         ctx.font = '12px system-ui, sans-serif';
         ctx.fillStyle = '#aaaaaa';
         const sourceLabel = level.source === 'bundled' ? 'built-in' : 
-                           level.source === 'filesystem' ? 'user' : 'local';
+                           level.source === 'filesystem' ? 'user' : 
+                           level.source === 'firebase' ? 'cloud' : 'local';
         ctx.fillText(`by ${level.author} • ${sourceLabel}`, panelX + 35, itemY + 28);
         
         // Add level item hotspot

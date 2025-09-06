@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Level Editor • Author display name resolution: editor now derives a friendly `authorName` via a resilient `resolveDisplayName()` that prefers `EditorEnv.getUserName()` (trimmed), then `env.getGlobalState().userProfile.name`, and finally falls back to `getUserId()`. Applies to `newLevel()`, `save()`, and `saveAs()` in `src/editor/levelEditor.ts`.
 - UI • User Levels source label: show `cloud` for Firebase-sourced entries (was `local`). (`src/main.ts`)
  - UI • User Made Levels panel: refreshed to the standard centered panel per `UI_Design.md` with responsive sizing (min margins), background `rgba(0,0,0,0.85)`, and border `#cfd2cf`. (`src/main.ts`)
+ - UI • Options screen: converted to standard centered panel per `UI_Design.md` with dark overlay, responsive sizing, `rgba(0,0,0,0.85)` background, `#cfd2cf` border, and reflowed Controls/Audio sections into the panel. (`src/main.ts`)
 
 ### Fixed
 - Level Editor • Overlap selection: selecting when objects overlap now picks the top-most (visually front) object. `findObjectAtPoint()` hit-test order was inverted to mirror render order and iterates arrays in reverse so the most recently drawn object is prioritized. (`src/editor/levelEditor.ts`)

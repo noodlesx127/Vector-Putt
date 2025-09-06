@@ -5101,15 +5101,32 @@ function draw() {
     renderGlobalOverlays();
     return;
   }
-  // Options screen: show controls and Back button
+  // Options screen: centered panel per UI_Design.md
   if (gameState === 'options') {
+    // Dark overlay
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    // Standard panel
+    const panelW = Math.min(800, WIDTH - 80);
+    const panelH = Math.min(600, HEIGHT - 120);
+    const panelX = (WIDTH - panelW) / 2;
+    const panelY = (HEIGHT - panelH) / 2;
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.fillRect(panelX, panelY, panelW, panelH);
+    ctx.strokeStyle = '#cfd2cf';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(panelX + 0.5, panelY + 0.5, Math.max(0, panelW - 1), Math.max(0, panelH - 1));
+
+    // Title
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     ctx.font = '28px system-ui, sans-serif';
-    ctx.fillText('Options', WIDTH/2, 60);
+    ctx.fillText('Options', panelX + panelW / 2, panelY + 20);
     ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     ctx.font = '18px system-ui, sans-serif';
-    ctx.fillText('Controls', WIDTH/2 - 180, 110);
+    ctx.fillText('Controls', panelX + 40, panelY + 70);
     ctx.font = '14px system-ui, sans-serif';
     const lines = [
       'Mouse: Click-drag from ball to aim; release to shoot',
@@ -5120,15 +5137,15 @@ function draw() {
       'Enter: Restart course from Summary',
       'Esc: Back to Main Menu'
     ];
-    let oy = 140;
-    for (const line of lines) { ctx.fillText('• ' + line, WIDTH/2 - 180, oy); oy += 22; }
+    let oy = panelY + 100;
+    for (const line of lines) { ctx.fillText('• ' + line, panelX + 40, oy); oy += 22; }
     // Audio section
     oy += 8;
     ctx.font = '18px system-ui, sans-serif';
-    ctx.fillText('Audio', WIDTH/2 - 180, oy); oy += 24;
+    ctx.fillText('Audio', panelX + 40, oy); oy += 24;
     ctx.font = '14px system-ui, sans-serif';
     const volPct = Math.round(AudioSfx.volume * 100);
-    ctx.fillText(`SFX Volume: ${AudioSfx.muted ? 'Muted' : volPct + '%'}`, WIDTH/2 - 180, oy);
+    ctx.fillText(`SFX Volume: ${AudioSfx.muted ? 'Muted' : volPct + '%'}`, panelX + 40, oy);
     oy += 100; // create clear space before buttons
     // Buttons
     const vm = getOptionsVolMinusRect();

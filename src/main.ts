@@ -3894,13 +3894,19 @@ function update(dt: number) {
     ball.x += ball.vx * dt;
     ball.y += ball.vy * dt;
 
-    // friction (boosted in sand)
+    // Determine if we're on a bridge (overrides underlying terrain effects)
+    let onBridge = false;
+    for (const b of bridges) { if (pointInRect(ball.x, ball.y, b)) { onBridge = true; break; } }
+
+    // friction (boosted in sand unless on a bridge)
     let inSand = false;
-    for (const s of sands) { if (pointInRect(ball.x, ball.y, s)) { inSand = true; break; } }
-    if (!inSand && sandsPoly.length > 0) {
-      for (const sp of sandsPoly) { if (pointInPolygon(ball.x, ball.y, sp.points)) { inSand = true; break; } }
+    if (!onBridge) {
+      for (const s of sands) { if (pointInRect(ball.x, ball.y, s)) { inSand = true; break; } }
+      if (!inSand && sandsPoly.length > 0) {
+        for (const sp of sandsPoly) { if (pointInPolygon(ball.x, ball.y, sp.points)) { inSand = true; break; } }
+      }
     }
-    const k = physicsFrictionK * (inSand ? physicsSandMultiplier : 1.0);
+    const k = physicsFrictionK * ((inSand && !onBridge) ? physicsSandMultiplier : 1.0);
     const friction = Math.exp(-k * dt);
     ball.vx *= friction;
     ball.vy *= friction;
@@ -3914,16 +3920,12 @@ function update(dt: number) {
         const d = h.dir;
         const dirX = (d.includes('E') ? 1 : 0) + (d.includes('W') ? -1 : 0);
         const dirY = (d.includes('S') ? 1 : 0) + (d.includes('N') ? -1 : 0);
-        // normalize diagonal so total accel magnitude stays consistent
+        // Normalize diagonal so total accel magnitude stays consistent
         const inv = (dirX !== 0 && dirY !== 0) ? Math.SQRT1_2 : 1;
-        // Edge-weighted falloff: stronger near exit edge, lighter near entrance
-        const ex = dirX === 0 ? 1 : (dirX > 0 ? (ball.x - h.x) / h.w : (h.x + h.w - ball.x) / h.w);
-        const ey = dirY === 0 ? 1 : (dirY > 0 ? (ball.y - h.y) / h.h : (h.y + h.h - ball.y) / h.h);
-        const baseFall = Math.max(0, Math.min(1, (dirX !== 0 && dirY !== 0) ? Math.min(ex, ey) : (dirX !== 0 ? ex : ey)));
-        const expo = h.falloff ?? 1.2;
-        const fall = Math.pow(baseFall, expo);
-        ax += dirX * s * inv * fall;
-        ay += dirY * s * inv * fall;
+        // Apply constant downhill acceleration so it both accelerates when moving with slope
+        // and resists motion (slows/pushes back) when moving uphill.
+        ax += dirX * s * inv;
+        ay += dirY * s * inv;
       }
       ball.vx += ax * dt;
       ball.vy += ay * dt;

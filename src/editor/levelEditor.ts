@@ -17,7 +17,7 @@ import {
 import firebaseLevelStore from '../firebase/FirebaseLevelStore';
 import type { LevelEntry as FirebaseLevelEntry } from '../firebase/FirebaseLevelStore';
 import firebaseCourseStore from '../firebase/FirebaseCourseStore';
-import { estimatePar } from './levelHeuristics';
+import { estimatePar, suggestCupPositions as heuristicSuggestCups } from './levelHeuristics';
 
 // Local palette for the editor module (matches docs/PALETTE.md and main.ts)
 const COLORS = {
@@ -64,7 +64,7 @@ export type EditorTool =
   | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'sand' | 'sandPoly' | 'hill' | 'decoration';
 
 export type EditorAction =
-  | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'gridToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'courseCreator';
+  | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'courseCreator';
 
 export type EditorMenuId = 'file' | 'objects' | 'decorations' | 'tools';
 
@@ -194,6 +194,8 @@ class LevelEditorImpl implements LevelEditor {
   private env: EditorEnv | null = null;
   private gridSize: number = 20;
   private editorMenuActiveItemIndex: number = -1;
+  // Suggest Cup markers (transient hints rendered on canvas)
+  private suggestedCupCandidates: Array<{ x: number; y: number; score: number; lengthPx: number; turns: number }> | null = null;
 
   // Undo/Redo system
   private undoStack: EditorSnapshot[] = [];
@@ -953,6 +955,7 @@ class LevelEditorImpl implements LevelEditor {
         { label: 'Export', item: { kind: 'action', action: 'export' } },
         { label: 'Metadata', item: { kind: 'action', action: 'metadata' } },
         { label: 'Suggest Par', item: { kind: 'action', action: 'suggestPar' } },
+        { label: 'Suggest Cup Positions', item: { kind: 'action', action: 'suggestCup' } },
         { label: 'Test Level', item: { kind: 'action', action: 'test' }, separator: true },
         { label: 'Delete', item: { kind: 'action', action: 'delete' } },
         { label: 'Back/Exit', item: { kind: 'action', action: 'back' }, separator: true }
@@ -1336,6 +1339,23 @@ class LevelEditorImpl implements LevelEditor {
       ctx.fillRect(hole.x - stickW / 2, hole.y - stickH - r, stickW, stickH);
     }
 
+    // Suggested cup markers (transient)
+    if (this.suggestedCupCandidates && this.suggestedCupCandidates.length > 0) {
+      ctx.save();
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      for (let i = 0; i < this.suggestedCupCandidates.length; i++) {
+        const s = this.suggestedCupCandidates[i];
+        ctx.fillStyle = '#ffcc00';
+        ctx.beginPath(); ctx.arc(s.x, s.y, 8, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#333333'; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.fillStyle = '#111111';
+        ctx.fillText(String(i + 1), s.x, s.y + 10);
+      }
+      ctx.restore();
+    }
+
     // Drag outline preview for rectangle tools
     if (
       this.isEditorDragging && this.editorDragTool && this.editorDragStart && this.editorDragCurrent && (
@@ -1427,12 +1447,18 @@ class LevelEditorImpl implements LevelEditor {
       ctx.lineWidth = 2;
       ctx.strokeRect(x, y, size, size);
       
-      // Direction arrows
+      // Direction arrows (cardinals + diagonals)
+      const mid = size / 2;
+      const pad = 10;
       const dirs = [
-        { dir: 'N', x: x + size/2, y: y + 10, label: '↑' },
-        { dir: 'S', x: x + size/2, y: y + size - 20, label: '↓' },
-        { dir: 'W', x: x + 10, y: y + size/2, label: '←' },
-        { dir: 'E', x: x + size - 20, y: y + size/2, label: '→' }
+        { dir: 'N',  x: x + mid,       y: y + pad,        label: '↑' },
+        { dir: 'S',  x: x + mid,       y: y + size - pad - 10, label: '↓' },
+        { dir: 'W',  x: x + pad,       y: y + mid,        label: '←' },
+        { dir: 'E',  x: x + size - pad - 10, y: y + mid,  label: '→' },
+        { dir: 'NW', x: x + pad + 6,   y: y + pad + 6,    label: '↖' },
+        { dir: 'NE', x: x + size - pad - 16, y: y + pad + 6, label: '↗' },
+        { dir: 'SW', x: x + pad + 6,   y: y + size - pad - 16, label: '↙' },
+        { dir: 'SE', x: x + size - pad - 16, y: y + size - pad - 16, label: '↘' }
       ];
       
       ctx.font = '20px Arial';
@@ -1766,6 +1792,9 @@ class LevelEditorImpl implements LevelEditor {
             case 'gridToggle':
               displayLabel = this.showGrid ? 'Grid On' : 'Grid Off';
               break;
+            case 'suggestCup':
+              displayLabel = 'Suggest Cup Positions';
+              break;
           }
         }
         
@@ -1782,6 +1811,29 @@ class LevelEditorImpl implements LevelEditor {
   handleMouseDown(e: MouseEvent, env: EditorEnv): void {
     if (env.isOverlayActive?.()) return;
     const p = env.worldFromEvent(e);
+
+    // If cup suggestions are visible, allow clicking a marker to apply
+    if (this.suggestedCupCandidates && this.suggestedCupCandidates.length > 0) {
+      const radius = 12;
+      for (let i = 0; i < this.suggestedCupCandidates.length; i++) {
+        const s = this.suggestedCupCandidates[i];
+        const dx = p.x - s.x, dy = p.y - s.y;
+        if (dx * dx + dy * dy <= radius * radius) {
+          this.pushUndoSnapshot('Set cup from suggestion');
+          const gs = env.getGlobalState();
+          const { x: fairX, y: fairY, w: fairW, h: fairH } = env.fairwayRect();
+          const clampX = (x: number) => Math.max(fairX, Math.min(fairX + fairW, x));
+          const clampY = (y: number) => Math.max(fairY, Math.min(fairY + fairH, y));
+          const nx = clampX(s.x), ny = clampY(s.y);
+          gs.hole.x = nx; gs.hole.y = ny;
+          if (this.editorLevelData) { this.editorLevelData.cup.x = nx; this.editorLevelData.cup.y = ny; }
+          env.setGlobalState(gs);
+          this.suggestedCupCandidates = null;
+          env.showToast(`Cup set to suggestion #${i + 1}`);
+          return;
+        }
+      }
+    }
 
     // 1) Handle post radius picker first
     if (this.postRadiusPicker && this.postRadiusPicker.visible) {
@@ -1836,12 +1888,18 @@ class LevelEditorImpl implements LevelEditor {
       const x = picker.x - size / 2;
       const y = picker.y - size / 2;
       
-      // Check if clicking on direction arrows
+      // Check if clicking on direction arrows (cardinals + diagonals)
+      const mid = size / 2;
+      const pad = 10;
       const dirs = [
-        { dir: 'N', x: x + size/2, y: y + 10, label: '↑' },
-        { dir: 'S', x: x + size/2, y: y + size - 20, label: '↓' },
-        { dir: 'W', x: x + 10, y: y + size/2, label: '←' },
-        { dir: 'E', x: x + size - 20, y: y + size/2, label: '→' }
+        { dir: 'N',  x: x + mid,       y: y + pad,        label: '↑' },
+        { dir: 'S',  x: x + mid,       y: y + size - pad - 10, label: '↓' },
+        { dir: 'W',  x: x + pad,       y: y + mid,        label: '←' },
+        { dir: 'E',  x: x + size - pad - 10, y: y + mid,  label: '→' },
+        { dir: 'NW', x: x + pad + 6,   y: y + pad + 6,    label: '↖' },
+        { dir: 'NE', x: x + size - pad - 16, y: y + pad + 6, label: '↗' },
+        { dir: 'SW', x: x + pad + 6,   y: y + size - pad - 16, label: '↙' },
+        { dir: 'SE', x: x + size - pad - 16, y: y + size - pad - 16, label: '↘' }
       ];
       
       for (const d of dirs) {
@@ -1897,6 +1955,8 @@ class LevelEditorImpl implements LevelEditor {
                 env.setShowGrid?.(newShow);
                 this.showGrid = newShow; // keep local state in sync in case env doesn't repaint immediately
               } catch {}
+            } else if (item.action === 'suggestCup') {
+              void this.suggestCup();
             } else if (item.action === 'courseCreator') {
               // Admin gating (double enforcement)
               const isAdmin = (typeof env.getUserRole === 'function') ? (env.getUserRole() === 'admin') : false;
@@ -2707,6 +2767,7 @@ class LevelEditorImpl implements LevelEditor {
       this.openEditorMenu = null;
       this.postRadiusPicker = null;
       this.hillDirectionPicker = null;
+      this.suggestedCupCandidates = null;
       this.resizeHandleIndex = null;
       this.resizeStartBounds = null;
       this.resizeStartMouse = null;
@@ -3401,6 +3462,30 @@ class LevelEditorImpl implements LevelEditor {
     this.pushUndoSnapshot('Set par');
     this.editorLevelData.par = suggestedPar;
     env.showToast(`Par set to ${suggestedPar}`);
+  }
+
+  async suggestCup(): Promise<void> {
+    if (!this.env) return;
+    const env = this.env;
+    this.syncEditorDataFromGlobals(env);
+    const fair = env.fairwayRect();
+    let cellSize = 20;
+    try { const g = env.getGridSize(); if (typeof g === 'number' && g > 0) cellSize = Math.max(10, Math.min(40, g)); } catch {}
+
+    const picks = heuristicSuggestCups(this.editorLevelData, fair, cellSize, 5, {
+      edgeMargin: Math.max(20, cellSize * 2),
+      minStraightnessRatio: 1.06,
+      minTurns: 0
+    });
+
+    if (!picks || picks.length === 0) {
+      env.showToast('No suitable cup positions found');
+      this.suggestedCupCandidates = null;
+      return;
+    }
+
+    this.suggestedCupCandidates = picks;
+    env.showToast('Click a numbered marker to set the Cup. Press Esc to cancel.');
   }
 
   async testLevel(): Promise<void> {

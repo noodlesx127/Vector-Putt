@@ -26,14 +26,24 @@ function pointInRect(px: number, py: number, r: Rect): boolean {
   return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
 }
 
-export function suggestCupPositions(level: LevelLike, fairway: Fairway, cellSize: number, count = 5): Array<{ x: number; y: number; score: number; lengthPx: number; turns: number }> {
+export function suggestCupPositions(
+  level: LevelLike,
+  fairway: Fairway,
+  cellSize: number,
+  count = 5,
+  opts?: { edgeMargin?: number; minStraightnessRatio?: number; minTurns?: number; minDistancePx?: number }
+): Array<{ x: number; y: number; score: number; lengthPx: number; turns: number }> {
   const { grid, cols, rows } = buildGrid(level, fairway, cellSize);
   const toCell = (x: number, y: number) => ({ c: clamp(Math.floor((x - fairway.x) / cellSize), 0, cols - 1), r: clamp(Math.floor((y - fairway.y) / cellSize), 0, rows - 1) });
   const toWorld = (c: number, r: number) => ({ x: fairway.x + c * cellSize + cellSize / 2, y: fairway.y + r * cellSize + cellSize / 2 });
 
   const start = toCell(level.tee.x, level.tee.y);
 
-  const minDist = Math.max(fairway.w, fairway.h) * 0.25; // ensure non-trivial distance
+  const dxMax = Math.max(fairway.w, fairway.h);
+  const minDist = opts?.minDistancePx ?? dxMax * 0.25; // ensure non-trivial distance
+  const edgeMargin = opts?.edgeMargin ?? Math.max(20, Math.round(cellSize * 2));
+  const minStraightness = opts?.minStraightnessRatio ?? 1.08; // must be > X times straight distance
+  const minTurns = opts?.minTurns ?? 0; // at least this many turns (0 allows straight with obstacles)
 
   const candidates: Array<{ c: number; r: number; score: number; lengthPx: number; turns: number }> = [];
 
@@ -41,6 +51,13 @@ export function suggestCupPositions(level: LevelLike, fairway: Fairway, cellSize
     for (let c = 0; c < cols; c++) {
       if (grid[r][c].blocked) continue;
       const w = toWorld(c, r);
+      // avoid hugging edges
+      if (
+        w.x < fairway.x + edgeMargin ||
+        w.x > fairway.x + fairway.w - edgeMargin ||
+        w.y < fairway.y + edgeMargin ||
+        w.y > fairway.y + fairway.h - edgeMargin
+      ) continue;
       const dist = Math.hypot(w.x - level.tee.x, w.y - level.tee.y);
       if (dist < minDist) continue;
       const { found, path, lengthCost } = aStar(grid, cols, rows, start, { c, r });
@@ -54,6 +71,9 @@ export function suggestCupPositions(level: LevelLike, fairway: Fairway, cellSize
         if (v1c !== v2c || v1r !== v2r) turns++;
       }
       const lengthPx = lengthCost * cellSize;
+      // reject trivial straight paths (length close to straight-line)
+      if (lengthPx < dist * minStraightness) continue;
+      if (turns < minTurns) continue;
       // score favors longer, more-turn paths moderately (harder holes)
       const score = lengthPx + turns * (cellSize * 2);
       candidates.push({ c, r, score, lengthPx, turns });

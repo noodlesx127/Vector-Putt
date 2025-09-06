@@ -67,9 +67,11 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
   - [x] Suggest Par: integrate grid/A* path-based heuristic
     - Implemented coarse grid build over fairway, 8-connected A* with octile heuristic, terrain costs (sand higher), diagonal corner-cut prevention, turns and sand penalties, and hill complexity bump. Falls back to distance/obstacles if no path. Wired to File → Suggest Par with a detailed confirm message. (`src/editor/levelHeuristics.ts`, `src/editor/levelEditor.ts`)
   - [ ] Cup placement heuristics
-    - [ ] Define constraints (min tee distance, not trivially straight, not hugging edges, inside intended region)
-    - [ ] Path validation (A* over fairway) to ensure non-trivial route with at least one corridor/bank; reuse `levelHeuristics` grid
-    - [ ] Editor assist: auto-suggest 3–5 candidate cup positions ranked by difficulty
+    - [x] Path validation (A* over fairway) reused from `levelHeuristics` grid
+    - [x] Editor assist: auto-suggest 3–5 candidate cup positions ranked by difficulty
+      - Menu: File → "Suggest Cup Positions"; renders numbered markers you can click to apply. Press Esc to cancel overlay.
+      - Constraints (initial): min distance from tee (25% of max axis), avoid edges (≥ 2× grid), reject trivial straight paths (length ≥ 1.06× straight-line), optional min turns.
+    - [ ] Define additional constraints (inside intended region mask, corridor/bank scoring) and tune ranking
     - [ ] Validator lint: flag cups bypassing intended obstacles
     [ ] Optional: slopes, moving blocks, boosters, tunnels
   
@@ -89,11 +91,14 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
     - Implemented radius-aware edge-aligned snapping so post edges line up with grid lines like wall edges. Applied on initial placement, on drag-move finalize, and when changing radius in the picker. Keeps clamping to fairway bounds. (`src/editor/levelEditor.ts`)
   - [x] Grid toggle in Tools menu not working; removed grid size +/- controls
     - Fixed `Grid Toggle` action to call `env.setShowGrid(!env.getShowGrid())` and sync local `showGrid`. Removed `Grid -` and `Grid +` menu items and their keyboard shortcuts. (`src/editor/levelEditor.ts`)
+  - [x] Hill Direction Picker: support diagonals NE/NW/SE/SW in addition to N/S/E/W; clickable markers and rendering updated. (`src/editor/levelEditor.ts`)
 
 ## Next Up (Short Horizon)
 - Seeded from `TODO.md` backlog:
 
 - **Physics & Interactions (Phase 2 features)**
+  - [x] Hills: bidirectional push — hills now apply constant downhill acceleration so going uphill resists and slows the ball; going downhill accelerates as expected. (`src/main.ts`)
+  - [x] Bridges over sand: sand friction disabled when ball is on a bridge; underlying sand no longer affects speed on bridge surface. (`src/main.ts`)
   - [ ] Ramps/Hills (beyond current prototype zones)
   - [ ] Moving obstacles (timed collisions)
   - [ ] Boosters/Accelerators (impulse)

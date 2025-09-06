@@ -32,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Level Editor • Paste snapping: newly pasted objects now snap correctly to the grid. Posts use radius-aware edge-aligned snapping; rect-like items and decorations snap position; polygons snap each vertex. (`src/editor/levelEditor.ts`)
  - Level Editor • Post drag-move: fixed issue where posts could not be moved by mouse drag and appeared to "double step" under snapping. Drag hit-tests now use raw coordinates; deltas are computed correctly; a single edge-aligned snap applies on mouse up. (`src/editor/levelEditor.ts`)
  - Level Editor • Grid Toggle: fixed non-functional toggle in Tools menu; now correctly calls `setShowGrid(!getShowGrid())` and syncs local state. (`src/editor/levelEditor.ts`)
+ - Physics • Hills: now apply constant downhill acceleration so moving uphill is resisted (ball is pushed back) and moving downhill accelerates as expected. (`src/main.ts`)
+ - Physics • Bridges over sand: sand friction is disabled when the ball is on a bridge; underlying sand no longer slows the ball on bridge surfaces. (`src/main.ts`)
 
 
 ## v0.3.26 — 2025-09-05

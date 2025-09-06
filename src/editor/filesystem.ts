@@ -323,7 +323,29 @@ export function validateLevelData(data: any): { valid: boolean; errors: string[]
   if (!data.canvas || typeof data.canvas.width !== 'number' || typeof data.canvas.height !== 'number') {
     errors.push('Level must have valid canvas dimensions');
   }
-  
+  // Canvas bounds per firebase.md
+  if (data.canvas && typeof data.canvas.width === 'number' && typeof data.canvas.height === 'number') {
+    const w = data.canvas.width;
+    const h = data.canvas.height;
+    if (w < 400 || w > 1920) errors.push('Canvas width must be between 400 and 1920');
+    if (h < 300 || h > 1080) errors.push('Canvas height must be between 300 and 1080');
+
+    // Tee/Cup must be within canvas
+    if (data.tee && (data.tee.x < 0 || data.tee.x > w || data.tee.y < 0 || data.tee.y > h)) {
+      errors.push('Tee must be within canvas bounds');
+    }
+    if (data.cup && (data.cup.x < 0 || data.cup.x > w || data.cup.y < 0 || data.cup.y > h)) {
+      errors.push('Cup must be within canvas bounds');
+    }
+  }
+
+  // Par must be a positive integer 1-20
+  if (data.par !== undefined) {
+    if (typeof data.par !== 'number' || !Number.isInteger(data.par) || data.par < 1 || data.par > 20) {
+      errors.push('Par must be an integer between 1 and 20');
+    }
+  }
+
   // Check arrays
   const arrayFields = ['walls', 'wallsPoly', 'posts', 'bridges', 'water', 'waterPoly', 'sand', 'sandPoly', 'hills', 'decorations'];
   for (const field of arrayFields) {
@@ -331,6 +353,53 @@ export function validateLevelData(data: any): { valid: boolean; errors: string[]
       errors.push(`${field} must be an array`);
     }
   }
+
+  // Validate object-specific dimensions
+  const ensurePositive = (v: any) => typeof v === 'number' && v > 0;
+  if (Array.isArray(data.walls)) {
+    data.walls.forEach((o: any, i: number) => {
+      if (!ensurePositive(o.w) || !ensurePositive(o.h)) errors.push(`walls[${i}] must have positive width/height`);
+    });
+  }
+  if (Array.isArray(data.bridges)) {
+    data.bridges.forEach((o: any, i: number) => {
+      if (!ensurePositive(o.w) || !ensurePositive(o.h)) errors.push(`bridges[${i}] must have positive width/height`);
+    });
+  }
+  if (Array.isArray(data.water)) {
+    data.water.forEach((o: any, i: number) => {
+      if (!ensurePositive(o.w) || !ensurePositive(o.h)) errors.push(`water[${i}] must have positive width/height`);
+    });
+  }
+  if (Array.isArray(data.sand)) {
+    data.sand.forEach((o: any, i: number) => {
+      if (!ensurePositive(o.w) || !ensurePositive(o.h)) errors.push(`sand[${i}] must have positive width/height`);
+    });
+  }
+  if (Array.isArray(data.posts)) {
+    data.posts.forEach((o: any, i: number) => {
+      if (!ensurePositive(o.r)) errors.push(`posts[${i}] must have positive radius`);
+    });
+  }
+  if (data.cup && !ensurePositive(data.cup.r)) {
+    errors.push('Cup radius must be positive');
+  }
+  if (data.tee && data.tee.r !== undefined && !ensurePositive(data.tee.r)) {
+    errors.push('Tee radius must be positive when provided');
+  }
+
+  const checkPoly = (arr: any[], name: string) => {
+    arr.forEach((o: any, i: number) => {
+      if (!o || !Array.isArray(o.points) || o.points.length < 6 || o.points.length % 2 !== 0) {
+        errors.push(`${name}[${i}].points must be an even-length number[] with at least 3 points`);
+      } else if (!o.points.every((n: any) => typeof n === 'number' && isFinite(n))) {
+        errors.push(`${name}[${i}].points must contain only numbers`);
+      }
+    });
+  };
+  if (Array.isArray(data.wallsPoly)) checkPoly(data.wallsPoly, 'wallsPoly');
+  if (Array.isArray(data.waterPoly)) checkPoly(data.waterPoly, 'waterPoly');
+  if (Array.isArray(data.sandPoly)) checkPoly(data.sandPoly, 'sandPoly');
   
   return { valid: errors.length === 0, errors };
 }

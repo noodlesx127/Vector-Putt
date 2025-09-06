@@ -80,6 +80,36 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
     - [ ] Course Select: load/play courses from Firebase `courses`
   - [ ] Course Select: "Level of the Day" button that picks 1 level per day for best-score competition
 
+## Audit — Firebase.md Compliance (2025-09-05)
+
+Findings vs `firebase.md` (Schema Version 1.0):
+
+- __Public/User levels pathing__: Compliant. Public dev levels are stored under `levels/` with `isPublic: true`; user levels under `userLevels/{userId}/`.
+- __Timestamps__: Partially compliant. All Firebase entities use Unix timestamps (`createdAt`, `lastModified`). Level editor metadata currently uses ISO strings (`meta.created`, `meta.modified`) but also sets `meta.lastModified` in some cases.
+- __Author fields__: Partially compliant. We persist `authorId` correctly. `authorName` may be missing/`Unknown` on user saves because the editor doesn’t supply it.
+- __LevelData shape__: Partially compliant. Editor uses polygon `points: number[]` and posts with `r`. `src/firebase/FirebaseLevelStore.ts` types still reflect an older `{ points: {x,y}[] }` shape in its local `Level` interface; runtime saves the editor’s actual shape, so types are inconsistent.
+- __Validation before save__: Partially compliant. Editor calls `applyLevelDataFixups()` before save, but does not run `validateLevelData()` to enforce constraints (bounds, positive par, non-negative sizes) per guidance.
+- __Course schema__: Compliant. `courses` use `title`, `levelIds[]`, `createdAt`, `lastModified`, `isPublic`.
+- __Scores__: Mostly compliant. We store `{ userId, levelId, strokes, timestamp }`. Guidance suggests standardized `levelId` formats (e.g., `dev:{levelId}`, `course:{courseId}:{index}`); current code accepts arbitrary strings without enforcing format.
+- __Settings__: Compliant with `userId`, `volume`, `muted`, optional `lastUsername`.
+
+Actions taken in this pass:
+
+- __Fix: Safe updates for levels__ (`src/firebase/FirebaseLevelStore.ts`): avoid overwriting `createdAt`, `isPublic`, or `authorId` when updating existing levels; only update mutable fields (`title`, `data`, optional `authorName`). Lets `FirebaseDatabase.updateLevel()` stamp `lastModified`.
+- __Fix: Correct path detection on update__ (`src/firebase/database.ts`): `updateLevel()` now detects whether a level lives under `levels/` (public) or `userLevels/{userId}/` (private) and updates the correct path. Addresses admin edits to dev levels not persisting.
+
+Planned follow-ups (to fully align with `firebase.md`):
+
+- [x] __Editor metadata timestamps__: On save/saveAs, set `level.meta.lastModified = Date.now()` in addition to ISO `created/modified`. Implemented in `src/editor/levelEditor.ts` (`save()` and `saveAs()`).
+- [x] __Author name on user saves__: Populate `level.meta.authorName` using the active username (fallback to `userId`). Implemented in `src/editor/levelEditor.ts` (`saveAs()`; also filled on `save()` if missing).
+- [x] __Run schema validation before save__: Call `validateLevelData(level)` and abort with a toast if invalid. Implemented in `src/editor/levelEditor.ts` for both `save()` and `saveAs()`.
+- [x] __Unify LevelData types__: Updated `src/firebase/FirebaseLevelStore.ts` local `Level` interface to match the canonical editor `LevelData` (polygons use `number[]` points; posts use `r`; rects use `rot`; include `course`, `par`, and `meta` timestamps).
+- [x] __Score levelId formats__: Verified existing gameplay paths use standardized IDs (`dev:*` for dev, `course:{courseId}:{index}` for Firebase courses), and legacy `/levels/*.json` is supported per guidance. No code changes required.
+
+Notes:
+
+- These changes are incremental and maintain backward compatibility with existing data. No destructive migrations are required.
+
 ## Editor & User System
 All completed; see `COMPLETED.md` for the full list of milestones and details.
 

@@ -5,82 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## v0.3.26 — 2025-09-05
 
 ### Added
-- Level Editor • Course Creator: Integrated draggable drag-and-drop reorder overlay for editing course level order. Uses in-game overlay with Save/Cancel and full input swallowing.
- - Course Creator UI: New in-game overlay matching the Edit Course UI visual design.
-   - Centered 800x600 panel with dark translucent background and border, scrollable course list with custom scrollbar.
-   - Keyboard and mouse support: Up/Down with auto-scroll, Enter/Esc, mouse wheel scrolling, clickable rows and buttons.
-   - Bottom-aligned actions: Edit Course, New Course, Delete Course, Cancel.
-
-### Fixed
-- Course Select: Added arrow key navigation (Up/Down with auto-scroll, Enter to load, Escape to back)
-- Course Select: Added confirmation dialog before loading courses to prevent accidental level loading on misclick
-- User Made Levels: Added arrow key navigation (Up/Down with auto-scroll, Enter to load, Escape to back)
-- User Made Levels: Added confirmation dialog before loading levels to prevent accidental level loading on misclick
-- User Made Levels: Added mouse wheel scrolling support
-- User Made Levels: Fixed scrolling state synchronization between selectedUserLevelIndex and userLevelsState.scrollOffset
-- Level Editor: Fixed admin editing dev levels creating new userLevels instead of updating existing levels (editorCurrentSavedId not set)
-- Admin Menu redesign: Shift+F now opens Admin Menu with Level Management and User Management sections
-- Level Editor save bug: Fixed issue where admin edits to dev course levels (like "level1") would show "Level saved" popup but not actually save the level. The problem was in the Firebase database updateLevel() function which incorrectly assumed all existing levels were user levels and tried to update them at the wrong path. Updated updateLevel() to first check if a level exists in public levels before falling back to user levels, ensuring dev course levels are updated in the correct Firebase path.
-
-### Fixed
-- Level Management delete button freeze issue caused by async scope problems
-- Level Management confirmation dialog not showing (missing renderGlobalOverlays call)
-- Level Management delete not actually removing levels from Firebase (incorrect parameters)
-- Level Management state not refreshing after deletion
-- Level Management authorId extraction - now loads raw Firebase data to preserve authorId field
-
-### Added
-- Firebase guidance documentation (docs/firebase.md) with comprehensive schema and standards
-- **Firebase course integration**: Added full Firebase course loading and playback support in Course Select screen
-- **Course Creator integration**: Added admin-only Course Creator button in Course Select screen for seamless course management
-- **Level Editor Load Level**: Enhanced with filtering system (My Levels, Other Users, Dev Levels, All Levels) and proper admin/user permissions
+- Level Editor • Course Creator: integrated drag-and-drop reorder overlay and matching in-game overlay UI (centered 800x600 panel, keyboard+mouse, scrollable list, Save/Cancel).
+- Admin Menu redesign: Shift+F opens Admin Menu with Level Management and User Management sections.
+- Firebase guidance documentation (`docs/firebase.md`) with schema and standards.
+- Firebase course integration: full Firebase course loading and playback support in Course Select.
+- Course Creator integration: admin-only Course Creator button in Course Select.
+- Level Editor Load Level: filtering (My Levels, Other Users, Dev Levels, All Levels) with proper permissions.
 
 ### Changed
-- **Course Select UI redesign**: Transformed from simple buttons to centered panel design with `courseSelectState`, `courseSelectHotspots`, mouse wheel scrolling, and hover states
-- **User Made Levels**: Moved to separate button on bottom right of Course Select screen, distinguishing individual levels from structured courses
-- **Firebase course loading**: Optimized to load all levels in single Firebase call instead of individual requests per level
-- Level Editor • Course Creator: Reorder overlay now validates results before saving and skips no-op updates.
-  - Validation: checks item count, duplicate IDs, and unknown IDs; shows toast on invalid submissions.
-  - Optimization: if order is unchanged, no Firebase write is performed; shows "No changes" toast.
- - Level Editor: `openCourseCreator()` now uses the new Course Creator overlay instead of the simple list.
-   - Added `showUiCourseCreator()` to `EditorEnv` and wired implementations in `src/main.ts` to call `showUiCourseCreator(courseList)`.
-   - Preserves navigation flow; Cancel returns to Level Editor.
-- Course Select UI: Redesigned to match Course Editor visual design and interaction patterns.
-  - Replaced simple button layout with centered 800x600 panel, scrollable course list, and consistent styling.
-  - Added `courseSelectState` for selection tracking and `courseSelectHotspots` for click detection.
-  - Mouse wheel scrolling support and hover states for better UX.
-
-- User Made Levels UI redesign: Updated to match the centered panel design used by Course Creator and Course Select.
-  - Centered 800x600 panel with dark translucent background and blue border; consistent typography and spacing.
-  - Integrated search bar, filter buttons (All/Bundled/User/Local), and results count.
-  - Scrollable level list with selection highlight, hover states, and precise click hotspots.
-  - Bottom Back button and concise keyboard hints; mouse wheel scrolling supported.
-  - State managed via `userLevelsState` (selection, scroll, search, filter) and `userLevelsHotspots` for hit testing.
+- Level Editor • Save flow aligned to `firebase.md` guidance:
+  - Pre-save validation using `validateLevelData()` with clear toast errors.
+  - Metadata timestamps: sets `meta.lastModified = Date.now()` alongside ISO `created/modified`.
+  - Author propagation: sets `meta.authorName` from active username when available (fallback to userId).
+  - Safe updates: existing levels only update `title`, `data`, and optional `authorName` (do not overwrite `createdAt`, `isPublic`, or `authorId`).
+- Types: `src/firebase/FirebaseLevelStore.ts` Level interface harmonized with `firebase.md` (polygon points as `number[]`, posts use `r`, rects use `rot`, include `course`, `par`, and meta timestamps).
+- Course Select UI redesign: centered panel with `courseSelectState` and `courseSelectHotspots`, mouse wheel scrolling, hover states.
+- User Made Levels entry moved to a separate button on Course Select for clarity between levels vs courses.
+- Firebase course loading: optimized batch load of course levels vs per-level requests.
+- Course Creator reorder overlay: validates duplicates/unknown IDs and skips no-op saves with appropriate toasts.
+- Level Editor: `openCourseCreator()` now uses the new Course Creator overlay via `EditorEnv.showUiCourseCreator()`; Cancel returns to the editor.
 
 ### Fixed
-- **Level Editor Save bug**: Fixed issue where admins were creating new levels instead of updating existing ones. Now properly uses `env.getUserRole?.()` for permission checking, allowing admins to save over any level and users to save over their own levels (with Save As redirect for non-owned levels).
-- **Level Editor Load Level bug**: Fixed issue where admins couldn't find levels and regular users only saw limited results. Now properly loads all accessible levels based on user permissions and provides filtering options.
-- **Course Editor drag-and-drop**: Fixed missing level reordering with comprehensive drag state tracking, visual feedback (orange borders, green drop indicators), mouse event handling, and drag threshold implementation
-- **Firebase course playback**: Fixed level progression issues where courses would loop after 4 levels instead of playing all levels in correct order
-- **Course UI display**: Fixed "Hole X/Y" display to show correct total number of levels for Firebase courses instead of defaulting to individual level metadata
-- Overlays: fully swallow keyboard events while a modal is open.
-  - Added `stopPropagation()` in `handleOverlayKey()`.
-  - Added capture-phase `keyup`/`keypress` listeners on `window`/`document`/`canvas` to intercept early.
-  - Added capture-phase `keydown` listener and `stopImmediatePropagation()` in overlay handlers to ensure no other key listeners execute while a modal is active.
-  - Prevents underlying UI (menus, gameplay pause, editor shortcuts) from reacting to keys when an overlay is active.
-
-- TypeScript: removed a duplicate `getUserId` property from `editorEnv` in `src/main.ts` that caused a duplicate property error in object literal. Kept the shorthand `getUserId` reference used elsewhere.
- - TypeScript: guarded `item.data` in Course Creator item rendering (`src/main.ts`) to satisfy strict null checks when building item labels.
-- Course Editor: Added missing drag-and-drop reordering functionality for level lists.
-  - Implemented drag state tracking with visual feedback (orange borders, green drop indicators).
-  - Mouse move/up handlers for completing reorder operations with proper array manipulation.
-  - Drag threshold (5px) prevents accidental drags during selection clicks.
+- Firebase levels update path detection: `updateLevel()` correctly updates public dev levels under `levels/{id}` and user levels under `userLevels/{userId}/{id}`.
+- Course Select: arrow key navigation (Up/Down with auto-scroll), Enter to load, Escape to back; confirm dialog before loading to prevent misclicks.
+- User Made Levels: arrow key navigation, confirm dialog before loading, mouse wheel scrolling; fixed scroll state sync between `selectedUserLevelIndex` and `userLevelsState.scrollOffset`.
+- Level Editor: fixed admin editing dev levels inadvertently creating new userLevels instead of updating existing levels (ensured `editorCurrentSavedId` handling).
+- Level Management: fixed delete button freeze, missing confirmation dialog rendering, incorrect delete parameters, and state refresh; preserved `authorId` by loading raw Firebase data.
+- Course Editor drag-and-drop: fixed missing level reordering with comprehensive drag state tracking and visual feedback.
+- Firebase course playback: fixed loop after 4 levels; courses now play full sequence in correct order.
+- Course UI display: fixed "Hole X/Y" to show correct total levels for Firebase courses.
+- Overlays: fully swallow keyboard events while a modal is open to prevent underlying UI interactions.
 
 ### Technical
 - EditorEnv UI wiring: Added `showDnDList` to all editor environment constructions in `src/main.ts` via a type-safe adapter that bridges to `showUiDnDList` (whose `UiListItem.value` is optional). The adapter guarantees `value` on return to satisfy `EditorEnv.showDnDList()` type and resolves prior TS mismatches.
+- TypeScript: removed a duplicate `getUserId` property from `editorEnv` in `src/main.ts`; kept shorthand reference.
 
 ## v0.3.25 — 2025-09-01
 

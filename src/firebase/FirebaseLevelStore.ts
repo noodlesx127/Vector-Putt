@@ -1,26 +1,29 @@
 // Firebase-based level persistence system
 import { FirebaseDatabase, FirebaseLevel } from './database.js';
 
-// Level interfaces (matching existing types)
+// Level interfaces (harmonized with firebase.md LevelData)
 export interface Level {
   canvas: { width: number; height: number };
-  tee: { x: number; y: number };
-  cup: { x: number; y: number };
-  walls?: Array<{ x: number; y: number; w: number; h: number; angle?: number }>;
-  wallsPoly?: Array<{ points: Array<{ x: number; y: number }> }>;
-  posts?: Array<{ x: number; y: number; radius?: number }>;
-  bridges?: Array<{ x: number; y: number; w: number; h: number; angle?: number }>;
-  water?: Array<{ x: number; y: number; w: number; h: number; angle?: number }>;
-  waterPoly?: Array<{ points: Array<{ x: number; y: number }> }>;
-  sand?: Array<{ x: number; y: number; w: number; h: number; angle?: number }>;
-  sandPoly?: Array<{ points: Array<{ x: number; y: number }> }>;
-  hills?: Array<{ x: number; y: number; w: number; h: number; angle?: number; direction?: string }>;
-  decorations?: Array<{ x: number; y: number; type: string }>;
+  course?: { index: number; total: number; title?: string };
+  par?: number;
+  tee: { x: number; y: number; r?: number };
+  cup: { x: number; y: number; r: number };
+  walls?: Array<{ x: number; y: number; w: number; h: number; rot?: number }>;
+  wallsPoly?: Array<{ points: number[] }>;
+  posts?: Array<{ x: number; y: number; r: number }>;
+  bridges?: Array<{ x: number; y: number; w: number; h: number; rot?: number }>;
+  water?: Array<{ x: number; y: number; w: number; h: number; rot?: number }>;
+  waterPoly?: Array<{ points: number[] }>;
+  sand?: Array<{ x: number; y: number; w: number; h: number; rot?: number }>;
+  sandPoly?: Array<{ points: number[] }>;
+  hills?: Array<{ x: number; y: number; w: number; h: number; dir: string; strength?: number; falloff?: number; rot?: number }>;
+  decorations?: Array<{ x: number; y: number; w: number; h: number; kind: string }>;
   meta?: {
     title?: string;
     authorId?: string;
     authorName?: string;
-    par?: number;
+    created?: string;
+    modified?: string;
     lastModified?: number;
   };
 }
@@ -154,7 +157,15 @@ export class FirebaseLevelStore {
       if (levelId) {
         // Update existing level
         console.log(`Updating existing level ${levelId}`);
-        await FirebaseDatabase.updateLevel(levelId, firebaseLevel, userId);
+        // Do NOT overwrite createdAt, isPublic, or authorId on updates.
+        // Only update mutable fields and allow database layer to set lastModified.
+        const updates: Partial<FirebaseLevel> = {
+          title: firebaseLevel.title,
+          data: firebaseLevel.data,
+          // Keep authorName in sync if provided, but avoid changing authorId/isPublic here
+          authorName: firebaseLevel.authorName,
+        };
+        await FirebaseDatabase.updateLevel(levelId, updates, userId);
         savedId = levelId;
         console.log(`Successfully updated level ${levelId}`);
       } else {

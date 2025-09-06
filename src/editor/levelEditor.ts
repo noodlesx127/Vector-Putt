@@ -11,7 +11,8 @@
 import { 
   importLevelFromFile, 
   saveLevelAsDownload,
-  applyLevelDataFixups
+  applyLevelDataFixups,
+  validateLevelData
 } from './filesystem';
 import firebaseLevelStore from '../firebase/FirebaseLevelStore';
 import type { LevelEntry as FirebaseLevelEntry } from '../firebase/FirebaseLevelStore';
@@ -2831,6 +2832,15 @@ class LevelEditorImpl implements LevelEditor {
     // Do NOT overwrite authorId on normal save; preserve original owner
     if (!level.meta.created) level.meta.created = new Date().toISOString();
     level.meta.modified = new Date().toISOString();
+    // Unix timestamp per firebase.md
+    (level.meta as any).lastModified = Date.now();
+
+    // Validation before attempting to save
+    const validation = validateLevelData(level);
+    if (!validation.valid) {
+      env.showToast(`Save failed: ${validation.errors.join(', ')}`);
+      return;
+    }
 
     if (!this.editorCurrentSavedId) {
       // No existing Firebase ID -> Save As
@@ -2856,6 +2866,13 @@ class LevelEditorImpl implements LevelEditor {
     }
 
     try {
+      // Fill missing authorName if available
+      if (!level.meta.authorName) {
+        const getUserName = (env as any).getUserName;
+        const authorName = typeof getUserName === 'function' ? getUserName() : username;
+        level.meta.authorName = authorName;
+      }
+
       const id = await firebaseLevelStore.saveLevel(level, this.editorCurrentSavedId, username);
       this.editorCurrentSavedId = id;
       const title = level.course?.title || level.meta?.title || 'Level';
@@ -2876,8 +2893,15 @@ class LevelEditorImpl implements LevelEditor {
     level.meta = level.meta || {};
     // New copy must always be owned by the current user
     level.meta.authorId = username;
+    // Propagate authorName if available from environment (fallback to userId)
+    {
+      const getUserName = (env as any).getUserName;
+      const authorName = typeof getUserName === 'function' ? getUserName() : username;
+      level.meta.authorName = authorName;
+    }
     if (!level.meta.created) level.meta.created = new Date().toISOString();
     level.meta.modified = new Date().toISOString();
+    (level.meta as any).lastModified = Date.now();
 
     const suggested = (level.course?.title || level.meta?.title || 'Untitled').toString().trim();
     const title = await env.showPrompt('Level Title:', suggested, 'Save');
@@ -2888,6 +2912,15 @@ class LevelEditorImpl implements LevelEditor {
     (level.course as any).title = title || 'Untitled';
     level.meta = level.meta || {};
     level.meta.title = title || 'Untitled';
+
+    // Validation before attempting to save
+    {
+      const validation = validateLevelData(level);
+      if (!validation.valid) {
+        env.showToast(`Save failed: ${validation.errors.join(', ')}`);
+        return;
+      }
+    }
 
     try {
       const id = await firebaseLevelStore.saveLevel(level, undefined, username);

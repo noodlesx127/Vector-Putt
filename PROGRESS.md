@@ -64,12 +64,24 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
          - [ ] Delete confirmation dialog: warning color accents, explicit level name, confirm/cancel alignment
   
 - **Level System**
+  - [x] Suggest Par: integrate grid/A* path-based heuristic
+    - Implemented coarse grid build over fairway, 8-connected A* with octile heuristic, terrain costs (sand higher), diagonal corner-cut prevention, turns and sand penalties, and hill complexity bump. Falls back to distance/obstacles if no path. Wired to File → Suggest Par with a detailed confirm message. (`src/editor/levelHeuristics.ts`, `src/editor/levelEditor.ts`)
   - [ ] Cup placement heuristics
     - [ ] Define constraints (min tee distance, not trivially straight, not hugging edges, inside intended region)
-    - [ ] Path validation (grid/navmesh A* over fairway) to ensure non-trivial route with at least one corridor/bank
+    - [ ] Path validation (A* over fairway) to ensure non-trivial route with at least one corridor/bank; reuse `levelHeuristics` grid
     - [ ] Editor assist: auto-suggest 3–5 candidate cup positions ranked by difficulty
     - [ ] Validator lint: flag cups bypassing intended obstacles
     [ ] Optional: slopes, moving blocks, boosters, tunnels
+  
+  Recommended next steps
+  - [ ] Visual Path Preview overlay
+    - Temporary toggle to render the computed A* path, turns, and terrain cells (sand/hill) in the editor after Suggest Par. Helps tune and validate heuristics quickly.
+  - [ ] Coefficient tuning via Admin/Game Settings
+    - Expose D baseline (px per stroke), sand multiplier, turn penalty, and hill bump as adjustable settings to calibrate par estimates on sample levels.
+  - [ ] Cup position suggestions integration
+    - Wire `suggestCupPositions()` from `src/editor/levelHeuristics.ts` to propose 3–5 non-destructive candidate cup pins, enforce constraints, and rank by difficulty.
+  - [ ] Unit tests for heuristic sanity
+    - Add tests to ensure suggested par increases with obstacle density/path length and that removal of blockers lowers par accordingly.
 
 - **Level Editor & Browser**
   - [ ] Selection tools: duplicate; polygon vertex edit (polygons are translate-only currently)

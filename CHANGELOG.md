@@ -17,7 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - UI • User Made Levels panel: refreshed to the standard centered panel per `UI_Design.md` with responsive sizing (min margins), background `rgba(0,0,0,0.85)`, and border `#cfd2cf`. (`src/main.ts`)
  - UI • Options screen: converted to standard centered panel per `UI_Design.md` with dark overlay, responsive sizing, `rgba(0,0,0,0.85)` background, `#cfd2cf` border, and reflowed Controls/Audio sections into the panel. (`src/main.ts`)
  - Physics • Runtime tunables: hills and sand friction are now driven by Firebase-backed global settings and can be adjusted in the new Game Settings panel. Defaults remain `slopeAccel=720`, `frictionK=1.2`, `sandMultiplier=6.0`. (`src/main.ts`, `src/firebase/database.ts`)
- - Controls • Shot mechanic: changed from pull-back to shoot to drag-forward to shoot. Updated aim visuals and dev reflective path preview to match. (`src/main.ts`)
+- Controls • Shot mechanic: changed from pull-back to shoot to drag-forward to shoot. Updated aim visuals and dev reflective path preview to match. (`src/main.ts`)
+- Level Editor • Tools menu: removed `Grid -` and `Grid +` controls; retained a single `Grid Toggle` action. (`src/editor/levelEditor.ts`)
+ - Level Editor • Suggest Par: upgraded to grid/A* path-based heuristic over the fairway with terrain costs (sand), diagonal corner prevention, turn/sand penalties, and hill complexity bump; falls back to distance-based estimate if no path found. (`src/editor/levelHeuristics.ts`, `src/editor/levelEditor.ts`)
 
 ### Fixed
 - Level Editor • Overlap selection: selecting when objects overlap now picks the top-most (visually front) object. `findObjectAtPoint()` hit-test order was inverted to mirror render order and iterates arrays in reverse so the most recently drawn object is prioritized. (`src/editor/levelEditor.ts`)
@@ -28,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Level Editor • Session reset on exit: exiting to the main menu now clears editor session state so re-entering starts with a fresh level. Implemented `levelEditor.reset()` and wired all editor `exitToMenu` handlers to call it. (`src/editor/levelEditor.ts`, `src/main.ts`)
  - Level Editor • Posts snapping: posts now snap edge-aligned to grid lines (so post edges align like wall edges) on placement, on drag-move finalize, and when changing radius in the picker. This resolves misalignment with wall ends and improves placement precision. (`src/editor/levelEditor.ts`)
  - Level Editor • Paste snapping: newly pasted objects now snap correctly to the grid. Posts use radius-aware edge-aligned snapping; rect-like items and decorations snap position; polygons snap each vertex. (`src/editor/levelEditor.ts`)
+ - Level Editor • Post drag-move: fixed issue where posts could not be moved by mouse drag and appeared to "double step" under snapping. Drag hit-tests now use raw coordinates; deltas are computed correctly; a single edge-aligned snap applies on mouse up. (`src/editor/levelEditor.ts`)
+ - Level Editor • Grid Toggle: fixed non-functional toggle in Tools menu; now correctly calls `setShowGrid(!getShowGrid())` and syncs local state. (`src/editor/levelEditor.ts`)
 
 
 ## v0.3.26 — 2025-09-05

@@ -17,6 +17,7 @@ import {
 import firebaseLevelStore from '../firebase/FirebaseLevelStore';
 import type { LevelEntry as FirebaseLevelEntry } from '../firebase/FirebaseLevelStore';
 import firebaseCourseStore from '../firebase/FirebaseCourseStore';
+import { estimatePar } from './levelHeuristics';
 
 // Local palette for the editor module (matches docs/PALETTE.md and main.ts)
 const COLORS = {
@@ -63,7 +64,7 @@ export type EditorTool =
   | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'sand' | 'sandPoly' | 'hill' | 'decoration';
 
 export type EditorAction =
-  | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'gridToggle' | 'gridMinus' | 'gridPlus' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'courseCreator';
+  | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'gridToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'courseCreator';
 
 export type EditorMenuId = 'file' | 'objects' | 'decorations' | 'tools';
 
@@ -739,7 +740,12 @@ class LevelEditorImpl implements LevelEditor {
     this.pushUndoSnapshot(`Nudge ${this.selectedObjects.length} object(s)`);
 
     const gridSize = this.gridSize;
-    const stepSize = largeStep ? gridSize * 5 : gridSize; // Shift = 5x grid steps
+    const selectionIsAllCircles = this.selectedObjects.every(o => (o.type === 'tee' || o.type === 'cup' || o.type === 'post'));
+    // Circle-like (tee/cup/post): default 1px fine step; Shift = grid step for convenience
+    // Other objects: default grid step; Shift = 5x grid steps (as before)
+    const stepSize = selectionIsAllCircles
+      ? (largeStep ? gridSize : 1)
+      : (largeStep ? gridSize * 5 : gridSize);
     
     let dx = 0, dy = 0;
     switch (direction) {
@@ -795,7 +801,12 @@ class LevelEditorImpl implements LevelEditor {
     env.setGlobalState(gs);
     this.syncEditorDataFromGlobals(env);
     
-    const stepDesc = largeStep ? 'large step' : 'grid step';
+    let stepDesc = '';
+    if (selectionIsAllCircles) {
+      stepDesc = largeStep ? `grid step (${gridSize}px)` : '1px';
+    } else {
+      stepDesc = largeStep ? `large step (${gridSize * 5}px)` : `grid step (${gridSize}px)`;
+    }
     env.showToast(`Nudged ${this.selectedObjects.length} object(s) by ${stepDesc}`);
   }
 
@@ -2341,9 +2352,9 @@ class LevelEditorImpl implements LevelEditor {
     if (this.isDragMoving && this.dragMoveStart) {
       const rawDx = rx - this.dragMoveStart.x;
       const rawDy = ry - this.dragMoveStart.y;
-      const selectionIsAllPosts = this.selectedObjects.length > 0 && this.selectedObjects.every(o => o.type === 'post');
-      const dx = selectionIsAllPosts ? rawDx : (gridOn ? Math.round(rawDx / gridSize) * gridSize : rawDx);
-      const dy = selectionIsAllPosts ? rawDy : (gridOn ? Math.round(rawDy / gridSize) * gridSize : rawDy);
+      const selectionIsAllCircles = this.selectedObjects.length > 0 && this.selectedObjects.every(o => (o.type === 'post' || o.type === 'tee' || o.type === 'cup'));
+      const dx = selectionIsAllCircles ? rawDx : (gridOn ? Math.round(rawDx / gridSize) * gridSize : rawDx);
+      const dy = selectionIsAllCircles ? rawDy : (gridOn ? Math.round(rawDy / gridSize) * gridSize : rawDy);
       this.dragMoveOffset = { x: dx, y: dy };
       return;
     }
@@ -2448,22 +2459,42 @@ class LevelEditorImpl implements LevelEditor {
       const dx = this.dragMoveOffset.x;
       const dy = this.dragMoveOffset.y;
       if (dx !== 0 || dy !== 0) {
+        const gs = env.getGlobalState();
+        const { x: fairX, y: fairY, w: fairW, h: fairH } = env.fairwayRect();
+        const clampX = (x: number) => Math.max(fairX, Math.min(fairX + fairW, x));
+        const clampY = (y: number) => Math.max(fairY, Math.min(fairY + fairH, y));
+        const gridOn = (() => { try { return this.showGrid && env.getShowGrid(); } catch { return false; } })();
+        const gridSize = (() => { try { return env.getGridSize(); } catch { return this.gridSize; } })();
+        const snap = (n: number) => gridOn ? Math.round(n / gridSize) * gridSize : n;
+
         for (const so of this.selectedObjects) {
           const t = so.type as any;
           const o: any = so.object as any;
           if (t === 'wallsPoly' || t === 'waterPoly' || t === 'sandPoly') {
             const pts: number[] = Array.isArray(o.points) ? o.points : [];
             for (let i = 0; i + 1 < pts.length; i += 2) { pts[i] += dx; pts[i + 1] += dy; }
-          } else if (t === 'tee' || t === 'cup' || t === 'post' || t === 'wall' || t === 'water' || t === 'sand' || t === 'bridge' || t === 'hill' || t === 'decoration') {
+          } else if (t === 'tee') {
+            let nx = o.x + dx, ny = o.y + dy;
+            nx = clampX(snap(nx));
+            ny = clampY(snap(ny));
+            o.x = nx; o.y = ny;
+            gs.ball.x = nx; gs.ball.y = ny;
+          } else if (t === 'cup') {
+            let nx = o.x + dx, ny = o.y + dy;
+            nx = clampX(snap(nx));
+            ny = clampY(snap(ny));
+            o.x = nx; o.y = ny;
+            gs.hole.x = nx; gs.hole.y = ny;
+          } else if (t === 'post' || t === 'wall' || t === 'water' || t === 'sand' || t === 'bridge' || t === 'hill' || t === 'decoration') {
             if (typeof o.x === 'number') o.x += dx;
             if (typeof o.y === 'number') o.y += dy;
-            // On move end, snap posts to edge-aligned grid if enabled, then clamp
             if (t === 'post') {
               const snapped = this.snapPostPosition(o.x, o.y, o.r ?? 12, env);
               o.x = snapped.x; o.y = snapped.y;
             }
           }
         }
+        env.setGlobalState(gs);
       }
       this.isDragMoving = false;
       this.dragMoveStart = null;
@@ -3353,27 +3384,23 @@ class LevelEditorImpl implements LevelEditor {
     const env = this.env;
     this.syncEditorDataFromGlobals(env);
 
-    const tee = this.editorLevelData.tee;
-    const cup = this.editorLevelData.cup;
-    const dist = Math.hypot((cup.x || 0) - (tee.x || 0), (cup.y || 0) - (tee.y || 0));
-    const obstacles =
-      (this.editorLevelData.walls?.length || 0) +
-      (this.editorLevelData.wallsPoly?.length || 0) +
-      (this.editorLevelData.water?.length || 0) +
-      (this.editorLevelData.waterPoly?.length || 0) +
-      (this.editorLevelData.sand?.length || 0) +
-      (this.editorLevelData.sandPoly?.length || 0) +
-      (this.editorLevelData.bridges?.length || 0) +
-      (this.editorLevelData.hills?.length || 0);
+    // Use A* over a coarse grid derived from the fairway
+    const fair = env.fairwayRect();
+    let cellSize = 20;
+    try { const g = env.getGridSize(); if (typeof g === 'number' && g > 0) cellSize = Math.max(10, Math.min(40, g)); } catch {}
 
-    let suggested = Math.round(dist / 250 + obstacles * 0.15);
-    suggested = Math.max(2, Math.min(7, suggested));
+    const { reachable, suggestedPar, pathLengthPx, notes } = estimatePar(this.editorLevelData, fair, cellSize);
+    const extra = [] as string[];
+    extra.push(reachable ? 'Path: reachable' : 'Path: no path (fallback heuristic)');
+    extra.push(`Path length ~${Math.round(pathLengthPx)} px`);
+    if (notes && notes.length) extra.push(...notes);
 
-    const accept = await env.showConfirm(`Suggested par is ${suggested}. Apply?`, 'Suggest Par');
+    const message = `Suggested par is ${suggestedPar} (cell=${cellSize}).\n${extra.join('\n')}`;
+    const accept = await env.showConfirm(message, 'Suggest Par');
     if (!accept) return;
     this.pushUndoSnapshot('Set par');
-    this.editorLevelData.par = suggested;
-    env.showToast(`Par set to ${suggested}`);
+    this.editorLevelData.par = suggestedPar;
+    env.showToast(`Par set to ${suggestedPar}`);
   }
 
   async testLevel(): Promise<void> {

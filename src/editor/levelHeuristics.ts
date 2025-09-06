@@ -1,0 +1,282 @@
+// Level heuristics: grid build + A* path and par estimation
+// This module is intentionally dependency-light and does not import editor types
+// to avoid runtime cycles. It accepts a generic Level-like object.
+
+export type Rect = { x: number; y: number; w: number; h: number };
+export type Poly = { points: number[] };
+
+export type Fairway = { x: number; y: number; w: number; h: number };
+
+export type LevelLike = {
+  tee: { x: number; y: number };
+  cup: { x: number; y: number; r?: number };
+  walls?: Rect[];
+  wallsPoly?: Poly[];
+  water?: Rect[];
+  waterPoly?: Poly[];
+  sand?: Rect[];
+  sandPoly?: Poly[];
+  hills?: Array<{ x: number; y: number; w: number; h: number; dir?: string; strength?: number; falloff?: number }>;
+  bridges?: Rect[];
+};
+
+type GridCell = { cost: number; blocked: boolean };
+
+function pointInRect(px: number, py: number, r: Rect): boolean {
+  return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+}
+
+export function suggestCupPositions(level: LevelLike, fairway: Fairway, cellSize: number, count = 5): Array<{ x: number; y: number; score: number; lengthPx: number; turns: number }> {
+  const { grid, cols, rows } = buildGrid(level, fairway, cellSize);
+  const toCell = (x: number, y: number) => ({ c: clamp(Math.floor((x - fairway.x) / cellSize), 0, cols - 1), r: clamp(Math.floor((y - fairway.y) / cellSize), 0, rows - 1) });
+  const toWorld = (c: number, r: number) => ({ x: fairway.x + c * cellSize + cellSize / 2, y: fairway.y + r * cellSize + cellSize / 2 });
+
+  const start = toCell(level.tee.x, level.tee.y);
+
+  const minDist = Math.max(fairway.w, fairway.h) * 0.25; // ensure non-trivial distance
+
+  const candidates: Array<{ c: number; r: number; score: number; lengthPx: number; turns: number }> = [];
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (grid[r][c].blocked) continue;
+      const w = toWorld(c, r);
+      const dist = Math.hypot(w.x - level.tee.x, w.y - level.tee.y);
+      if (dist < minDist) continue;
+      const { found, path, lengthCost } = aStar(grid, cols, rows, start, { c, r });
+      if (!found) continue;
+      // basic path metrics
+      let turns = 0;
+      for (let i = 2; i < path.length; i++) {
+        const a = path[i - 2], b = path[i - 1], d = path[i];
+        const v1c = b.c - a.c, v1r = b.r - a.r;
+        const v2c = d.c - b.c, v2r = d.r - b.r;
+        if (v1c !== v2c || v1r !== v2r) turns++;
+      }
+      const lengthPx = lengthCost * cellSize;
+      // score favors longer, more-turn paths moderately (harder holes)
+      const score = lengthPx + turns * (cellSize * 2);
+      candidates.push({ c, r, score, lengthPx, turns });
+    }
+  }
+
+  // pick top N by score with spatial diversity (far from each other)
+  candidates.sort((a, b) => b.score - a.score);
+  const picked: Array<{ x: number; y: number; score: number; lengthPx: number; turns: number }> = [];
+  const minSep = cellSize * 6;
+  for (const cand of candidates) {
+    const w = toWorld(cand.c, cand.r);
+    if (picked.some(p => Math.hypot(p.x - w.x, p.y - w.y) < minSep)) continue;
+    picked.push({ x: w.x, y: w.y, score: cand.score, lengthPx: cand.lengthPx, turns: cand.turns });
+    if (picked.length >= count) break;
+  }
+  return picked;
+}
+
+function pointInPoly(px: number, py: number, pts: number[]): boolean {
+  if (!pts || pts.length < 6) return false;
+  let inside = false;
+  const n = pts.length / 2;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = pts[i * 2], yi = pts[i * 2 + 1];
+    const xj = pts[j * 2], yj = pts[j * 2 + 1];
+    const intersect = ((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / ((yj - yi) || 1e-6) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function clamp(v: number, min: number, max: number): number { return Math.max(min, Math.min(max, v)); }
+
+export function buildGrid(level: LevelLike, fairway: Fairway, cellSize: number): { grid: GridCell[][]; cols: number; rows: number } {
+  const cols = Math.max(1, Math.ceil(fairway.w / cellSize));
+  const rows = Math.max(1, Math.ceil(fairway.h / cellSize));
+  const grid: GridCell[][] = Array.from({ length: rows }, () => Array.from({ length: cols }, () => ({ cost: 1, blocked: false })));
+
+  // helpers to map cell index to world center
+  const cx = (c: number) => fairway.x + c * cellSize + cellSize / 2;
+  const cy = (r: number) => fairway.y + r * cellSize + cellSize / 2;
+
+  const walls = level.walls || [];
+  const waters = level.water || [];
+  const sands = level.sand || [];
+  const wallsPoly = level.wallsPoly || [];
+  const watersPoly = level.waterPoly || [];
+  const sandsPoly = level.sandPoly || [];
+  const hills = level.hills || [];
+  // bridges are passable
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = cx(c), y = cy(r);
+      // walls / water are blocked
+      let blocked = false;
+      for (const w of walls) { if (pointInRect(x, y, w)) { blocked = true; break; } }
+      if (!blocked) for (const wp of wallsPoly) { if (pointInPoly(x, y, wp.points)) { blocked = true; break; } }
+      if (!blocked) for (const w of waters) { if (pointInRect(x, y, w)) { blocked = true; break; } }
+      if (!blocked) for (const wp of watersPoly) { if (pointInPoly(x, y, wp.points)) { blocked = true; break; } }
+
+      // sand is higher cost but not blocked; hills are a mild extra cost to reflect difficulty
+      let cost = 1;
+      if (!blocked) {
+        for (const s of sands) { if (pointInRect(x, y, s)) { cost = Math.max(cost, 3); break; } }
+        if (cost === 1) for (const sp of sandsPoly) { if (pointInPoly(x, y, sp.points)) { cost = Math.max(cost, 3); break; } }
+        // hills bump cost slightly (strength-weighted if available)
+        for (const h of hills) { if (pointInRect(x, y, h)) { const k = (h as any).strength ? Math.min(2, 1 + (h as any).strength * 0.5) : 1.25; cost = Math.max(cost, k * 1.25); break; } }
+      }
+
+      grid[r][c] = { cost, blocked };
+    }
+  }
+
+  return { grid, cols, rows };
+}
+
+// A* pathfinding on 8-connected grid
+export function aStar(
+  grid: GridCell[][],
+  cols: number,
+  rows: number,
+  start: { c: number; r: number },
+  goal: { c: number; r: number }
+): { found: boolean; path: Array<{ c: number; r: number }>; lengthCost: number } {
+  const key = (c: number, r: number) => `${c},${r}`;
+  const open: Array<{ c: number; r: number; g: number; f: number }>[] = [] as any;
+  const startNode = { c: start.c, r: start.r, g: 0, f: 0 };
+  open.push([startNode]);
+  const came: Record<string, string | undefined> = {};
+  const gScore: Record<string, number> = { [key(start.c, start.r)]: 0 };
+
+  const dirs = [
+    { dc: 1, dr: 0, w: 1 }, { dc: -1, dr: 0, w: 1 }, { dc: 0, dr: 1, w: 1 }, { dc: 0, dr: -1, w: 1 },
+    { dc: 1, dr: 1, w: Math.SQRT2 }, { dc: 1, dr: -1, w: Math.SQRT2 }, { dc: -1, dr: 1, w: Math.SQRT2 }, { dc: -1, dr: -1, w: Math.SQRT2 }
+  ];
+
+  // Simple array-based open set (small grid); linear scans acceptable here
+  const openSet: Array<{ c: number; r: number; f: number }> = [{ c: start.c, r: start.r, f: 0 }];
+
+  const h = (c: number, r: number) => {
+    const dc = Math.abs(c - goal.c);
+    const dr = Math.abs(r - goal.r);
+    return (Math.max(dc, dr) - Math.min(dc, dr)) + Math.min(dc, dr) * Math.SQRT2; // octile
+  };
+
+  while (openSet.length > 0) {
+    // pick lowest f
+    let bestIdx = 0;
+    for (let i = 1; i < openSet.length; i++) if (openSet[i].f < openSet[bestIdx].f) bestIdx = i;
+    const current = openSet.splice(bestIdx, 1)[0];
+    const ck = key(current.c, current.r);
+
+    if (current.c === goal.c && current.r === goal.r) {
+      // reconstruct
+      const path: Array<{ c: number; r: number }> = [];
+      let k: string | undefined = ck;
+      while (k) {
+        const [cc, rr] = k.split(',').map(Number);
+        path.push({ c: cc, r: rr });
+        k = came[k];
+      }
+      path.reverse();
+      // compute path cost length
+      let lengthCost = 0;
+      for (let i = 1; i < path.length; i++) {
+        const p = path[i - 1], q = path[i];
+        const diag = (p.c !== q.c) && (p.r !== q.r);
+        const step = diag ? Math.SQRT2 : 1;
+        const gc = grid[q.r][q.c].cost;
+        lengthCost += step * gc;
+      }
+      return { found: true, path, lengthCost };
+    }
+
+    for (const d of dirs) {
+      const nc = current.c + d.dc, nr = current.r + d.dr;
+      if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue;
+      if (grid[nr][nc].blocked) continue;
+      // Optional: prevent cutting corners through walls by checking both orthogonal neighbors when moving diagonally
+      if (d.dc !== 0 && d.dr !== 0) {
+        const n1 = grid[current.r][current.c + d.dc];
+        const n2 = grid[current.r + d.dr][current.c];
+        if (n1?.blocked || n2?.blocked) continue;
+      }
+
+      const neighborK = key(nc, nr);
+      const moveCost = d.w * ((grid[nr][nc].cost + grid[current.r][current.c].cost) * 0.5);
+      const tentativeG = (gScore[ck] ?? Infinity) + moveCost;
+      if (tentativeG < (gScore[neighborK] ?? Infinity)) {
+        came[neighborK] = ck;
+        gScore[neighborK] = tentativeG;
+        const f = tentativeG + h(nc, nr);
+        const existing = openSet.findIndex(n => n.c === nc && n.r === nr);
+        if (existing >= 0) openSet[existing].f = f; else openSet.push({ c: nc, r: nr, f });
+      }
+    }
+  }
+
+  return { found: false, path: [], lengthCost: 0 };
+}
+
+export function estimatePar(level: LevelLike, fairway: Fairway, cellSize: number): {
+  reachable: boolean;
+  suggestedPar: number;
+  pathLengthPx: number;
+  notes: string[];
+} {
+  const { grid, cols, rows } = buildGrid(level, fairway, cellSize);
+  const toCell = (x: number, y: number) => ({ c: clamp(Math.floor((x - fairway.x) / cellSize), 0, cols - 1), r: clamp(Math.floor((y - fairway.y) / cellSize), 0, rows - 1) });
+
+  const start = toCell(level.tee.x, level.tee.y);
+  const goal = toCell(level.cup.x, level.cup.y);
+
+  const { found, path, lengthCost } = aStar(grid, cols, rows, start, goal);
+
+  const notes: string[] = [];
+  if (!found) {
+    // fallback: straight-line distance heuristic + obstacles factor
+    const dx = level.cup.x - level.tee.x;
+    const dy = level.cup.y - level.tee.y;
+    const dist = Math.hypot(dx, dy);
+    const obstacles = (level.walls?.length || 0) + (level.wallsPoly?.length || 0) + (level.water?.length || 0) + (level.waterPoly?.length || 0) + (level.sand?.length || 0) + (level.sandPoly?.length || 0);
+    let par = Math.round(dist / 260 + obstacles * 0.3);
+    par = Math.max(2, Math.min(7, par));
+    notes.push('no-path: fallback distance-based par');
+    return { reachable: false, suggestedPar: par, pathLengthPx: dist, notes };
+  }
+
+  // Convert cost-length into pixel length. Base cost step of 1 ~= cellSize, diagonals ~ cellSize*sqrt(2).
+  // Since we already included diagonal step weights, scale by cellSize.
+  const pathLengthPx = lengthCost * cellSize;
+
+  // Count rough turns to account for complexity/banking
+  let turns = 0;
+  for (let i = 2; i < path.length; i++) {
+    const a = path[i - 2], b = path[i - 1], c = path[i];
+    const v1c = b.c - a.c, v1r = b.r - a.r;
+    const v2c = c.c - b.c, v2r = c.r - b.r;
+    if (v1c !== v2c || v1r !== v2r) turns++;
+  }
+
+  // Base shots: assume typical effective shot distance D
+  const D = 320; // px per stroke baseline
+  let strokes = pathLengthPx / D;
+
+  // Add penalties based on terrain cost encountered along path
+  const sandCellsOnPath = path.filter(p => !grid[p.r][p.c].blocked && grid[p.r][p.c].cost > 1).length;
+  const sandPenalty = sandCellsOnPath * 0.01; // small cumulative penalty
+
+  const turnPenalty = Math.min(1.5, turns * 0.08);
+
+  strokes = strokes + sandPenalty + turnPenalty;
+
+  // Hills: rough complexity bump if present
+  if (level.hills && level.hills.length > 0) strokes += 0.2;
+
+  let suggested = Math.round(strokes + 1); // add 1 for tee off
+  suggested = Math.max(2, Math.min(7, suggested));
+
+  if (sandCellsOnPath > 0) notes.push(`sand cells ~${sandCellsOnPath}`);
+  if (turns > 0) notes.push(`turns ~${turns}`);
+
+  return { reachable: true, suggestedPar: suggested, pathLengthPx, notes };
+}

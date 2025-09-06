@@ -983,8 +983,6 @@ class LevelEditorImpl implements LevelEditor {
         { label: 'Paste (Ctrl+V)', item: { kind: 'action', action: 'paste' } },
         { label: 'Duplicate (Ctrl+D)', item: { kind: 'action', action: 'duplicate' } },
         { label: 'Grid Toggle', item: { kind: 'action', action: 'gridToggle' }, separator: true },
-        { label: 'Grid -', item: { kind: 'action', action: 'gridMinus' } },
-        { label: 'Grid +', item: { kind: 'action', action: 'gridPlus' } },
         // Admin-only tool entry (conditionally rendered at runtime)
         { label: 'Course Creator', item: { kind: 'action', action: 'courseCreator' }, separator: true }
       ]
@@ -1060,8 +1058,7 @@ class LevelEditorImpl implements LevelEditor {
       this.showGrid = env.getShowGrid();
     } catch {}
 
-    // Update dynamic menu labels
-    this.EDITOR_MENUS.tools.items[1].label = this.showGrid ? 'Grid On' : 'Grid Off';
+    // Dynamic labels are resolved at draw-time per item; no pre-mutation of menu items needed
 
     // Reset hotspots each frame
     this.uiHotspots = [];
@@ -1758,12 +1755,6 @@ class LevelEditorImpl implements LevelEditor {
             case 'gridToggle':
               displayLabel = this.showGrid ? 'Grid On' : 'Grid Off';
               break;
-            case 'gridMinus':
-              displayLabel = `Grid - (${this.gridSize}px)`;
-              break;
-            case 'gridPlus':
-              displayLabel = `Grid + (${this.gridSize}px)`;
-              break;
           }
         }
         
@@ -1890,11 +1881,11 @@ class LevelEditorImpl implements LevelEditor {
           }
           if (item.kind === 'action') {
             if (item.action === 'gridToggle') {
-              try { env.setShowGrid?.(!env.getShowGrid()); } catch {}
-            } else if (item.action === 'gridMinus') {
-              try { const g = Math.max(2, env.getGridSize() - 2); env.setGridSize?.(g); } catch {}
-            } else if (item.action === 'gridPlus') {
-              try { const g = Math.max(2, env.getGridSize() + 2); env.setGridSize?.(g); } catch {}
+              try {
+                const newShow = !env.getShowGrid();
+                env.setShowGrid?.(newShow);
+                this.showGrid = newShow; // keep local state in sync in case env doesn't repaint immediately
+              } catch {}
             } else if (item.action === 'courseCreator') {
               // Admin gating (double enforcement)
               const isAdmin = (typeof env.getUserRole === 'function') ? (env.getUserRole() === 'admin') : false;
@@ -1963,8 +1954,12 @@ class LevelEditorImpl implements LevelEditor {
       try { if (this.showGrid && env.getShowGrid()) { const g = env.getGridSize(); return Math.round(n / g) * g; } } catch {}
       return n;
     };
-    let px = snap(Math.max(fairX, Math.min(fairX + fairW, p.x)));
-    let py = snap(Math.max(fairY, Math.min(fairY + fairH, p.y)));
+    // Raw clamped mouse (no snap) used for hit-testing and drag-start
+    const rx = Math.max(fairX, Math.min(fairX + fairW, p.x));
+    const ry = Math.max(fairY, Math.min(fairY + fairH, p.y));
+    // Snapped absolute position used for placements/vertices
+    let px = snap(rx);
+    let py = snap(ry);
 
     if (this.selectedTool !== 'select') {
       // Start rectangle placement for rect tools
@@ -2134,9 +2129,9 @@ class LevelEditorImpl implements LevelEditor {
       }
     }
 
-    // Polygon vertex drag start (before general hit-test)
+    // Polygon vertex drag start (before general hit-test) — use raw mouse for hit-test
     if (this.selectedTool === 'select') {
-      const vertexHit = this.findPolygonVertexAtPoint(px, py, env);
+      const vertexHit = this.findPolygonVertexAtPoint(rx, ry, env);
       if (vertexHit) {
         // Ensure the polygon is selected
         const isSame = (a: SelectableObject, b: SelectableObject) => a.type === b.type && (a as any).index === (b as any).index;
@@ -2152,7 +2147,7 @@ class LevelEditorImpl implements LevelEditor {
     }
 
     // Hit-test objects for selection and drag-move
-    const hit = this.findObjectAtPoint(px, py, env);
+    const hit = this.findObjectAtPoint(rx, ry, env);
     if (this.selectedTool === 'select') {
       if (hit) {
         if (e.shiftKey) {
@@ -2165,12 +2160,12 @@ class LevelEditorImpl implements LevelEditor {
         // Begin drag-move
         this.pushUndoSnapshot('Move selection');
         this.isDragMoving = true;
-        this.dragMoveStart = { x: px, y: py };
+        this.dragMoveStart = { x: rx, y: ry };
         this.dragMoveOffset = { x: 0, y: 0 };
       } else {
         // Begin marquee selection
         this.isSelectionDragging = true;
-        this.selectionBoxStart = { x: px, y: py };
+        this.selectionBoxStart = { x: rx, y: ry };
         this.dragMoveOffset = { x: 0, y: 0 };
         if (!e.shiftKey) this.selectedObjects = [];
       }
@@ -2184,12 +2179,15 @@ class LevelEditorImpl implements LevelEditor {
     this.lastMousePosition = { x: p.x, y: p.y };
     
     const { x: fairX, y: fairY, w: fairW, h: fairH } = env.fairwayRect();
-    const snap = (n: number) => {
-      try { if (this.showGrid && env.getShowGrid()) { const g = env.getGridSize(); return Math.round(n / g) * g; } } catch {}
-      return n;
-    };
-    const px = snap(Math.max(fairX, Math.min(fairX + fairW, p.x)));
-    const py = snap(Math.max(fairY, Math.min(fairY + fairH, p.y)));
+    const gridOn = (() => { try { return this.showGrid && env.getShowGrid(); } catch { return false; } })();
+    const gridSize = (() => { try { return env.getGridSize(); } catch { return this.gridSize; } })();
+    const clampX = (x: number) => Math.max(fairX, Math.min(fairX + fairW, x));
+    const clampY = (y: number) => Math.max(fairY, Math.min(fairY + fairH, y));
+    const snap = (n: number) => gridOn ? Math.round(n / gridSize) * gridSize : n;
+    const rx = clampX(p.x);
+    const ry = clampY(p.y);
+    const px = snap(rx);
+    const py = snap(ry);
 
     // Update drag placement preview
     if (this.isEditorDragging && this.editorDragTool) {
@@ -2341,12 +2339,21 @@ class LevelEditorImpl implements LevelEditor {
     }
 
     if (this.isDragMoving && this.dragMoveStart) {
-      this.dragMoveOffset = { x: px - this.dragMoveStart.x, y: py - this.dragMoveStart.y };
+      const rawDx = rx - this.dragMoveStart.x;
+      const rawDy = ry - this.dragMoveStart.y;
+      const selectionIsAllPosts = this.selectedObjects.length > 0 && this.selectedObjects.every(o => o.type === 'post');
+      const dx = selectionIsAllPosts ? rawDx : (gridOn ? Math.round(rawDx / gridSize) * gridSize : rawDx);
+      const dy = selectionIsAllPosts ? rawDy : (gridOn ? Math.round(rawDy / gridSize) * gridSize : rawDy);
+      this.dragMoveOffset = { x: dx, y: dy };
       return;
     }
 
     if (this.isSelectionDragging && this.selectionBoxStart) {
-      this.dragMoveOffset = { x: px - this.selectionBoxStart.x, y: py - this.selectionBoxStart.y };
+      const rawDx = rx - this.selectionBoxStart.x;
+      const rawDy = ry - this.selectionBoxStart.y;
+      const dx = gridOn ? Math.round(rawDx / gridSize) * gridSize : rawDx;
+      const dy = gridOn ? Math.round(rawDy / gridSize) * gridSize : rawDy;
+      this.dragMoveOffset = { x: dx, y: dy };
       return;
     }
 
@@ -2719,23 +2726,6 @@ class LevelEditorImpl implements LevelEditor {
             const newShow = !env.getShowGrid();
             env.setShowGrid?.(newShow);
             this.showGrid = newShow;
-          } catch {}
-          return;
-        case '-':
-          e.preventDefault();
-          try {
-            const g = Math.max(2, env.getGridSize() - 2);
-            env.setGridSize?.(g);
-            this.gridSize = g;
-          } catch {}
-          return;
-        case '=':
-        case '+':
-          e.preventDefault();
-          try {
-            const g = Math.max(2, env.getGridSize() + 2);
-            env.setGridSize?.(g);
-            this.gridSize = g;
           } catch {}
           return;
       }

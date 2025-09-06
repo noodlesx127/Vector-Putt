@@ -75,6 +75,8 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
   - [ ] Selection tools: duplicate; polygon vertex edit (polygons are translate-only currently)
   - [x] Posts: Snapping Does not work the same as the rest of the editor. IE doesnt work the same as walls, ect.
     - Implemented radius-aware edge-aligned snapping so post edges line up with grid lines like wall edges. Applied on initial placement, on drag-move finalize, and when changing radius in the picker. Keeps clamping to fairway bounds. (`src/editor/levelEditor.ts`)
+  - [x] Grid toggle in Tools menu not working; removed grid size +/- controls
+    - Fixed `Grid Toggle` action to call `env.setShowGrid(!env.getShowGrid())` and sync local `showGrid`. Removed `Grid -` and `Grid +` menu items and their keyboard shortcuts. (`src/editor/levelEditor.ts`)
 
 ## Next Up (Short Horizon)
 - Seeded from `TODO.md` backlog:

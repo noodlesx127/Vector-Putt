@@ -14,6 +14,8 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
   - [ ] Velocity affects terrain (e.g., hard shot may skim sand)
   - [x] Tuning: Sand slows more and hills push harder — increased sand friction multiplier from 4.2× to 6.0× of `frictionK`, and increased hill base acceleration `SLOPE_ACCEL` from 520 to 720 px/s². (`src/main.ts`)
   - [x] Admin Game Settings (runtime): Added admin-only Game Settings panel under Admin Menu to tune global physics (Hill Accel, Ball Friction K, Sand Multiplier) on the fly; values persist in Firebase `/gameSettings`. Applied at startup and on Save. (`src/main.ts`, `src/firebase/database.ts`)
+  - [ ] Better hill direction visibility (add clear visual indicators of slope direction/strength in play and editor)
+  - [ ] Change hitting the ball mechanic from pulling back to pulling forward
  
  - **Course Creator — Follow-ups**
    - [x] Unit tests for `src/firebase/FirebaseCourseStore.ts`
@@ -65,6 +67,7 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
 
 - **Level Editor & Browser**
   - [ ] Selection tools: duplicate; polygon vertex edit (polygons are translate-only currently)
+  - [ ] Posts: allow freely movable posts (remove grid-only movement constraint and support smooth dragging)
 
 ## Next Up (Short Horizon)
 - Seeded from `TODO.md` backlog:

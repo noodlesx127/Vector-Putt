@@ -4549,6 +4549,95 @@ function draw() {
     return;
   }
   
+  // Game Settings screen (Admin)
+  if (gameState === 'gameSettings') {
+    gameSettingsHotspots = [];
+    
+    // Background panel (centered 800x600)
+    const panelW = 800, panelH = 600;
+    const panelX = WIDTH/2 - panelW/2, panelY = HEIGHT/2 - panelH/2;
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(panelX, panelY, panelW, panelH);
+    ctx.strokeStyle = '#cfd2cf';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(panelX, panelY, panelW, panelH);
+    
+    // Title
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.font = 'bold 28px system-ui, sans-serif';
+    ctx.fillText('Game Settings', panelX + panelW/2, panelY + 30);
+    
+    // Helper to draw a setting row with -, slider, + controls
+    function drawSetting(label: string, field: GameSettingsField, y: number, min: number, max: number, step: number, valueFmt: (v:number)=>string) {
+      const labelX = panelX + 40;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.font = '16px system-ui, sans-serif';
+      ctx.fillStyle = '#ffffff';
+      const val = field === 'slope' ? gameSettingsState.slopeAccel : (field === 'friction' ? gameSettingsState.frictionK : gameSettingsState.sandMultiplier);
+      ctx.fillText(`${label}: ${valueFmt(val)}`, labelX, y);
+      
+      const rowY = y + 24;
+      const minusW = 32, plusW = 32, h = 28;
+      const sliderW = 400;
+      const minusX = labelX;
+      const sliderX = minusX + minusW + 12;
+      const plusX = sliderX + sliderW + 12;
+      
+      // minus
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillRect(minusX, rowY, minusW, h);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(minusX, rowY, minusW, h);
+      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.fillText('−', minusX + minusW/2, rowY + h/2 + 0.5);
+      gameSettingsHotspots.push({ kind: 'minus', field, x: minusX, y: rowY, w: minusW, h });
+      
+      // slider track
+      ctx.strokeStyle = 'rgba(255,255,255,0.30)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(sliderX, rowY + h/2); ctx.lineTo(sliderX + sliderW, rowY + h/2); ctx.stroke();
+      // thumb position
+      const v = field === 'slope' ? gameSettingsState.slopeAccel : (field === 'friction' ? gameSettingsState.frictionK : gameSettingsState.sandMultiplier);
+      const t = Math.max(0, Math.min(1, (v - min) / (max - min)));
+      const thumbX = sliderX + t * sliderW;
+      ctx.fillStyle = 'rgba(100,150,200,0.9)';
+      ctx.beginPath(); ctx.arc(thumbX, rowY + h/2, 6, 0, Math.PI * 2); ctx.fill();
+      gameSettingsHotspots.push({ kind: 'slider', field, x: sliderX, y: rowY, w: sliderW, h });
+      
+      // plus
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillRect(plusX, rowY, plusW, h);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(plusX, rowY, plusW, h);
+      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.fillText('+', plusX + plusW/2, rowY + h/2 + 0.5);
+      gameSettingsHotspots.push({ kind: 'plus', field, x: plusX, y: rowY, w: plusW, h });
+    }
+    
+    const baseY = panelY + 100;
+    drawSetting('Hill Acceleration (px/s²)', 'slope', baseY, 200, 2000, 20, v => `${Math.round(v)}`);
+    drawSetting('Ball Friction (K)', 'friction', baseY + 90, 0.2, 2.0, 0.05, v => v.toFixed(2));
+    drawSetting('Sand Multiplier (×K)', 'sand', baseY + 180, 1.0, 10.0, 0.2, v => v.toFixed(2));
+    
+    // Buttons
+    const btnW = 120, btnH = 36;
+    const saveX = panelX + panelW - btnW - 30;
+    const backX = saveX - btnW - 14;
+    const by = panelY + panelH - btnH - 24;
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
+    ctx.fillRect(backX, by, btnW, btnH);
+    ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(backX, by, btnW, btnH);
+    ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '15px system-ui, sans-serif';
+    ctx.fillText('Back', backX + btnW/2, by + btnH/2 + 0.5);
+    gameSettingsHotspots.push({ kind: 'back', x: backX, y: by, w: btnW, h: btnH });
+    
+    ctx.fillStyle = 'rgba(100,150,200,0.80)';
+    ctx.fillRect(saveX, by, btnW, btnH);
+    ctx.strokeStyle = 'rgba(100,150,200,1)'; ctx.lineWidth = 1; ctx.strokeRect(saveX, by, btnW, btnH);
+    ctx.fillStyle = '#ffffff'; ctx.fillText('Save', saveX + btnW/2, by + btnH/2 + 0.5);
+    gameSettingsHotspots.push({ kind: 'save', x: saveX, y: by, w: btnW, h: btnH });
+    
+    renderGlobalOverlays();
+    return;
+  }
+  
   // Level Management screen
   if (gameState === 'levelManagement') {
     levelManagementHotspots = [];

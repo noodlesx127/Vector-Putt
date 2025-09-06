@@ -2645,6 +2645,7 @@ canvas.addEventListener('mousedown', (e) => {
             migrateSingleSlotIfNeeded,
             exitToMenu: () => { gameState = 'menu'; },
             testLevel: testLevelFromEditor,
+            getUserName: () => ((userProfile?.name ?? getUserId()) + ''),
             getUserRole: () => userProfile.role
           };
           levelEditor.init(editorEnv);
@@ -2844,6 +2845,7 @@ canvas.addEventListener('mousedown', (e) => {
       migrateSingleSlotIfNeeded,
       exitToMenu: () => { gameState = 'menu'; },
       testLevel: testLevelFromEditor,
+      getUserName: () => ((userProfile?.name ?? getUserId()) + ''),
       getUserRole: () => userProfile.role
     };
     levelEditor.handleMouseDown(e, editorEnv);
@@ -3209,6 +3211,7 @@ canvas.addEventListener('mousemove', (e) => {
       migrateSingleSlotIfNeeded,
       exitToMenu: () => { gameState = 'menu'; },
       testLevel: testLevelFromEditor,
+      getUserName: () => ((userProfile?.name ?? getUserId()) + ''),
       getUserRole: () => userProfile.role
     };
     levelEditor.handleMouseMove(e as MouseEvent, editorEnv);
@@ -3388,6 +3391,7 @@ canvas.addEventListener('mouseup', (e) => {
       migrateSingleSlotIfNeeded,
       exitToMenu: () => { gameState = 'menu'; },
       testLevel: testLevelFromEditor,
+      getUserName: () => ((userProfile?.name ?? getUserId()) + ''),
       getUserRole: () => userProfile.role
     };
     levelEditor.handleMouseUp(e as MouseEvent, editorEnv);
@@ -3581,6 +3585,7 @@ function handleLevelEditorKeys(e: KeyboardEvent) {
     migrateSingleSlotIfNeeded,
     exitToMenu: () => { gameState = 'menu'; },
     testLevel: testLevelFromEditor,
+    getUserName: () => ((userProfile?.name ?? getUserId()) + ''),
     getUserRole: () => userProfile.role
   };
   levelEditor.handleKeyDown(e, editorEnv);
@@ -4355,6 +4360,7 @@ function draw() {
       migrateSingleSlotIfNeeded,
       exitToMenu: () => { gameState = 'menu'; },
       testLevel: testLevelFromEditor,
+      getUserName: () => ((userProfile?.name ?? getUserId()) + ''),
       getUserRole: () => userProfile.role
     };
     levelEditor.render(editorEnv);

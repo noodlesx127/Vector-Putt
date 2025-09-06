@@ -400,6 +400,41 @@ export function validateLevelData(data: any): { valid: boolean; errors: string[]
   if (Array.isArray(data.wallsPoly)) checkPoly(data.wallsPoly, 'wallsPoly');
   if (Array.isArray(data.waterPoly)) checkPoly(data.waterPoly, 'waterPoly');
   if (Array.isArray(data.sandPoly)) checkPoly(data.sandPoly, 'sandPoly');
+
+  // Geometry count limits to help keep data size manageable
+  const countLimit = 800; // generous total objects per type
+  const polyCountLimit = 300; // polygons per type
+  const polyPointsLimit = 1000; // points per polygon (i.e., 500 vertices)
+  const exceed = (arr: any[] | undefined, lim: number) => Array.isArray(arr) && arr.length > lim;
+  if (exceed(data.walls, countLimit)) errors.push(`Too many walls: max ${countLimit}`);
+  if (exceed(data.bridges, countLimit)) errors.push(`Too many bridges: max ${countLimit}`);
+  if (exceed(data.water, countLimit)) errors.push(`Too many water rects: max ${countLimit}`);
+  if (exceed(data.sand, countLimit)) errors.push(`Too many sand rects: max ${countLimit}`);
+  if (exceed(data.posts, countLimit)) errors.push(`Too many posts: max ${countLimit}`);
+  if (exceed(data.hills, countLimit)) errors.push(`Too many hills: max ${countLimit}`);
+  if (exceed(data.decorations, countLimit)) errors.push(`Too many decorations: max ${countLimit}`);
+  if (exceed(data.wallsPoly, polyCountLimit)) errors.push(`Too many polygon walls: max ${polyCountLimit}`);
+  if (exceed(data.waterPoly, polyCountLimit)) errors.push(`Too many polygon water areas: max ${polyCountLimit}`);
+  if (exceed(data.sandPoly, polyCountLimit)) errors.push(`Too many polygon sand areas: max ${polyCountLimit}`);
+  const checkPolyPointsLimit = (arr: any[] | undefined, name: string) => {
+    if (!Array.isArray(arr)) return;
+    arr.forEach((o, i) => {
+      if (Array.isArray(o?.points) && o.points.length > polyPointsLimit) {
+        errors.push(`${name}[${i}] has too many points: max ${polyPointsLimit}`);
+      }
+    });
+  };
+  checkPolyPointsLimit(data.wallsPoly, 'wallsPoly');
+  checkPolyPointsLimit(data.waterPoly, 'waterPoly');
+  checkPolyPointsLimit(data.sandPoly, 'sandPoly');
+
+  // Overall serialized size limit (approximate) per firebase.md guidance (<= 1MB)
+  try {
+    const sizeBytes = new Blob([JSON.stringify(data)]).size;
+    if (sizeBytes > 1_000_000) {
+      errors.push(`Level data exceeds 1MB (${(sizeBytes / 1024).toFixed(0)} KB). Reduce geometry or simplify polygons.`);
+    }
+  } catch {}
   
   return { valid: errors.length === 0, errors };
 }
@@ -426,10 +461,18 @@ export function applyLevelDataFixups(data: any): any {
   if (typeof fixed.canvas.height !== 'number' || fixed.canvas.height <= 0) {
     fixed.canvas.height = 600;
   }
+
+  const W = Math.max(1, Math.min(1920, fixed.canvas.width));
+  const H = Math.max(1, Math.min(1080, fixed.canvas.height));
+  fixed.canvas.width = W;
+  fixed.canvas.height = H;
   
   // Ensure par is valid
   if (typeof fixed.par !== 'number' || fixed.par <= 0) {
     fixed.par = 3;
+  }
+  if (!Number.isInteger(fixed.par) || fixed.par < 1 || fixed.par > 20) {
+    fixed.par = Math.max(1, Math.min(20, Math.round(fixed.par || 3)));
   }
   
   // Ensure course metadata exists
@@ -452,6 +495,70 @@ export function applyLevelDataFixups(data: any): any {
   if (!fixed.meta.lastModified) {
     fixed.meta.lastModified = Date.now();
   }
-  
+
+  // Defaults for tee/cup radii
+  if (!fixed.tee) fixed.tee = { x: W / 4, y: H / 2, r: 8 };
+  if (typeof fixed.tee.r !== 'number' || fixed.tee.r <= 0) fixed.tee.r = 8;
+  if (!fixed.cup) fixed.cup = { x: (3 * W) / 4, y: H / 2, r: 12 };
+  if (typeof fixed.cup.r !== 'number' || fixed.cup.r <= 0) fixed.cup.r = 12;
+
+  // Helpers
+  const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+  const clampPoint = (x: number, y: number) => ({ x: clamp(x, 0, W), y: clamp(y, 0, H) });
+  const clampRect = (o: any) => {
+    if (typeof o.w !== 'number' || o.w < 0) o.w = Math.abs(o.w || 0);
+    if (typeof o.h !== 'number' || o.h < 0) o.h = Math.abs(o.h || 0);
+    if (!Number.isFinite(o.x)) o.x = 0; if (!Number.isFinite(o.y)) o.y = 0;
+    o.x = clamp(o.x, 0, W);
+    o.y = clamp(o.y, 0, H);
+    return o;
+  };
+  const clampPost = (o: any) => {
+    if (typeof o.r !== 'number' || o.r <= 0) o.r = 8;
+    if (!Number.isFinite(o.x)) o.x = 0; if (!Number.isFinite(o.y)) o.y = 0;
+    const p = clampPoint(o.x, o.y);
+    o.x = p.x; o.y = p.y; return o;
+  };
+  const clampPoly = (poly: any) => {
+    if (!Array.isArray(poly.points)) return poly;
+    poly.points = poly.points.map((n: any, i: number) => {
+      const val = (typeof n === 'number' && isFinite(n)) ? n : 0;
+      // Even indices are x, odd are y
+      return (i % 2 === 0) ? clamp(val, 0, W) : clamp(val, 0, H);
+    });
+    return poly;
+  };
+
+  // Clamp tee/cup inside canvas
+  if (fixed.tee) { const p = clampPoint(fixed.tee.x, fixed.tee.y); fixed.tee.x = p.x; fixed.tee.y = p.y; }
+  if (fixed.cup) { const p = clampPoint(fixed.cup.x, fixed.cup.y); fixed.cup.x = p.x; fixed.cup.y = p.y; }
+
+  // Clamp rect-like arrays
+  ['walls', 'bridges', 'water', 'sand', 'hills', 'decorations'].forEach((key) => {
+    if (!Array.isArray((fixed as any)[key])) return;
+    (fixed as any)[key] = (fixed as any)[key].map((o: any) => clampRect(o));
+  });
+
+  // Clamp posts
+  if (Array.isArray(fixed.posts)) fixed.posts = fixed.posts.map((o: any) => clampPost(o));
+
+  // Clamp polygons
+  if (Array.isArray(fixed.wallsPoly)) fixed.wallsPoly = fixed.wallsPoly.map((p: any) => clampPoly(p));
+  if (Array.isArray(fixed.waterPoly)) fixed.waterPoly = fixed.waterPoly.map((p: any) => clampPoly(p));
+  if (Array.isArray(fixed.sandPoly)) fixed.sandPoly = fixed.sandPoly.map((p: any) => clampPoly(p));
+
+  // Hills: clamp direction/strength/falloff
+  const validDirs = new Set(['N','S','E','W','NE','NW','SE','SW']);
+  if (Array.isArray(fixed.hills)) {
+    fixed.hills = fixed.hills.map((h: any) => {
+      if (!validDirs.has(h.dir)) h.dir = 'N';
+      if (typeof h.strength !== 'number' || !isFinite(h.strength)) h.strength = 0.5;
+      if (typeof h.falloff !== 'number' || !isFinite(h.falloff)) h.falloff = 0.25;
+      h.strength = clamp(h.strength, 0, 1);
+      h.falloff = clamp(h.falloff, 0, 1);
+      return h;
+    });
+  }
+
   return fixed;
 }

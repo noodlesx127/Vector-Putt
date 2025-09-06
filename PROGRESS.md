@@ -106,6 +106,13 @@ Planned follow-ups (to fully align with `firebase.md`):
 - [x] __Unify LevelData types__: Updated `src/firebase/FirebaseLevelStore.ts` local `Level` interface to match the canonical editor `LevelData` (polygons use `number[]` points; posts use `r`; rects use `rot`; include `course`, `par`, and `meta` timestamps).
 - [x] __Score levelId formats__: Verified existing gameplay paths use standardized IDs (`dev:*` for dev, `course:{courseId}:{index}` for Firebase courses), and legacy `/levels/*.json` is supported per guidance. No code changes required.
 
+- [x] __Automatic clamping fixups__: Added clamping and defaults in `src/editor/filesystem.ts::applyLevelDataFixups()`:
+  - Clamp tee/cup, rect-like objects, posts, and polygon points into canvas bounds; default tee/cup radii.
+  - Clamp canvas to 400–1920 x 300–1080; ensure `par` is 1–20 integer.
+  - Hills: enforce valid `dir`, clamp `strength`/`falloff` to 0–1 with sensible defaults.
+- [x] __Editor env getUserName()__: Wired `getUserName()` into all editor environment constructions in `src/main.ts` so the editor can propagate a friendly `authorName` (fallback to `getUserId()` if absent).
+- [x] __Extended validation rules__: Strengthened `validateLevelData()` in `src/editor/filesystem.ts` to include geometry count limits, polygon point count caps, and an overall serialized size check (<= 1MB) with actionable error messages.
+
 Notes:
 
 - These changes are incremental and maintain backward compatibility with existing data. No destructive migrations are required.

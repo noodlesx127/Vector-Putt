@@ -1427,6 +1427,10 @@ let splashes: SplashFx[] = [];
 type BounceFx = { x: number; y: number; nx: number; ny: number; age: number };
 let bounces: BounceFx[] = [];
 
+// Offscreen layer for hill arrows (masked composite)
+let arrowsLayer: HTMLCanvasElement | null = null;
+let arrowsCtx: CanvasRenderingContext2D | null = null;
+
 function getViewOffsetX(): number {
   const extra = WIDTH - levelCanvas.width;
   return extra > 0 ? Math.floor(extra / 2) : 0;
@@ -3912,23 +3916,27 @@ function update(dt: number) {
     ball.vy *= friction;
 
     // Hills (slopes): apply directional acceleration inside hill zones
+    let slopeAx = 0, slopeAy = 0; // track for stop-condition
+    let inSlopeZone = false;
     if (hills.length > 0) {
-      let ax = 0, ay = 0;
       for (const h of hills) {
         if (!pointInRect(ball.x, ball.y, h)) continue;
         const s = (h.strength ?? 1) * physicsSlopeAccel;
         const d = h.dir;
         const dirX = (d.includes('E') ? 1 : 0) + (d.includes('W') ? -1 : 0);
         const dirY = (d.includes('S') ? 1 : 0) + (d.includes('N') ? -1 : 0);
+        if (dirX === 0 && dirY === 0) continue;
+        inSlopeZone = true;
         // Normalize diagonal so total accel magnitude stays consistent
         const inv = (dirX !== 0 && dirY !== 0) ? Math.SQRT1_2 : 1;
-        // Apply constant downhill acceleration so it both accelerates when moving with slope
-        // and resists motion (slows/pushes back) when moving uphill.
-        ax += dirX * s * inv;
-        ay += dirY * s * inv;
+        // Constant downhill acceleration so it accelerates with slope and resists uphill
+        slopeAx += dirX * s * inv;
+        slopeAy += dirY * s * inv;
       }
-      ball.vx += ax * dt;
-      ball.vy += ay * dt;
+      if (inSlopeZone) {
+        ball.vx += slopeAx * dt;
+        ball.vy += slopeAy * dt;
+      }
     }
 
     // Collide with walls (axis-aligned)
@@ -3998,7 +4006,9 @@ function update(dt: number) {
 
     const speed = Math.hypot(ball.vx, ball.vy);
     const disp = Math.hypot(ball.vx * dt, ball.vy * dt);
-    if (speed < stopSpeed || disp < 0.25) {
+    // Only allow stop when BOTH are small and we are not under active slope acceleration
+    const hasSlopeAccel = inSlopeZone && (Math.hypot(slopeAx, slopeAy) > 1e-3);
+    if (!hasSlopeAccel && (speed < stopSpeed && disp < 0.25)) {
       ball.vx = 0; ball.vy = 0; ball.moving = false;
     }
   }
@@ -5703,35 +5713,78 @@ function draw() {
     ctx.beginPath(); ctx.arc(p.x, p.y, p.r - 1, 0, Math.PI * 2); ctx.stroke();
   }
 
-  // Hill direction arrows overlay (high-visibility): draw above geometry
+  // Hill direction arrows overlay (high-visibility, masked): draw above geometry
   if (hills.length > 0) {
-    ctx.save();
-    // Clip to fairway bounds so arrows don't spill into HUD/table
-    ctx.beginPath();
-    ctx.rect(fairX, fairY, fairW, fairH);
-    ctx.clip();
-    for (const h of hills) {
-      const dirX = (h.dir?.includes('E') ? 1 : 0) + (h.dir?.includes('W') ? -1 : 0);
-      const dirY = (h.dir?.includes('S') ? 1 : 0) + (h.dir?.includes('N') ? -1 : 0);
-      if (dirX === 0 && dirY === 0) continue;
-      const s = Math.max(0.5, Math.min(1.5, (h.strength ?? 1)));
-      const step = Math.max(18, Math.min(28, 24 / s));
-      // Outline + white pass for visibility on bright surfaces
-      for (let yy = h.y + step * 0.5; yy < h.y + h.h; yy += step) {
-        for (let xx = h.x + step * 0.5; xx < h.x + h.w; xx += step) {
-          // Dark outline
-          ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-          ctx.lineWidth = 3;
-          drawSlopeIndicator(ctx, xx, yy, dirX, dirY, 8);
-          // White arrow
-          const alpha = Math.max(0.22, Math.min(0.6, 0.26 + (s - 1) * 0.2));
-          ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
-          ctx.lineWidth = 1.8;
-          drawSlopeIndicator(ctx, xx, yy, dirX, dirY, 8);
+    // Ensure offscreen layer exists and matches canvas size (play coords after translate)
+    if (!arrowsLayer) {
+      arrowsLayer = document.createElement('canvas');
+      arrowsCtx = arrowsLayer.getContext('2d');
+    }
+    if (!arrowsCtx) {
+      // Fallback: skip if context creation failed
+    } else {
+      if (arrowsLayer.width !== WIDTH || arrowsLayer.height !== HEIGHT) {
+        arrowsLayer.width = WIDTH; arrowsLayer.height = HEIGHT;
+      }
+      // Clear
+      arrowsCtx.clearRect(0, 0, arrowsLayer.width, arrowsLayer.height);
+      // Draw arrows into offscreen
+      const ac = arrowsCtx;
+      for (const h of hills) {
+        const dirX = (h.dir?.includes('E') ? 1 : 0) + (h.dir?.includes('W') ? -1 : 0);
+        const dirY = (h.dir?.includes('S') ? 1 : 0) + (h.dir?.includes('N') ? -1 : 0);
+        if (dirX === 0 && dirY === 0) continue;
+        const s = Math.max(0.5, Math.min(1.5, (h.strength ?? 1)));
+        const step = Math.max(18, Math.min(28, 24 / s));
+        const inset = 6;
+        const xStart = Math.max(h.x + inset, h.x + step * 0.5);
+        const yStart = Math.max(h.y + inset, h.y + step * 0.5);
+        for (let yy = yStart; yy < h.y + h.h - inset; yy += step) {
+          for (let xx = xStart; xx < h.x + h.w - inset; xx += step) {
+            // Outline
+            ac.strokeStyle = 'rgba(0,0,0,0.55)';
+            ac.lineWidth = 3;
+            drawSlopeIndicator(ac as any, xx, yy, dirX, dirY, 9);
+            // White arrow
+            const alpha = Math.max(0.22, Math.min(0.6, 0.26 + (s - 1) * 0.2));
+            ac.strokeStyle = `rgba(255,255,255,${alpha})`;
+            ac.lineWidth = 1.8;
+            drawSlopeIndicator(ac as any, xx, yy, dirX, dirY, 9);
+          }
         }
       }
+
+      // Apply mask: keep only fairway, subtract geometry
+      // Keep fairway
+      ac.globalCompositeOperation = 'destination-in';
+      ac.fillStyle = '#000';
+      ac.fillRect(fairX, fairY, fairW, fairH);
+      // Cut out walls and bridges
+      ac.globalCompositeOperation = 'destination-out';
+      ac.fillStyle = '#000';
+      for (const w of walls) { ac.fillRect(w.x, w.y, w.w, w.h); }
+      for (const b of bridges) { ac.fillRect(b.x, b.y, b.w, b.h); }
+      // Poly walls
+      for (const poly of polyWalls) {
+        const pts = poly.points; if (!pts || pts.length < 6) continue;
+        ac.beginPath(); ac.moveTo(pts[0], pts[1]);
+        for (let i = 2; i < pts.length; i += 2) ac.lineTo(pts[i], pts[i + 1]);
+        ac.closePath(); ac.fill();
+      }
+      // Posts
+      for (const p of posts) { ac.beginPath(); ac.arc(p.x, p.y, p.r + 1, 0, Math.PI * 2); ac.fill(); }
+      // Water rects and polys
+      for (const w of waters) { ac.fillRect(w.x, w.y, w.w, w.h); }
+      for (const wp of watersPoly) {
+        const pts = wp.points; if (!pts || pts.length < 6) continue;
+        ac.beginPath(); ac.moveTo(pts[0], pts[1]);
+        for (let i = 2; i < pts.length; i += 2) ac.lineTo(pts[i], pts[i + 1]);
+        ac.closePath(); ac.fill();
+      }
+      // Restore normal comp and draw to main
+      ac.globalCompositeOperation = 'source-over';
+      ctx.drawImage(arrowsLayer, 0, 0);
     }
-    ctx.restore();
   }
 
   // impact flashes (bounces)

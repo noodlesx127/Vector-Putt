@@ -99,6 +99,7 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
 - **Physics & Interactions (Phase 2 features)**
   - [x] Hills: bidirectional push — hills now apply constant downhill acceleration so going uphill resists and slows the ball; going downhill accelerates as expected. (`src/main.ts`)
   - [x] Bridges over sand: sand friction disabled when ball is on a bridge; underlying sand no longer affects speed on bridge surface. (`src/main.ts`)
+  - [x] Hills visual arrows: render as an overlay above geometry and add dark outline + white pass for strong contrast, matching editor display. (`src/main.ts`)
   - [ ] Ramps/Hills (beyond current prototype zones)
   - [ ] Moving obstacles (timed collisions)
   - [ ] Boosters/Accelerators (impulse)

@@ -5603,7 +5603,7 @@ function draw() {
     ctx.strokeStyle = COLORS.fairwayLine;
     ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
   }
-  // hills (visualize with directional gradient overlay)
+  // hills (visualize gradient underlay)
   for (const h of hills) {
     const grad = (() => {
       const d = h.dir;
@@ -5623,23 +5623,6 @@ function draw() {
     ctx.fillStyle = grad;
     ctx.fillRect(h.x, h.y, h.w, h.h);
 
-    // Direction indicators: subtle arrows pointing downhill; density/alpha scale with strength
-    const dirX = (h.dir?.includes('E') ? 1 : 0) + (h.dir?.includes('W') ? -1 : 0);
-    const dirY = (h.dir?.includes('S') ? 1 : 0) + (h.dir?.includes('N') ? -1 : 0);
-    if (dirX !== 0 || dirY !== 0) {
-      const s = Math.max(0.5, Math.min(1.5, (h.strength ?? 1)));
-      const step = Math.max(18, Math.min(28, 24 / s));
-      ctx.save();
-      const alpha = Math.max(0.18, Math.min(0.5, 0.22 + (s - 1) * 0.18));
-      ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
-      ctx.lineWidth = 1.5;
-      for (let yy = h.y + step * 0.5; yy < h.y + h.h; yy += step) {
-        for (let xx = h.x + step * 0.5; xx < h.x + h.w; xx += step) {
-          drawSlopeIndicator(ctx, xx, yy, dirX, dirY, 7);
-        }
-      }
-      ctx.restore();
-    }
   }
 
   // decorations (non-colliding visuals) — clip to fairway so they don't draw on mustard HUD/table
@@ -5718,6 +5701,37 @@ function draw() {
     // rim
     ctx.strokeStyle = COLORS.wallStroke; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(p.x, p.y, p.r - 1, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  // Hill direction arrows overlay (high-visibility): draw above geometry
+  if (hills.length > 0) {
+    ctx.save();
+    // Clip to fairway bounds so arrows don't spill into HUD/table
+    ctx.beginPath();
+    ctx.rect(fairX, fairY, fairW, fairH);
+    ctx.clip();
+    for (const h of hills) {
+      const dirX = (h.dir?.includes('E') ? 1 : 0) + (h.dir?.includes('W') ? -1 : 0);
+      const dirY = (h.dir?.includes('S') ? 1 : 0) + (h.dir?.includes('N') ? -1 : 0);
+      if (dirX === 0 && dirY === 0) continue;
+      const s = Math.max(0.5, Math.min(1.5, (h.strength ?? 1)));
+      const step = Math.max(18, Math.min(28, 24 / s));
+      // Outline + white pass for visibility on bright surfaces
+      for (let yy = h.y + step * 0.5; yy < h.y + h.h; yy += step) {
+        for (let xx = h.x + step * 0.5; xx < h.x + h.w; xx += step) {
+          // Dark outline
+          ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+          ctx.lineWidth = 3;
+          drawSlopeIndicator(ctx, xx, yy, dirX, dirY, 8);
+          // White arrow
+          const alpha = Math.max(0.22, Math.min(0.6, 0.26 + (s - 1) * 0.2));
+          ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+          ctx.lineWidth = 1.8;
+          drawSlopeIndicator(ctx, xx, yy, dirX, dirY, 8);
+        }
+      }
+    }
+    ctx.restore();
   }
 
   // impact flashes (bounces)

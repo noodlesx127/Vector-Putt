@@ -4858,18 +4858,18 @@ function draw() {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
     
-    // Main panel (800x600 centered)
-    const panelW = 800;
-    const panelH = 600;
+    // Main panel (centered, responsive to small screens)
+    const panelW = Math.min(800, WIDTH - 80);
+    const panelH = Math.min(600, HEIGHT - 120);
     const panelX = (WIDTH - panelW) / 2;
     const panelY = (HEIGHT - panelH) / 2;
     
-    // Panel background
-    ctx.fillStyle = 'rgba(20, 30, 40, 0.95)';
+    // Panel background (standard)
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
     ctx.fillRect(panelX, panelY, panelW, panelH);
-    ctx.strokeStyle = 'rgba(100, 150, 200, 0.5)';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(panelX, panelY, panelW, panelH);
+    ctx.strokeStyle = '#cfd2cf';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(panelX + 0.5, panelY + 0.5, Math.max(0, panelW - 1), Math.max(0, panelH - 1));
     
     // Title
     ctx.fillStyle = '#ffffff';

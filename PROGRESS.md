@@ -37,7 +37,7 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
      - Changelog (`gameState === 'changelog'`): dimmed background with ad-hoc content area; migrate to standard centered panel with header and consistent scrollbar visuals.
      - Main Menu: inputs and buttons mostly aligned, but audit borders/fills/hover to ensure parity with standard button spec.
    - Tasks:
-     - [ ] Refresh User Levels UI to match `UI_Design.md` (colors, borders, title, buttons)
+     - [x] Refresh User Levels UI to match `UI_Design.md` (colors, borders, title, buttons). Implemented standard centered 800x600 panel with responsive fallback, background rgba(0,0,0,0.85), border #cfd2cf. (`src/main.ts`)
      - [ ] Refresh Options screen to centered 800x600 panel with standard controls/buttons
      - [ ] Refresh Users admin screen to panelized layout and standard button styles
      - [ ] Refresh Changelog screen to use standard panel, header, and scrollbar visuals

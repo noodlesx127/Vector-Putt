@@ -2853,6 +2853,11 @@ class LevelEditorImpl implements LevelEditor {
     level.meta.modified = new Date().toISOString();
     // Unix timestamp per firebase.md
     (level.meta as any).lastModified = Date.now();
+    // Ensure meta.title reflects course.title when present
+    if (!level.meta.title) {
+      const ct = level.course?.title?.toString().trim();
+      if (ct) level.meta.title = ct;
+    }
 
     // Validation before attempting to save
     const validation = validateLevelData(level);
@@ -2874,7 +2879,8 @@ class LevelEditorImpl implements LevelEditor {
       try {
         const existing = await firebaseLevelStore.loadLevel(this.editorCurrentSavedId);
         const ownerId = existing && (existing as any).meta ? (existing as any).meta.authorId : undefined;
-        if (ownerId && ownerId !== username) {
+        // If owner is missing or different, block overwrite for non-admins
+        if (ownerId !== username) {
           env.showToast('You cannot overwrite a level you do not own. Saving a copy instead.');
           await this.saveAs();
           return;
@@ -3165,6 +3171,8 @@ class LevelEditorImpl implements LevelEditor {
     this.editorLevelData.course.title = title || 'Untitled';
     this.editorLevelData.meta = this.editorLevelData.meta || {};
     this.editorLevelData.meta.authorName = author || undefined;
+    // Persist meta.title alongside course.title so Firebase title isn't undefined
+    this.editorLevelData.meta.title = (title || 'Untitled');
     this.editorLevelData.meta.modified = new Date().toISOString();
     (this.editorLevelData.meta as any).lastModified = Date.now();
     this.editorLevelData.par = par;

@@ -12,6 +12,7 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
 
 - **Physics & Interactions**
   - [ ] Velocity affects terrain (e.g., hard shot may skim sand)
+  - [x] Tuning: Sand slows more and hills push harder — increased sand friction multiplier from 4.2× to 6.0× of `frictionK`, and increased hill base acceleration `SLOPE_ACCEL` from 520 to 720 px/s². (`src/main.ts`)
  
  - **Course Creator — Follow-ups**
    - [x] Unit tests for `src/firebase/FirebaseCourseStore.ts`

@@ -1185,7 +1185,7 @@ let singleLevelMode = false;
 // Track current level path and best score for HUD display (course mode only)
 let currentLevelPath: string | null = null;
 let bestScoreForCurrentLevel: number | null = null;
-const APP_VERSION = '0.3.24';
+const APP_VERSION = '0.3.27';
 const restitution = 0.9; // wall bounce energy retention
 const frictionK = 1.2; // base exponential damping (reduced for less "sticky" green)
 const stopSpeed = 5; // px/s threshold to consider stopped (tunable)
@@ -1210,7 +1210,7 @@ const COLORS = {
 } as const;
 const COURSE_MARGIN = 40; // inset for fairway rect
 const HUD_HEIGHT = 32;
-const SLOPE_ACCEL = 520; // tuned base acceleration applied by hills (px/s^2)
+const SLOPE_ACCEL = 720; // tuned base acceleration applied by hills (px/s^2)
 const levelCache = new Map<string, Level>();
 
 // User profile (minimal local profile)
@@ -3781,7 +3781,7 @@ function update(dt: number) {
     if (!inSand && sandsPoly.length > 0) {
       for (const sp of sandsPoly) { if (pointInPolygon(ball.x, ball.y, sp.points)) { inSand = true; break; } }
     }
-    const k = frictionK * (inSand ? 4.2 : 1.0);
+    const k = frictionK * (inSand ? 6.0 : 1.0);
     const friction = Math.exp(-k * dt);
     ball.vx *= friction;
     ball.vy *= friction;

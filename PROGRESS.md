@@ -14,8 +14,15 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
   - [ ] Velocity affects terrain (e.g., hard shot may skim sand)
   - [x] Tuning: Sand slows more and hills push harder — increased sand friction multiplier from 4.2× to 6.0× of `frictionK`, and increased hill base acceleration `SLOPE_ACCEL` from 520 to 720 px/s². (`src/main.ts`)
   - [x] Admin Game Settings (runtime): Added admin-only Game Settings panel under Admin Menu to tune global physics (Hill Accel, Ball Friction K, Sand Multiplier) on the fly; values persist in Firebase `/gameSettings`. Applied at startup and on Save. (`src/main.ts`, `src/firebase/database.ts`)
-  - [ ] Better hill direction visibility (add clear visual indicators of slope direction/strength in play and editor)
-  - [ ] Change hitting the ball mechanic from pulling back to pulling forward
+  - [x] Better hill direction visibility (add clear visual indicators of slope direction/strength in play and editor)
+    - Implemented subtle arrow overlays inside hill regions indicating downhill direction; density and alpha scale with `strength`. Applied in both play render and editor preview. (`src/main.ts`, `src/editor/levelEditor.ts`)
+  - [x] Change hitting the ball mechanic from pulling back to pulling forward
+    - Updated shot input so dragging forward shoots forward (was pull-back to shoot). Updated aim arrow and dev debug preview to match. (`src/main.ts`)
+  - Optional polish — Hills/Shot UX:
+    - [ ] Add an Options toggle (or Admin Game Settings) to show/hide slope arrows during play
+    - [ ] Colorize slope arrows subtly to match palette (e.g., faint green per `UI_Design.md`)
+    - [ ] Editor: show small direction label (N/S/E/W/NE/NW/SE/SW) at hill center when selected
+    - [ ] Scale arrow size or edge emphasis using hill `falloff` to better convey flow intensity
  
  - **Course Creator — Follow-ups**
    - [x] Unit tests for `src/firebase/FirebaseCourseStore.ts`
@@ -67,7 +74,7 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
 
 - **Level Editor & Browser**
   - [ ] Selection tools: duplicate; polygon vertex edit (polygons are translate-only currently)
-  - [ ] Posts: allow freely movable posts (remove grid-only movement constraint and support smooth dragging)
+  - [ ] Posts: Snapping Does not work the same as the rest of the editor. IE doesnt work the same as walls, ect.
 
 ## Next Up (Short Horizon)
 - Seeded from `TODO.md` backlog:

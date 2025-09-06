@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Admin Menu • Game Settings: new admin-only panel to tune global physics live (Hill Acceleration, Ball Friction K, Sand Friction Multiplier). Uses standard 800×600 centered panel. (`src/main.ts`)
+ - Hills • Visual indicators: added subtle downhill direction arrows over hill regions in both play mode and Level Editor preview. Arrow density/alpha scale with hill `strength` for better readability of slope direction/strength. (`src/main.ts`, `src/editor/levelEditor.ts`)
 
 ### Changed
 - Level Editor • Author display name resolution: editor now derives a friendly `authorName` via a resilient `resolveDisplayName()` that prefers `EditorEnv.getUserName()` (trimmed), then `env.getGlobalState().userProfile.name`, and finally falls back to `getUserId()`. Applies to `newLevel()`, `save()`, and `saveAs()` in `src/editor/levelEditor.ts`.
@@ -16,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - UI • User Made Levels panel: refreshed to the standard centered panel per `UI_Design.md` with responsive sizing (min margins), background `rgba(0,0,0,0.85)`, and border `#cfd2cf`. (`src/main.ts`)
  - UI • Options screen: converted to standard centered panel per `UI_Design.md` with dark overlay, responsive sizing, `rgba(0,0,0,0.85)` background, `#cfd2cf` border, and reflowed Controls/Audio sections into the panel. (`src/main.ts`)
  - Physics • Runtime tunables: hills and sand friction are now driven by Firebase-backed global settings and can be adjusted in the new Game Settings panel. Defaults remain `slopeAccel=720`, `frictionK=1.2`, `sandMultiplier=6.0`. (`src/main.ts`, `src/firebase/database.ts`)
+ - Controls • Shot mechanic: changed from pull-back to shoot to drag-forward to shoot. Updated aim visuals and dev reflective path preview to match. (`src/main.ts`)
 
 ### Fixed
 - Level Editor • Overlap selection: selecting when objects overlap now picks the top-most (visually front) object. `findObjectAtPoint()` hit-test order was inverted to mirror render order and iterates arrays in reverse so the most recently drawn object is prioritized. (`src/editor/levelEditor.ts`)

@@ -1136,6 +1136,46 @@ class LevelEditorImpl implements LevelEditor {
         grad.addColorStop(1, 'rgba(0,0,0,0.10)');
         ctx.fillStyle = grad;
         ctx.fillRect(h.x, h.y, h.w, h.h);
+
+        // Direction indicators: subtle arrows pointing downhill; density/alpha scale with strength
+        const dirX = (slopeDir.includes('E') ? 1 : 0) + (slopeDir.includes('W') ? -1 : 0);
+        const dirY = (slopeDir.includes('S') ? 1 : 0) + (slopeDir.includes('N') ? -1 : 0);
+        if (dirX !== 0 || dirY !== 0) {
+          const s = Math.max(0.5, Math.min(1.5, ((h as any).strength ?? 1)));
+          const step = Math.max(18, Math.min(28, 24 / s));
+          ctx.save();
+          const alpha = Math.max(0.18, Math.min(0.5, 0.22 + (s - 1) * 0.18));
+          ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+          ctx.lineWidth = 1.5;
+          // small arrow drawing helper (inline to avoid cross-module dependency)
+          const drawArrow = (cx: number, cy: number, dx: number, dy: number, size: number) => {
+            const len = Math.hypot(dx, dy) || 1;
+            const ux = dx / len;
+            const uy = dy / len;
+            const tipX = cx + ux * size;
+            const tipY = cy + uy * size;
+            const tailX = cx - ux * size;
+            const tailY = cy - uy * size;
+            ctx.beginPath();
+            ctx.moveTo(tailX, tailY);
+            ctx.lineTo(tipX, tipY);
+            ctx.stroke();
+            const head = Math.max(3, Math.min(6, size * 0.6));
+            const px = -uy; const py = ux;
+            ctx.beginPath();
+            ctx.moveTo(tipX, tipY);
+            ctx.lineTo(tipX - ux * head + px * head * 0.6, tipY - uy * head + py * head * 0.6);
+            ctx.moveTo(tipX, tipY);
+            ctx.lineTo(tipX - ux * head - px * head * 0.6, tipY - uy * head - py * head * 0.6);
+            ctx.stroke();
+          };
+          for (let yy = h.y + step * 0.5; yy < h.y + h.h; yy += step) {
+            for (let xx = h.x + step * 0.5; xx < h.x + h.w; xx += step) {
+              drawArrow(xx, yy, dirX, dirY, 7);
+            }
+          }
+          ctx.restore();
+        }
       });
     }
     // Decorations clipped to fairway

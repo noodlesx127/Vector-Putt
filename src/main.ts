@@ -3524,13 +3524,13 @@ canvas.addEventListener('mouseup', (e) => {
   const minDrag = 4;
   isAiming = false; // always clear aim so meter hides
   if (drag < minDrag) return; // ignore tiny taps
-  // clamp and scale; pull back to shoot forward
+  // clamp and scale; drag forward to shoot forward
   const maxDrag = 120;
   const clamped = Math.min(drag, maxDrag);
   const power = clamped * 4; // original tuning
   const angle = Math.atan2(dy, dx);
-  ball.vx = Math.cos(angle) * power * -1;
-  ball.vy = Math.sin(angle) * power * -1;
+  ball.vx = Math.cos(angle) * power;
+  ball.vy = Math.sin(angle) * power;
   // remember position to reset if water
   preShot = { x: aimStart.x, y: aimStart.y };
   ball.moving = true;
@@ -4087,6 +4087,32 @@ function drawAim() {
   ctx.stroke();
 }
 
+// Draw a small arrow centered at (cx, cy) pointing along (dx, dy) direction
+// Size controls arrow length; alpha/line styles should be set by caller.
+function drawSlopeIndicator(ctx: CanvasRenderingContext2D, cx: number, cy: number, dx: number, dy: number, size: number) {
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  const tipX = cx + ux * size;
+  const tipY = cy + uy * size;
+  const tailX = cx - ux * size;
+  const tailY = cy - uy * size;
+  ctx.beginPath();
+  ctx.moveTo(tailX, tailY);
+  ctx.lineTo(tipX, tipY);
+  ctx.stroke();
+  // arrowhead
+  const head = Math.max(3, Math.min(6, size * 0.6));
+  const px = -uy; // perpendicular
+  const py = ux;
+  ctx.beginPath();
+  ctx.moveTo(tipX, tipY);
+  ctx.lineTo(tipX - ux * head + px * head * 0.6, tipY - uy * head + py * head * 0.6);
+  ctx.moveTo(tipX, tipY);
+  ctx.lineTo(tipX - ux * head - px * head * 0.6, tipY - uy * head - py * head * 0.6);
+  ctx.stroke();
+}
+
 // Dev-only reflective path preview while aiming (no friction/hills/water)
 function drawDebugPreview() {
   if (!isDevBuild() || !debugPathPreview) return;
@@ -4101,8 +4127,8 @@ function drawDebugPreview() {
   const maxDrag = 120;
   const clamped = Math.min(drag, maxDrag);
   const angle = Math.atan2(dy, dx);
-  let vx = Math.cos(angle) * clamped * 4 * -1;
-  let vy = Math.sin(angle) * clamped * 4 * -1;
+  let vx = Math.cos(angle) * clamped * 4;
+  let vy = Math.sin(angle) * clamped * 4;
 
   // Sim state
   let px = aimStart.x;
@@ -5594,6 +5620,24 @@ function draw() {
     grad.addColorStop(1, 'rgba(0,0,0,0.10)');
     ctx.fillStyle = grad;
     ctx.fillRect(h.x, h.y, h.w, h.h);
+
+    // Direction indicators: subtle arrows pointing downhill; density/alpha scale with strength
+    const dirX = (h.dir?.includes('E') ? 1 : 0) + (h.dir?.includes('W') ? -1 : 0);
+    const dirY = (h.dir?.includes('S') ? 1 : 0) + (h.dir?.includes('N') ? -1 : 0);
+    if (dirX !== 0 || dirY !== 0) {
+      const s = Math.max(0.5, Math.min(1.5, (h.strength ?? 1)));
+      const step = Math.max(18, Math.min(28, 24 / s));
+      ctx.save();
+      const alpha = Math.max(0.18, Math.min(0.5, 0.22 + (s - 1) * 0.18));
+      ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+      ctx.lineWidth = 1.5;
+      for (let yy = h.y + step * 0.5; yy < h.y + h.h; yy += step) {
+        for (let xx = h.x + step * 0.5; xx < h.x + h.w; xx += step) {
+          drawSlopeIndicator(ctx, xx, yy, dirX, dirY, 7);
+        }
+      }
+      ctx.restore();
+    }
   }
 
   // decorations (non-colliding visuals) — clip to fairway so they don't draw on mustard HUD/table

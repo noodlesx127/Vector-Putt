@@ -259,6 +259,24 @@ class LevelEditorImpl implements LevelEditor {
     };
   }
 
+  // Resolve a friendly display name for the current user without assuming getUserName exists
+  private resolveDisplayName(env: EditorEnv): string {
+    try {
+      const anyEnv = env as any;
+      if (typeof anyEnv.getUserName === 'function') {
+        const n = (anyEnv.getUserName() || '').toString().trim();
+        if (n) return n;
+      }
+    } catch {}
+    try {
+      const gs = env.getGlobalState?.();
+      const n = (gs?.userProfile?.name || '').toString().trim();
+      if (n) return n;
+    } catch {}
+    // Fallback to stable userId
+    return env.getUserId();
+  }
+
   private pushUndoSnapshot(description: string): void {
     if (this.isApplyingUndoRedo) return; // Don't create snapshots during undo/redo operations
     
@@ -2792,8 +2810,7 @@ class LevelEditorImpl implements LevelEditor {
     const W = (gs?.WIDTH ?? 800);
     const H = (gs?.HEIGHT ?? 600);
     const M = (gs?.COURSE_MARGIN ?? 40);
-    const getUserName = (env as any).getUserName as (() => string) | undefined;
-    const displayName = (typeof getUserName === 'function' ? getUserName() : env.getUserId()) || env.getUserId();
+    const displayName = this.resolveDisplayName(env);
 
     const newLevel: Level = {
       canvas: { width: Math.max(600, Math.min(W, 1600)), height: Math.max(400, Math.min(H, 1200)) },
@@ -2828,7 +2845,7 @@ class LevelEditorImpl implements LevelEditor {
 
     // Ensure meta fields
     const username = env.getUserId();
-    const displayName = (typeof (env as any).getUserName === 'function' ? ((env as any).getUserName() as () => string)() : username) || username;
+    const displayName = this.resolveDisplayName(env);
     const level = applyLevelDataFixups({ ...this.editorLevelData });
     level.meta = level.meta || {};
     // Do NOT overwrite authorId on normal save; preserve original owner
@@ -2889,8 +2906,7 @@ class LevelEditorImpl implements LevelEditor {
     this.syncEditorDataFromGlobals(env);
 
     const username = env.getUserId();
-    const getUserName = (env as any).getUserName as (() => string) | undefined;
-    const displayName = (typeof getUserName === 'function' ? getUserName() : username) || username;
+    const displayName = this.resolveDisplayName(env);
     const level = applyLevelDataFixups({ ...this.editorLevelData });
     level.meta = level.meta || {};
     // New copy must always be owned by the current user

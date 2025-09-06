@@ -247,6 +247,44 @@ class LevelEditorImpl implements LevelEditor {
   private groupRotationStartAngle: number = 0;
   private resizeHandleIndex: number | null = null;
   private dragMoveStart: { x: number; y: number } | null = null;
+  
+  // Helper: snap a coordinate to nearest grid line offset by radius (for posts)
+  private snapCoordEdgeAligned(n: number, grid: number, radius: number): number {
+    // Generate candidates at +/- radius from surrounding grid lines and pick the nearest
+    const kFloor = Math.floor(n / grid);
+    const kCeil = Math.ceil(n / grid);
+    const candidates = [
+      kFloor * grid - radius,
+      kFloor * grid + radius,
+      kCeil * grid - radius,
+      kCeil * grid + radius
+    ];
+    let best = candidates[0];
+    let bestD = Math.abs(n - best);
+    for (let i = 1; i < candidates.length; i++) {
+      const d = Math.abs(n - candidates[i]);
+      if (d < bestD) { bestD = d; best = candidates[i]; }
+    }
+    return best;
+  }
+  
+  // Helper: snap post center so its edges align to grid lines if grid is enabled
+  private snapPostPosition(x: number, y: number, r: number, env: EditorEnv): { x: number; y: number } {
+    try {
+      if (this.showGrid && env.getShowGrid()) {
+        const g = env.getGridSize();
+        const sx = this.snapCoordEdgeAligned(x, g, r);
+        const sy = this.snapCoordEdgeAligned(y, g, r);
+        const { x: fx, y: fy, w: fw, h: fh } = env.fairwayRect();
+        // Clamp to fairway bounds for center
+        return {
+          x: Math.max(fx, Math.min(fx + fw, sx)),
+          y: Math.max(fy, Math.min(fy + fh, sy))
+        };
+      }
+    } catch {}
+    return { x, y };
+  }
 
   // Undo/Redo system methods
   private createSnapshot(description: string): EditorSnapshot {
@@ -570,14 +608,26 @@ class LevelEditorImpl implements LevelEditor {
       if ('x' in newObj && 'y' in newObj) {
         newObj.x = clampX(newObj.x + pasteOffsetX);
         newObj.y = clampY(newObj.y + pasteOffsetY);
+        // Per-type final snap to ensure alignment despite center-based offset
+        if (clipObj.type === 'post') {
+          const r = (newObj.r ?? 12) as number;
+          const snapped = this.snapPostPosition(newObj.x, newObj.y, r, this.env!);
+          newObj.x = snapped.x; newObj.y = snapped.y;
+        } else if (
+          clipObj.type === 'wall' || clipObj.type === 'water' || clipObj.type === 'sand' ||
+          clipObj.type === 'bridge' || clipObj.type === 'hill' || clipObj.type === 'decoration'
+        ) {
+          newObj.x = snap(clampX(newObj.x));
+          newObj.y = snap(clampY(newObj.y));
+        }
       }
       
       // Handle polygon points
       if (clipObj.type === 'wallsPoly' || clipObj.type === 'waterPoly' || clipObj.type === 'sandPoly') {
         const points: number[] = newObj.points || [];
         for (let i = 0; i < points.length; i += 2) {
-          points[i] = clampX(points[i] + pasteOffsetX);
-          points[i + 1] = clampY(points[i + 1] + pasteOffsetY);
+          points[i] = snap(clampX(points[i] + pasteOffsetX));
+          points[i + 1] = snap(clampY(points[i + 1] + pasteOffsetY));
         }
       }
       
@@ -1751,12 +1801,17 @@ class LevelEditorImpl implements LevelEditor {
         const cellY = y + row * cellH;
         
         if (p.x >= cellX && p.x <= cellX + cellW && p.y >= cellY && p.y <= cellY + cellH) {
-          // Update the post's radius
+          // Update the post's radius and re-snap its center to grid edges for alignment
           const gs = env.getGlobalState();
           if (picker.postIndex >= 0 && picker.postIndex < gs.posts.length) {
-            (gs.posts[picker.postIndex] as any).r = radii[i];
+            const post: any = gs.posts[picker.postIndex];
+            post.r = radii[i];
+            const snapped = this.snapPostPosition(post.x, post.y, post.r, env);
+            post.x = snapped.x; post.y = snapped.y;
             if (this.editorLevelData && picker.postIndex < this.editorLevelData.posts.length) {
               this.editorLevelData.posts[picker.postIndex].r = radii[i];
+              this.editorLevelData.posts[picker.postIndex].x = post.x;
+              this.editorLevelData.posts[picker.postIndex].y = post.y;
             }
             env.setGlobalState(gs);
           }
@@ -1908,8 +1963,8 @@ class LevelEditorImpl implements LevelEditor {
       try { if (this.showGrid && env.getShowGrid()) { const g = env.getGridSize(); return Math.round(n / g) * g; } } catch {}
       return n;
     };
-    const px = snap(Math.max(fairX, Math.min(fairX + fairW, p.x)));
-    const py = snap(Math.max(fairY, Math.min(fairY + fairH, p.y)));
+    let px = snap(Math.max(fairX, Math.min(fairX + fairW, p.x)));
+    let py = snap(Math.max(fairY, Math.min(fairY + fairH, p.y)));
 
     if (this.selectedTool !== 'select') {
       // Start rectangle placement for rect tools
@@ -1949,6 +2004,11 @@ class LevelEditorImpl implements LevelEditor {
         this.pushUndoSnapshot(`Place ${this.selectedTool === 'decoration' ? this.selectedDecoration : this.selectedTool}`);
         const gs = env.getGlobalState();
         const defaultRadius = 12;
+        // For posts, snap center so edges align with grid lines (similar feel to wall edges)
+        if (this.selectedTool === 'post') {
+          const snapPos = this.snapPostPosition(px, py, defaultRadius, env);
+          px = snapPos.x; py = snapPos.y;
+        }
         
         if (this.selectedTool === 'tee') {
           gs.ball.x = px; gs.ball.y = py;
@@ -2390,6 +2450,11 @@ class LevelEditorImpl implements LevelEditor {
           } else if (t === 'tee' || t === 'cup' || t === 'post' || t === 'wall' || t === 'water' || t === 'sand' || t === 'bridge' || t === 'hill' || t === 'decoration') {
             if (typeof o.x === 'number') o.x += dx;
             if (typeof o.y === 'number') o.y += dy;
+            // On move end, snap posts to edge-aligned grid if enabled, then clamp
+            if (t === 'post') {
+              const snapped = this.snapPostPosition(o.x, o.y, o.r ?? 12, env);
+              o.x = snapped.x; o.y = snapped.y;
+            }
           }
         }
       }

@@ -21,7 +21,6 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
   - Optional polish — Hills/Shot UX:
     - [ ] Add an Options toggle (or Admin Game Settings) to show/hide slope arrows during play
     - [ ] Colorize slope arrows subtly to match palette (e.g., faint green per `UI_Design.md`)
-    - [ ] Editor: show small direction label (N/S/E/W/NE/NW/SE/SW) at hill center when selected
     - [ ] Scale arrow size or edge emphasis using hill `falloff` to better convey flow intensity
  
  - **Course Creator — Follow-ups**
@@ -74,7 +73,8 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
 
 - **Level Editor & Browser**
   - [ ] Selection tools: duplicate; polygon vertex edit (polygons are translate-only currently)
-  - [ ] Posts: Snapping Does not work the same as the rest of the editor. IE doesnt work the same as walls, ect.
+  - [x] Posts: Snapping Does not work the same as the rest of the editor. IE doesnt work the same as walls, ect.
+    - Implemented radius-aware edge-aligned snapping so post edges line up with grid lines like wall edges. Applied on initial placement, on drag-move finalize, and when changing radius in the picker. Keeps clamping to fairway bounds. (`src/editor/levelEditor.ts`)
 
 ## Next Up (Short Horizon)
 - Seeded from `TODO.md` backlog:

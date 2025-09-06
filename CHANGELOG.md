@@ -25,7 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Level Editor • Save ownership enforcement: for non-admins, `save()` blocks overwriting when the existing level owner is missing or differs, and routes to Save As with a toast. (`src/editor/levelEditor.ts`)
 - Level Editor • Missing getUserName() crash: guarded against environments where `getUserName()` is not provided by the editor env, preventing `TypeError: getUserName is not a function`. (`src/editor/levelEditor.ts`)
 - Course Creator • Reorder save: saving after reordering levels now persists the new `levelIds` order by using the updated `courseData` returned from the overlay. Added debug logs around the save path for visibility ("CourseEditor: Saving course" / "Save complete"). (`src/editor/levelEditor.ts`)
- - Level Editor • Session reset on exit: exiting to the main menu now clears editor session state so re-entering starts with a fresh level. Implemented `levelEditor.reset()` and wired all editor `exitToMenu` handlers to call it. (`src/editor/levelEditor.ts`, `src/main.ts`)
+- Level Editor • Session reset on exit: exiting to the main menu now clears editor session state so re-entering starts with a fresh level. Implemented `levelEditor.reset()` and wired all editor `exitToMenu` handlers to call it. (`src/editor/levelEditor.ts`, `src/main.ts`)
+ - Level Editor • Posts snapping: posts now snap edge-aligned to grid lines (so post edges align like wall edges) on placement, on drag-move finalize, and when changing radius in the picker. This resolves misalignment with wall ends and improves placement precision. (`src/editor/levelEditor.ts`)
+ - Level Editor • Paste snapping: newly pasted objects now snap correctly to the grid. Posts use radius-aware edge-aligned snapping; rect-like items and decorations snap position; polygons snap each vertex. (`src/editor/levelEditor.ts`)
 
 
 ## v0.3.26 — 2025-09-05

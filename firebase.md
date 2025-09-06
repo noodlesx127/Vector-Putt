@@ -1,3 +1,26 @@
+### 9. Global Game Settings (`/gameSettings`)
+
+Purpose: Global physics tunables, adjustable by admins via the in-game Admin Menu → Game Settings panel. These values affect all players.
+
+```typescript
+interface GameSettings {
+  slopeAccel: number;      // Base hill acceleration (px/s^2). Default: 720
+  frictionK: number;       // Base exponential damping K. Default: 1.2
+  sandMultiplier: number;  // Multiplier applied to frictionK in sand. Default: 6.0
+  lastModified: number;    // Unix timestamp updated on every change
+}
+```
+
+Example:
+```json
+{
+  "slopeAccel": 800,
+  "frictionK": 1.10,
+  "sandMultiplier": 5.5,
+  "lastModified": 1756893189123
+}
+```
+
 # Firebase Database Schema & Standards
 
 This document defines the standard structure and schema for the Vector Putt Firebase Realtime Database. Follow these guidelines to ensure consistency when adding new features or modifying existing data structures.
@@ -10,7 +33,8 @@ This document defines the standard structure and schema for the Vector Putt Fire
   "levels": { ... },       // Public/system levels
   "userLevels": { ... },   // User-created levels
   "scores": { ... },       // Player scores
-  "settings": { ... },     // User settings
+  "settings": { ... },     // User settings (per-user)
+  "gameSettings": { ... }, // Global game settings (admin-controlled)
   "users": { ... }         // User accounts
 }
 ```

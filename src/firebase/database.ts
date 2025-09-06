@@ -9,7 +9,8 @@ const PATHS = {
   userLevels: 'userLevels',
   scores: 'scores',
   settings: 'settings',
-  courses: 'courses'
+  courses: 'courses',
+  gameSettings: 'gameSettings'
 } as const;
 
 // User data interface
@@ -60,6 +61,14 @@ export interface FirebaseSettings {
   muted: boolean;
   lastUsername?: string;
   [key: string]: any;
+}
+
+// Global game settings (admin-tunable)
+export interface FirebaseGameSettings {
+  slopeAccel: number;      // px/s^2 base acceleration for hills
+  frictionK: number;       // base exponential damping (global)
+  sandMultiplier: number;  // multiplier applied to frictionK when in sand
+  lastModified: number;    // Unix timestamp
 }
 
 // Generic database operations
@@ -313,6 +322,22 @@ export class FirebaseDatabase {
 
   static async saveUserSettings(settings: FirebaseSettings): Promise<void> {
     await set(ref(database, `${PATHS.settings}/${settings.userId}`), settings);
+  }
+
+  // Game Settings (global)
+  static async getGameSettings(): Promise<FirebaseGameSettings | null> {
+    const snapshot = await get(ref(database, PATHS.gameSettings));
+    if (!snapshot.exists()) return null;
+    return snapshot.val() as FirebaseGameSettings;
+  }
+
+  static async saveGameSettings(settings: FirebaseGameSettings): Promise<void> {
+    const toSave = { ...settings, lastModified: Date.now() } as FirebaseGameSettings;
+    await set(ref(database, PATHS.gameSettings), toSave);
+  }
+
+  static async updateGameSettings(updates: Partial<FirebaseGameSettings>): Promise<void> {
+    await update(ref(database, PATHS.gameSettings), { ...updates, lastModified: Date.now() });
   }
 
   // Real-time listeners

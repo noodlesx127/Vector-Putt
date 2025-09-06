@@ -1088,11 +1088,20 @@ let usersUiHotspots: UsersHotspot[] = [];
 
 // Admin Menu state and hotspots
 type AdminMenuHotspot = {
-  kind: 'levelManagement' | 'userManagement' | 'back';
+  kind: 'levelManagement' | 'userManagement' | 'gameSettings' | 'back';
   x: number; y: number; w: number; h: number;
 };
-
 let adminMenuHotspots: AdminMenuHotspot[] = [];
+
+// Admin Game Settings state
+type GameSettingsField = 'slope' | 'friction' | 'sand';
+type GameSettingsHotspot = { kind: 'minus' | 'plus' | 'slider' | 'save' | 'cancel' | 'back'; field?: GameSettingsField; x: number; y: number; w: number; h: number };
+let gameSettingsHotspots: GameSettingsHotspot[] = [];
+let gameSettingsState: { slopeAccel: number; frictionK: number; sandMultiplier: number } = {
+  slopeAccel: 720,
+  frictionK: 1.2,
+  sandMultiplier: 6.0
+};
 
 // Level Management state and hotspots
 type LevelManagementHotspot = {
@@ -1160,7 +1169,7 @@ window.addEventListener('unhandledrejection', (ev) => {
 
 // Game state
 let lastTime = performance.now();
-let gameState: 'menu' | 'course' | 'options' | 'users' | 'changelog' | 'loading' | 'play' | 'sunk' | 'summary' | 'levelEditor' | 'userLevels' | 'adminMenu' | 'levelManagement' = 'menu';
+let gameState: 'menu' | 'course' | 'options' | 'users' | 'changelog' | 'loading' | 'play' | 'sunk' | 'summary' | 'levelEditor' | 'userLevels' | 'adminMenu' | 'levelManagement' | 'gameSettings' = 'menu';
 
 // Course Select state
 let courseSelectState = {
@@ -1187,7 +1196,9 @@ let currentLevelPath: string | null = null;
 let bestScoreForCurrentLevel: number | null = null;
 const APP_VERSION = '0.3.27';
 const restitution = 0.9; // wall bounce energy retention
-const frictionK = 1.2; // base exponential damping (reduced for less "sticky" green)
+// Runtime-tunable physics (admin)
+let physicsFrictionK = 1.2;           // base exponential damping
+let physicsSandMultiplier = 6.0;      // multiplier applied when in sand
 const stopSpeed = 5; // px/s threshold to consider stopped (tunable)
 
 // Visual palette (retro mini-golf style)
@@ -1210,7 +1221,7 @@ const COLORS = {
 } as const;
 const COURSE_MARGIN = 40; // inset for fairway rect
 const HUD_HEIGHT = 32;
-const SLOPE_ACCEL = 720; // tuned base acceleration applied by hills (px/s^2)
+let physicsSlopeAccel = 720; // tuned base acceleration applied by hills (px/s^2)
 const levelCache = new Map<string, Level>();
 
 // User profile (minimal local profile)
@@ -1311,6 +1322,18 @@ let firebaseReady = false;
   try {
     await firebaseManager.init();
     firebaseReady = true;
+    // Load global game settings (if present) and apply runtime physics
+    try {
+      const { FirebaseDatabase } = await import('./firebase/database.js');
+      const gs = await FirebaseDatabase.getGameSettings();
+      if (gs) {
+        physicsSlopeAccel = typeof gs.slopeAccel === 'number' ? gs.slopeAccel : physicsSlopeAccel;
+        physicsFrictionK = typeof gs.frictionK === 'number' ? gs.frictionK : physicsFrictionK;
+        physicsSandMultiplier = typeof gs.sandMultiplier === 'number' ? gs.sandMultiplier : physicsSandMultiplier;
+      }
+    } catch (e) {
+      console.warn('Failed to load global game settings; using defaults', e);
+    }
   } catch (e) {
     console.error('Failed to initialize Firebase services', e);
   }
@@ -1861,6 +1884,7 @@ async function editUserLevel(level: UserLevelEntry): Promise<void> {
     showUiToast('You can only edit your own levels');
     return;
   }
+  // (Game Settings render handled in main render loop)
   
   try {
     // Switch to Level Editor
@@ -2910,8 +2934,95 @@ canvas.addEventListener('mousedown', (e) => {
         } else if (hs.kind === 'userManagement') {
           gameState = 'users';
           return;
+        } else if (hs.kind === 'gameSettings') {
+          // Load current game settings from Firebase (if available)
+          (async () => {
+            try {
+              if (firebaseReady) {
+                const { FirebaseDatabase } = await import('./firebase/database.js');
+                const gs = await FirebaseDatabase.getGameSettings();
+                if (gs) {
+                  gameSettingsState.slopeAccel = typeof gs.slopeAccel === 'number' ? gs.slopeAccel : physicsSlopeAccel;
+                  gameSettingsState.frictionK = typeof gs.frictionK === 'number' ? gs.frictionK : physicsFrictionK;
+                  gameSettingsState.sandMultiplier = typeof gs.sandMultiplier === 'number' ? gs.sandMultiplier : physicsSandMultiplier;
+                } else {
+                  gameSettingsState.slopeAccel = physicsSlopeAccel;
+                  gameSettingsState.frictionK = physicsFrictionK;
+                  gameSettingsState.sandMultiplier = physicsSandMultiplier;
+                }
+              } else {
+                gameSettingsState.slopeAccel = physicsSlopeAccel;
+                gameSettingsState.frictionK = physicsFrictionK;
+                gameSettingsState.sandMultiplier = physicsSandMultiplier;
+              }
+              gameState = 'gameSettings';
+            } catch (e) {
+              console.error('Failed to load game settings', e);
+              showUiToast('Failed to load game settings');
+            }
+          })();
+          return;
         } else if (hs.kind === 'back') {
           gameState = previousGameState;
+          return;
+        }
+      }
+    }
+  }
+
+  // Game Settings actions
+  if (gameState === 'gameSettings') {
+    for (const hs of gameSettingsHotspots) {
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
+        const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+        const applySlider = (field: GameSettingsField, x: number) => {
+          // map x within slider rect to value
+          const s = gameSettingsHotspots.find(h => h.kind === 'slider' && h.field === field)!;
+          const t = clamp((x - s.x) / s.w, 0, 1);
+          if (field === 'slope') gameSettingsState.slopeAccel = Math.round(200 + t * (2000 - 200));
+          if (field === 'friction') gameSettingsState.frictionK = +(0.2 + t * (2.0 - 0.2)).toFixed(2);
+          if (field === 'sand') gameSettingsState.sandMultiplier = +(1 + t * (10 - 1)).toFixed(2);
+        };
+        if (hs.kind === 'minus' && hs.field) {
+          if (hs.field === 'slope') gameSettingsState.slopeAccel = clamp(gameSettingsState.slopeAccel - 20, 200, 2000);
+          if (hs.field === 'friction') gameSettingsState.frictionK = clamp(+((gameSettingsState.frictionK - 0.05).toFixed(2)), 0.2, 2.0);
+          if (hs.field === 'sand') gameSettingsState.sandMultiplier = clamp(+((gameSettingsState.sandMultiplier - 0.2).toFixed(2)), 1.0, 10.0);
+          return;
+        }
+        if (hs.kind === 'plus' && hs.field) {
+          if (hs.field === 'slope') gameSettingsState.slopeAccel = clamp(gameSettingsState.slopeAccel + 20, 200, 2000);
+          if (hs.field === 'friction') gameSettingsState.frictionK = clamp(+((gameSettingsState.frictionK + 0.05).toFixed(2)), 0.2, 2.0);
+          if (hs.field === 'sand') gameSettingsState.sandMultiplier = clamp(+((gameSettingsState.sandMultiplier + 0.2).toFixed(2)), 1.0, 10.0);
+          return;
+        }
+        if (hs.kind === 'slider' && hs.field) {
+          applySlider(hs.field, p.x);
+          return;
+        }
+        if (hs.kind === 'save') {
+          (async () => {
+            try {
+              if (!firebaseReady) { showUiToast('Firebase not ready'); return; }
+              const { FirebaseDatabase } = await import('./firebase/database.js');
+              await FirebaseDatabase.updateGameSettings({
+                slopeAccel: gameSettingsState.slopeAccel,
+                frictionK: gameSettingsState.frictionK,
+                sandMultiplier: gameSettingsState.sandMultiplier
+              });
+              // Apply runtime
+              physicsSlopeAccel = gameSettingsState.slopeAccel;
+              physicsFrictionK = gameSettingsState.frictionK;
+              physicsSandMultiplier = gameSettingsState.sandMultiplier;
+              showUiToast('Game settings saved');
+            } catch (e) {
+              console.error('Failed to save game settings', e);
+              showUiToast('Failed to save settings');
+            }
+          })();
+          return;
+        }
+        if (hs.kind === 'cancel' || hs.kind === 'back') {
+          gameState = 'adminMenu';
           return;
         }
       }
@@ -3292,6 +3403,14 @@ canvas.addEventListener('mousemove', (e) => {
   if (gameState === 'adminMenu') {
     let over = false;
     for (const hs of adminMenuHotspots) {
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) { over = true; break; }
+    }
+    canvas.style.cursor = over ? 'pointer' : 'default';
+    return;
+  }
+  if (gameState === 'gameSettings') {
+    let over = false;
+    for (const hs of gameSettingsHotspots) {
       if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) { over = true; break; }
     }
     canvas.style.cursor = over ? 'pointer' : 'default';
@@ -3781,7 +3900,7 @@ function update(dt: number) {
     if (!inSand && sandsPoly.length > 0) {
       for (const sp of sandsPoly) { if (pointInPolygon(ball.x, ball.y, sp.points)) { inSand = true; break; } }
     }
-    const k = frictionK * (inSand ? 6.0 : 1.0);
+    const k = physicsFrictionK * (inSand ? physicsSandMultiplier : 1.0);
     const friction = Math.exp(-k * dt);
     ball.vx *= friction;
     ball.vy *= friction;
@@ -3791,7 +3910,7 @@ function update(dt: number) {
       let ax = 0, ay = 0;
       for (const h of hills) {
         if (!pointInRect(ball.x, ball.y, h)) continue;
-        const s = (h.strength ?? 1) * SLOPE_ACCEL;
+        const s = (h.strength ?? 1) * physicsSlopeAccel;
         const d = h.dir;
         const dirX = (d.includes('E') ? 1 : 0) + (d.includes('W') ? -1 : 0);
         const dirY = (d.includes('S') ? 1 : 0) + (d.includes('N') ? -1 : 0);
@@ -4410,6 +4529,7 @@ function draw() {
     
     drawAdminMenuBtn('Level Management', 'levelManagement', startY);
     drawAdminMenuBtn('User Management', 'userManagement', startY + btnH + btnGap);
+    drawAdminMenuBtn('Game Settings', 'gameSettings', startY + (btnH + btnGap) * 2);
     
     // Back button
     const backBtnW = 120, backBtnH = 40;

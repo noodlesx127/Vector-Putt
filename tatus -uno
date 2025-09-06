@@ -1,2 +1,0 @@
-* [32mfeat/hud-replay[m 6f8d6ff fix(summary): ignore mousedown in summary to avoid double-trigger; click uses correct event; changelog note
-  main           [m 39b816a ci: add GitHub Actions build workflow

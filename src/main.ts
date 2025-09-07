@@ -4302,7 +4302,8 @@ function update(dt: number) {
     const allowStopDueToCorner = collidedThisFrame; // unblock endless jitter in concave corners
     // Detect jam case: slope acceleration pushing into the obstacle normal repeatedly
     const slopeMag = Math.hypot(slopeAx, slopeAy);
-    const pushingIntoObstacle = hasSlopeAccel && collidedThisFrame && ((slopeAx * lastCollisionNx + slopeAy * lastCollisionNy) > 0);
+    // Jam when hill acceleration is pushing INTO the obstacle (opposes the surface normal)
+    const pushingIntoObstacle = hasSlopeAccel && collidedThisFrame && ((slopeAx * lastCollisionNx + slopeAy * lastCollisionNy) < 0);
     
     // Debug logging for jam detection
     if (hasSlopeAccel && collidedThisFrame && speed > 10) {

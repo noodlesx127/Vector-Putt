@@ -2573,7 +2573,7 @@ function getMainStartRect() {
   const p = getMainPanelRect();
   const w = 200, h = 36;
   const x = p.x + Math.floor((p.w - w) / 2);
-  const y = p.y + p.pad + 48 + 160; // below art
+  const y = p.y + p.pad + 48 + 220; // push buttons down to keep gap below username
   return { x, y, w, h };
 }
 function getMainLevelEditorRect() {
@@ -2596,7 +2596,7 @@ function getMainNameRect() {
   const p = getMainPanelRect();
   const w = 300, h = 28;
   const x = p.x + Math.floor((p.w - w) / 2);
-  const y = p.y + p.pad + 48 + 110; // between art and buttons
+  const y = p.y + p.pad + 48 + 170; // push further down, still above Start with comfortable gap
   return { x, y, w, h };
 }
 
@@ -4135,9 +4135,11 @@ function update(dt: number) {
     }
 
     // Collide with walls (axis-aligned)
+    let collidedThisFrame = false; // detect corner jamming
     for (const w of walls) {
       const hit = circleRectResolve(ball.x, ball.y, ball.r, w);
       if (hit) {
+        collidedThisFrame = true;
         // push out along normal
         ball.x += hit.nx * hit.depth;
         ball.y += hit.ny * hit.depth;
@@ -4157,6 +4159,7 @@ function update(dt: number) {
     for (const p of posts) {
       const hit = circleCircleResolve(ball.x, ball.y, ball.r, p.x, p.y, p.r);
       if (hit) {
+        collidedThisFrame = true;
         ball.x += hit.nx * hit.depth;
         ball.y += hit.ny * hit.depth;
         const vn = ball.vx * hit.nx + ball.vy * hit.ny;
@@ -4177,6 +4180,7 @@ function update(dt: number) {
         const y2 = pts[j + 1];
         const hit = circleSegmentResolve(ball.x, ball.y, ball.r, x1, y1, x2, y2);
         if (hit) {
+          collidedThisFrame = true;
           ball.x += hit.nx * hit.depth;
           ball.y += hit.ny * hit.depth;
           const vn = ball.vx * hit.nx + ball.vy * hit.ny;
@@ -4201,9 +4205,16 @@ function update(dt: number) {
 
     const speed = Math.hypot(ball.vx, ball.vy);
     const disp = Math.hypot(ball.vx * dt, ball.vy * dt);
-    // Only allow stop when BOTH are small and we are not under active slope acceleration
+    // Only allow stop when BOTH are small. Normally disallow stopping on hills,
+    // but permit it if we collided this frame (corner jam near walls/posts).
     const hasSlopeAccel = inSlopeZone && (Math.hypot(slopeAx, slopeAy) > 1e-3);
-    if (!hasSlopeAccel && (speed < stopSpeed && disp < 0.25)) {
+    const allowStopDueToCorner = collidedThisFrame; // unblock endless jitter in concave corners
+    // Add a touch of extra damping when colliding at very low speeds to kill jitter
+    if (collidedThisFrame && speed < stopSpeed * 1.2) {
+      ball.vx *= 0.6;
+      ball.vy *= 0.6;
+    }
+    if ((!hasSlopeAccel || allowStopDueToCorner) && (speed < stopSpeed && disp < 0.25)) {
       ball.vx = 0; ball.vy = 0; ball.moving = false;
     }
   }

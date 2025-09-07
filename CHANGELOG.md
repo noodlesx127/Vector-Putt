@@ -13,12 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - UI • Changelog: Migrated to centered 800×600 panel with proper header, panel border, panel-local Back button, and panel-anchored scrollbar visuals. (`src/main.ts`)
 - UI • Main Menu: Button/input style parity with `UI_Design.md`. Default fill `rgba(255,255,255,0.10)`, hover `rgba(255,255,255,0.15)`, borders `#cfd2cf`; username input matches the same visual system. (`src/main.ts`)
+ - UI • Main Menu: Moved username input further down to clear the banner art, and shifted Start/Editor/Options to maintain spacing. (`src/main.ts`)
 - Play • Hill arrows visibility: arrows are rendered on an offscreen layer and masked to the fairway minus geometry (walls, poly walls, posts, bridges, water). Arrows draw as white with a subtle dark outline for contrast and are inset from hill edges. Prevents arrows from drawing over objects and improves legibility. (`src/main.ts`)
  - UI • Course Select: redesigned to Users-like split layout with left list and right preview/metadata pane. Added Play Course button on right pane; kept User Made Levels and Course Creator (admin) actions. (`src/main.ts`)
  - UI • User Made Levels: redesigned to Users-like split layout with left level list and right preview/metadata pane. Right pane shows level thumbnail preview and metadata (Author, Par, Created, Last Edited, Description, Tags) and action buttons (Play, Edit, Duplicate, Delete). Added metadata word-wrapping, reserved action area (no overlap), and adjusted list scrollbar spacing. Single-click now selects only; use Enter or the Play button to play. (`src/main.ts`)
 
 ### Fixed
 - Physics • Hills: stop condition no longer triggers while the ball is in a hill with active downhill acceleration. Prevents the ball from occasionally “parking” on a slope at very low speeds. (`src/main.ts`)
+ - Physics • Hills corner jitter: resolved a bug where the ball could get stuck jittering/bouncing in concave corners under slope acceleration. We now allow the stop condition if a collision occurred this frame at very low speed, and apply slight extra damping to kill residual jitter. (`update()` in `src/main.ts`)
 
 
 ## v0.3.27 — 2025-09-06

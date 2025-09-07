@@ -5559,9 +5559,9 @@ function draw() {
         userLevelsHotspots.push({ kind: 'levelItem', index: i, x: panelX + 20, y: itemY, w: listW - 20, h: itemH - 2 });
       }
       
-      // Scroll indicator
+      // Scroll indicator (shifted left to avoid clipping into list divider)
       if (filteredUserLevelsList.length > maxVisible) {
-        const scrollBarX = panelX + listW - 15;
+        const scrollBarX = panelX + listW - 24; // push inward for better visual spacing
         const scrollBarW = 8;
         const scrollBarH = listH;
         
@@ -5619,16 +5619,33 @@ function draw() {
       ctx.fillText(`Last Edited: ${lastMod}`, rightX + 12, yMeta); yMeta += 18;
       if (desc) { ctx.fillText(`Description: ${desc}`, rightX + 12, yMeta); yMeta += 18; }
       if (tags) { ctx.fillText(`Tags: ${tags}`, rightX + 12, yMeta); yMeta += 18; }
-      // Action buttons
-      const btnW = 120, btnH = 32, gap = 12; let ax = rightX + 12; const ay = rightY + rightH - btnH - 12;
-      const addBtn = (label: string, action: string) => {
-        ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(ax, ay, btnW, btnH);
-        ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(ax, ay, btnW, btnH);
+      // Action buttons (auto-wrap rows to avoid overflow)
+      const btnW = 120, btnH = 32, gap = 12;
+      const labels: Array<{label: string; action: string}> = [
+        { label: 'Play', action: 'play' },
+        { label: 'Edit', action: 'edit' },
+        { label: 'Duplicate', action: 'duplicate' },
+        { label: 'Delete', action: 'delete' }
+      ];
+      const avail = rightW - 24; // padding inside right pane
+      const perRow = Math.max(1, Math.floor((avail + gap) / (btnW + gap)));
+      const rows = Math.max(1, Math.ceil(labels.length / perRow));
+      const totalHeight = rows * btnH + (rows - 1) * gap;
+      let baseY = rightY + rightH - totalHeight - 12; // anchor from bottom with margin
+      for (let i = 0; i < labels.length; i++) {
+        const row = Math.floor(i / perRow);
+        const col = i % perRow;
+        // Center row if extra space
+        const usedW = perRow * btnW + (perRow - 1) * gap;
+        const startX = rightX + Math.max(12, Math.floor((rightW - usedW) / 2));
+        const x = startX + col * (btnW + gap);
+        const y = baseY + row * (btnH + gap);
+        ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(x, y, btnW, btnH);
+        ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(x, y, btnW, btnH);
         ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '14px system-ui, sans-serif';
-        ctx.fillText(label, ax + btnW/2, ay + btnH/2 + 0.5);
-        userLevelsHotspots.push({ kind: 'btn', action, x: ax, y: ay, w: btnW, h: btnH }); ax += btnW + gap;
-      };
-      addBtn('Play', 'play'); addBtn('Edit', 'edit'); addBtn('Duplicate', 'duplicate'); addBtn('Delete', 'delete');
+        ctx.fillText(labels[i].label, x + btnW/2, y + btnH/2 + 0.5);
+        userLevelsHotspots.push({ kind: 'btn', action: labels[i].action, x, y, w: btnW, h: btnH });
+      }
     } else {
       ctx.font = '14px system-ui, sans-serif'; ctx.fillText('No level selected', rightX + 12, rightY + 36);
     }

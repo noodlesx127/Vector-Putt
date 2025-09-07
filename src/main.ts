@@ -2915,22 +2915,6 @@ canvas.addEventListener('mousedown', (e) => {
         if (hs.kind === 'levelItem' && typeof hs.index === 'number') {
           selectedUserLevelIndex = hs.index;
           userLevelsState.selectedLevelIndex = hs.index;
-          // Show confirmation before loading level
-          const level = filteredUserLevelsList[hs.index];
-          if (level) {
-            uiOverlay = {
-              kind: 'confirm',
-              title: 'Load Level',
-              message: `Load "${level.name}" by ${level.author || 'Unknown'}?`,
-              cancelable: true,
-              resolve: (confirmed) => {
-                uiOverlay = { kind: 'none' };
-                if (confirmed) {
-                  void playUserLevel(level);
-                }
-              }
-            };
-          }
           return;
         }
         if (hs.kind === 'btn') {
@@ -5604,21 +5588,7 @@ function draw() {
           ctx.fillText('Generating preview…', thumbX + thumbW/2, thumbY + thumbH/2);
         }
       }
-      // Metadata
-      ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.font = '14px system-ui, sans-serif'; ctx.fillStyle = '#ffffff';
-      const meta = (sel as any).data?.meta || {};
-      const createdAt = meta.created ? new Date(meta.created).toLocaleString() : '—';
-      const lastMod = meta.lastModified ? new Date(meta.lastModified).toLocaleString() : (meta.modified || '—');
-      const par = (sel as any).data?.par; const parText = (typeof par === 'number') ? String(par) : '—';
-      const desc = (meta.description || '').toString();
-      const tags = Array.isArray(meta.tags) ? meta.tags.join(', ') : ((meta.tags || '').toString());
-      let yMeta = thumbY + thumbH + 10;
-      ctx.fillText(`Author: ${sel.author || meta.authorName || 'Unknown'}`, rightX + 12, yMeta); yMeta += 18;
-      ctx.fillText(`Par: ${parText}`, rightX + 12, yMeta); yMeta += 18;
-      ctx.fillText(`Created: ${createdAt}`, rightX + 12, yMeta); yMeta += 18;
-      ctx.fillText(`Last Edited: ${lastMod}`, rightX + 12, yMeta); yMeta += 18;
-      if (desc) { ctx.fillText(`Description: ${desc}`, rightX + 12, yMeta); yMeta += 18; }
-      if (tags) { ctx.fillText(`Tags: ${tags}`, rightX + 12, yMeta); yMeta += 18; }
+      // Reserve space for action buttons first, then render metadata above to avoid overlap
       // Action buttons (auto-wrap rows to avoid overflow)
       const btnW = 120, btnH = 32, gap = 12;
       const labels: Array<{label: string; action: string}> = [
@@ -5632,6 +5602,58 @@ function draw() {
       const rows = Math.max(1, Math.ceil(labels.length / perRow));
       const totalHeight = rows * btnH + (rows - 1) * gap;
       let baseY = rightY + rightH - totalHeight - 12; // anchor from bottom with margin
+      
+      // Metadata (word-wrapped for Description/Tags)
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.font = '14px system-ui, sans-serif'; ctx.fillStyle = '#ffffff';
+      const meta = (sel as any).data?.meta || {};
+      const createdAt = meta.created ? new Date(meta.created).toLocaleString() : '—';
+      const lastMod = meta.lastModified ? new Date(meta.lastModified).toLocaleString() : (meta.modified || '—');
+      const par = (sel as any).data?.par; const parText = (typeof par === 'number') ? String(par) : '—';
+      const desc = (meta.description || '').toString();
+      const tags = Array.isArray(meta.tags) ? meta.tags.join(', ') : ((meta.tags || '').toString());
+      const maxWidth = rightW - 24;
+      const elide = (s: string): string => {
+        if (!s) return s;
+        if (ctx.measureText(s).width <= maxWidth) return s;
+        let t = s;
+        while (t.length > 3 && ctx.measureText(t + '…').width > maxWidth) t = t.slice(0, -1);
+        return t + '…';
+      };
+      const wrapLabelValue = (label: string, value: string): string[] => {
+        if (!value) return [label];
+        const words = value.split(/\s+/);
+        const lines: string[] = [];
+        let current = label + (label ? ' ' : '');
+        for (const w of words) {
+          const test = (current ? current : '') + (current && !current.endsWith(' ') ? '' : '') + w;
+          if (ctx.measureText(test).width <= maxWidth) {
+            current = test;
+          } else {
+            if (current) lines.push(current);
+            // indent continuation lines to align after the label
+            const indent = ''.padEnd(label.length, ' ');
+            current = indent + w;
+          }
+        }
+        if (current) lines.push(current);
+        return lines;
+      };
+      const lines: string[] = [];
+      lines.push(elide(`Author: ${sel.author || meta.authorName || 'Unknown'}`));
+      lines.push(elide(`Par: ${parText}`));
+      lines.push(elide(`Created: ${createdAt}`));
+      lines.push(elide(`Last Edited: ${lastMod}`));
+      if (desc) lines.push(...wrapLabelValue('Description:', desc));
+      if (tags) lines.push(...wrapLabelValue('Tags:', tags));
+      const yStart = thumbY + thumbH + 10;
+      const yMax = baseY - 12;
+      const lineH = 18;
+      let yMeta = yStart;
+      const maxLines = Math.max(0, Math.floor((yMax - yMeta) / lineH));
+      for (let i = 0; i < Math.min(maxLines, lines.length); i++) {
+        ctx.fillText(lines[i], rightX + 12, yMeta); yMeta += lineH;
+      }
+      // Action buttons
       for (let i = 0; i < labels.length; i++) {
         const row = Math.floor(i / perRow);
         const col = i % perRow;
@@ -5675,7 +5697,7 @@ function draw() {
     ctx.fillStyle = '#888888';
     ctx.font = '11px system-ui, sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText('Click to play • ↑↓ Navigate • Enter Play • Esc Back', panelX + panelW - 20, backBtnY + backBtnH/2);
+    ctx.fillText('↑↓ Navigate • Enter Play • Esc Back', panelX + panelW - 20, backBtnY + backBtnH/2);
     
     renderGlobalOverlays();
     return;

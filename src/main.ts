@@ -1396,6 +1396,9 @@ const HUD_HEIGHT = 32;
 let physicsSlopeAccel = 720; // tuned base acceleration applied by hills (px/s^2)
 // Anti-jam: count consecutive frames the slope is pushing the ball into an obstacle
 let hillJamFrames = 0;
+// Additional anti-jam: count frames with near-zero displacement while colliding on a hill
+let hillJamPosFrames = 0;
+let jamLastX = 0, jamLastY = 0;
 const levelCache = new Map<string, Level>();
 
 // User profile (minimal local profile)
@@ -4215,10 +4218,7 @@ function update(dt: number) {
         slopeAx += dirX * s * inv;
         slopeAy += dirY * s * inv;
       }
-      if (inSlopeZone) {
-        ball.vx += slopeAx * dt;
-        ball.vy += slopeAy * dt;
-      }
+      // Defer applying slope acceleration until after collision resolution
     }
 
     // Collide with walls (axis-aligned)
@@ -4311,6 +4311,38 @@ function update(dt: number) {
       console.log(`Hill collision: speed=${speed.toFixed(1)}, slopeMag=${slopeMag.toFixed(1)}, dot=${dotProduct.toFixed(2)}, jamFrames=${hillJamFrames}`);
     }
     
+    // Position-based jam detection: colliding on a slope without making positional progress
+    const moveDist = Math.hypot(ball.x - jamLastX, ball.y - jamLastY);
+    if (inSlopeZone && collidedThisFrame) {
+      if (moveDist < 1.2) {
+        hillJamPosFrames = Math.min(60, hillJamPosFrames + 1);
+      } else {
+        hillJamPosFrames = 0;
+      }
+      jamLastX = ball.x; jamLastY = ball.y;
+    } else {
+      hillJamPosFrames = 0;
+      jamLastX = ball.x; jamLastY = ball.y;
+    }
+    if (hillJamPosFrames >= 6) {
+      // Nudge out of obstacle and heavily damp to break the bounce loop
+      ball.x += lastCollisionNx * 2;
+      ball.y += lastCollisionNy * 2;
+      const vnJam = ball.vx * lastCollisionNx + ball.vy * lastCollisionNy;
+      ball.vx -= vnJam * lastCollisionNx;
+      ball.vy -= vnJam * lastCollisionNy;
+      ball.vx *= 0.2;
+      ball.vy *= 0.2;
+      console.log(`Pos-jam resolved: frames=${hillJamPosFrames}, move=${moveDist.toFixed(2)}`);
+      if (Math.hypot(ball.vx, ball.vy) < stopSpeed * 6) {
+        ball.vx = 0; ball.vy = 0; ball.moving = false;
+        hillJamPosFrames = 0; hillJamFrames = 0;
+        return;
+      } else {
+        hillJamPosFrames = 0;
+      }
+    }
+    
     if (pushingIntoObstacle) {
       hillJamFrames = Math.min(60, hillJamFrames + 1);
       // Much more aggressive damping while jammed
@@ -4335,6 +4367,21 @@ function update(dt: number) {
       }
     } else {
       hillJamFrames = Math.max(0, hillJamFrames - 1); // decay slowly instead of instant reset
+    }
+
+    // After resolving collisions, apply slope acceleration but do not push into the obstacle
+    if (inSlopeZone) {
+      let ax = slopeAx, ay = slopeAy;
+      if (collidedThisFrame) {
+        const dotInto = ax * lastCollisionNx + ay * lastCollisionNy;
+        if (dotInto < 0) {
+          // Remove the inward normal component so we only keep tangential/outward accel
+          ax -= dotInto * lastCollisionNx;
+          ay -= dotInto * lastCollisionNy;
+        }
+      }
+      ball.vx += ax * dt;
+      ball.vy += ay * dt;
     }
     // Add a touch of extra damping when colliding at very low speeds to kill jitter
     if (collidedThisFrame && speed < stopSpeed * 1.2) {

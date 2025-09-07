@@ -5,21 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
-
-### Added
-- Level System • Cup placement heuristics: added optional region constraint (`regionPoly`) and corridor/bank-aware scoring that rewards paths running through narrow corridors or along banks. (`src/editor/levelHeuristics.ts`)
-- Level System • Cup path linting: introduced `lintCupPath()` to warn when a cup placement bypasses obstacles (nearly straight path with low obstacle contact) or is too close to fairway edges. Integrated into the editor flow to surface warnings via toasts after selecting a suggested cup position. (`src/editor/levelHeuristics.ts`, `src/editor/levelEditor.ts`)
-
-### Changed
-- Level Editor • Suggest Cup Positions: tuned ranking by including bank/corridor weighting; the editor passes a sensible default `bankWeight` tied to grid size. (`src/editor/levelEditor.ts`)
-- UI • Overlay dialogs: Load Level and Metadata dialogs now use the standard 800×600 centered panel layout, with blue-themed panel background/border, centered title for standard panels, 40px list rows, and standardized 28px buttons per `UI_Design.md`. (`src/main.ts`)
-- UI • Overlay input handling: wired capture-phase `mousedown` listener for overlays so buttons and list items respond reliably. (`src/main.ts`)
-
 ## v0.3.28 — 2025-09-06
 
 ### Added
 - UI • Users Admin: Converted to standard 800×600 centered panel with header, search box, scrollable user list (keyboard + wheel), right-side action column. Hotspots and keyboard handling implemented for selection and actions. (`src/main.ts`)
+- Level System • Cup placement heuristics: added optional region constraint (`regionPoly`) and corridor/bank-aware scoring that rewards paths running through narrow corridors or along banks. (`src/editor/levelHeuristics.ts`)
+- Level System • Cup path linting: introduced `lintCupPath()` to warn when a cup placement bypasses obstacles (nearly straight path with low obstacle contact) or is too close to fairway edges. Integrated into the editor flow to surface warnings via toasts after selecting a suggested cup position. (`src/editor/levelHeuristics.ts`, `src/editor/levelEditor.ts`)
 
 ### Changed
 - UI • Changelog: Migrated to centered 800×600 panel with proper header, panel border, panel-local Back button, and panel-anchored scrollbar visuals. (`src/main.ts`)
@@ -28,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Play • Hill arrows visibility: arrows are rendered on an offscreen layer and masked to the fairway minus geometry (walls, poly walls, posts, bridges, water). Arrows draw as white with a subtle dark outline for contrast and are inset from hill edges. Prevents arrows from drawing over objects and improves legibility. (`src/main.ts`)
  - UI • Course Select: redesigned to Users-like split layout with left list and right preview/metadata pane. Added Play Course button on right pane; kept User Made Levels and Course Creator (admin) actions. (`src/main.ts`)
  - UI • User Made Levels: redesigned to Users-like split layout with left level list and right preview/metadata pane. Right pane shows level thumbnail preview and metadata (Author, Par, Created, Last Edited, Description, Tags) and action buttons (Play, Edit, Duplicate, Delete). Added metadata word-wrapping, reserved action area (no overlap), and adjusted list scrollbar spacing. Single-click now selects only; use Enter or the Play button to play. (`src/main.ts`)
+- Level Editor • Suggest Cup Positions: tuned ranking by including bank/corridor weighting; the editor passes a sensible default `bankWeight` tied to grid size. (`src/editor/levelEditor.ts`)
+- UI • Overlay dialogs: Load Level and Metadata dialogs now use the standard 800×600 centered panel layout, with blue-themed panel background/border, centered title for standard panels, 40px list rows, and standardized 28px buttons per `UI_Design.md`. (`src/main.ts`)
+- UI • Overlay input handling: wired capture-phase `mousedown` listener for overlays so buttons and list items respond reliably. (`src/main.ts`)
 
 ### Fixed
 - Physics • Hills: stop condition no longer triggers while the ball is in a hill with active downhill acceleration. Prevents the ball from occasionally “parking” on a slope at very low speeds. (`src/main.ts`)

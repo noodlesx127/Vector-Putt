@@ -6312,16 +6312,24 @@ function draw() {
         const s = Math.max(0.5, Math.min(1.5, (h.strength ?? 1)));
         const step = Math.max(18, Math.min(28, 24 / s));
         const inset = 6;
-        const xStart = Math.max(h.x + inset, h.x + step * 0.5);
-        const yStart = Math.max(h.y + inset, h.y + step * 0.5);
-        for (let yy = yStart; yy < h.y + h.h - inset; yy += step) {
-          for (let xx = xStart; xx < h.x + h.w - inset; xx += step) {
+        const innerW = Math.max(0, (h.w - inset * 2));
+        const innerH = Math.max(0, (h.h - inset * 2));
+        const cols = Math.max(1, Math.floor(innerW / step));
+        const rows = Math.max(1, Math.floor(innerH / step));
+        const cellW = cols > 0 ? innerW / cols : innerW;
+        const cellH = rows > 0 ? innerH / rows : innerH;
+        for (let r = 0; r < rows; r++) {
+          const yy = h.y + inset + r * cellH + cellH * 0.5;
+          if (yy <= h.y + inset || yy >= h.y + h.h - inset) continue;
+          for (let c = 0; c < cols; c++) {
+            const xx = h.x + inset + c * cellW + cellW * 0.5;
+            if (xx <= h.x + inset || xx >= h.x + h.w - inset) continue;
             // Outline
             ac.strokeStyle = 'rgba(0,0,0,0.55)';
             ac.lineWidth = 3;
             drawSlopeIndicator(ac as any, xx, yy, dirX, dirY, 9);
             // White arrow
-            const alpha = Math.max(0.22, Math.min(0.6, 0.26 + (s - 1) * 0.2));
+            const alpha = Math.max(0.30, Math.min(0.65, 0.30 + (s - 1) * 0.22));
             ac.strokeStyle = `rgba(255,255,255,${alpha})`;
             ac.lineWidth = 1.8;
             drawSlopeIndicator(ac as any, xx, yy, dirX, dirY, 9);

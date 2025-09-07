@@ -1,4 +1,4 @@
-import CHANGELOG_RAW from '../CHANGELOG.md?raw';
+ import CHANGELOG_RAW from '../CHANGELOG.md?raw';
 import firebaseManager from './firebase';
 import { levelEditor } from './editor/levelEditor';
 
@@ -17,6 +17,21 @@ function isDevBuild(): boolean {
   } catch {
     return false;
   }
+
+// Load Levels overlay (left-list/right-preview)
+function showUiLoadLevels(levels: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>): Promise<any | null> {
+  return new Promise<any | null>((resolve) => {
+    uiOverlay = {
+      kind: 'loadLevels',
+      title: 'Load Level',
+      loadLevels: [...levels],
+      selectedLevelIndex: 0,
+      scrollOffset: 0,
+      cancelable: true,
+      resolve
+    } as any;
+  });
+}
 }
 
 // Course thumbnails (generated from first level in the course)
@@ -57,15 +72,15 @@ async function ensureUserSyncedWithFirebase(): Promise<void> {
     const all = firebaseManager.users.getAll();
     const match = all.find((u: any) => (u.name || '').toLowerCase() === name.toLowerCase());
     if (match) {
-      // Elevate 'admin' name if needed
-      if (name.toLowerCase() === 'admin' && match.role !== 'admin') {
-        try { await firebaseManager.users.toggleRole(match.id); match.role = 'admin'; } catch {}
-      }
+    // Elevate 'admin' name if needed
+    if (name.toLowerCase() === 'admin' && match.role !== 'admin') {
+      try { await firebaseManager.users.toggleRole(match.id); match.role = 'admin'; } catch {}
+    }
 
-      const oldUserId = userProfile.id;
-      userProfile.role = match.role as any;
-      userProfile.id = match.id;
-      saveUserProfile();
+    const oldUserId = userProfile.id;
+    userProfile.role = match.role as any;
+    userProfile.id = match.id;
+    saveUserProfile();
     } else {
       const defaultRole = (name.toLowerCase() === 'admin') ? 'admin' : 'user';
       const rec = await firebaseManager.users.addUser(name, defaultRole as any);
@@ -106,7 +121,7 @@ function newLevelId(): string {
 // ------------------------------
 // In-Game Modal Overlay System
 // ------------------------------
-type UiOverlayKind = 'none' | 'toast' | 'confirm' | 'prompt' | 'list' | 'dndList' | 'courseEditor' | 'courseCreator' | 'metadata';
+type UiOverlayKind = 'none' | 'toast' | 'confirm' | 'prompt' | 'list' | 'dndList' | 'courseEditor' | 'courseCreator' | 'metadata' | 'loadLevels';
 type UiToast = { id: number; message: string; expiresAt: number };
 type UiListItem = { id?: string; label: string; value?: any; disabled?: boolean };
 type UiOverlayState = {
@@ -154,6 +169,9 @@ type UiOverlayState = {
   courseList?: Array<{ id: string; title: string; levelIds: string[]; levelTitles: string[] }>;
   selectedCourseIndex?: number;
   courseScrollOffset?: number;
+  // Load Levels overlay state
+  loadLevels?: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>; 
+  loadFilter?: 'all' | 'built-in' | 'user' | 'local';
   // Resolution
   resolve?: (value: any) => void;
   reject?: (reason?: any) => void;
@@ -5712,11 +5730,12 @@ function draw() {
       startX += btnW + gap;
     }
     
-    // Instructions
+    // Instructions (positioned above the bottom button row to avoid overlap)
     ctx.fillStyle = '#888888';
     ctx.font = '11px system-ui, sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText('↑↓ Navigate • Enter Play • Esc Back', panelX + panelW - 20, backBtnY + backBtnH/2);
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('↑↓ Navigate • Enter Play • Esc Back', panelX + panelW - 20, backBtnY - 8);
     
     renderGlobalOverlays();
     return;
@@ -6160,16 +6179,15 @@ function draw() {
         }
       }
 
-      // Apply mask: keep only fairway, subtract geometry
+      // Apply mask: keep only fairway, subtract geometry (but not bridges)
       // Keep fairway
       ac.globalCompositeOperation = 'destination-in';
       ac.fillStyle = '#000';
       ac.fillRect(fairX, fairY, fairW, fairH);
-      // Cut out walls and bridges
+      // Cut out walls (bridges are not subtracted so arrows remain visible over them)
       ac.globalCompositeOperation = 'destination-out';
       ac.fillStyle = '#000';
       for (const w of walls) { ac.fillRect(w.x, w.y, w.w, w.h); }
-      for (const b of bridges) { ac.fillRect(b.x, b.y, b.w, b.h); }
       // Poly walls
       for (const poly of polyWalls) {
         const pts = poly.points; if (!pts || pts.length < 6) continue;
@@ -6519,18 +6537,15 @@ function renderGlobalOverlays(): void {
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
     // panel metrics
-    const panelW = Math.min(640, WIDTH - 80);
+    let panelW = Math.min(640, WIDTH - 80);
     const pad = 16;
     let panelH = 160;
     const hasTitle = !!uiOverlay.title;
     const titleH = hasTitle ? 28 : 0;
-    if (uiOverlay.kind === 'prompt') panelH = 200;
-    if (uiOverlay.kind === 'list') {
-      const items = uiOverlay.listItems ?? [];
-      const visible = Math.min(items.length, 10);
-      panelH = 100 + visible * 28 + 56; // title+list+buttons
-      panelH = Math.min(panelH, HEIGHT - 120);
-    }
+    const standardW = Math.min(800, WIDTH - 80);
+    const standardH = Math.min(600, HEIGHT - 120);
+    if (uiOverlay.kind === 'prompt') { panelW = standardW; panelH = standardH; }
+    if (uiOverlay.kind === 'list') { panelW = standardW; panelH = standardH; }
     if (uiOverlay.kind === 'dndList') {
       const items = uiOverlay.listItems ?? [];
       const visible = Math.min(items.length, 10);
@@ -6628,7 +6643,7 @@ function renderGlobalOverlays(): void {
       // List items
       const items = uiOverlay.listItems ?? [];
       const rowH = 28;
-      const maxRows = Math.min(10, Math.floor((panelH - (cy - py) - 80) / rowH));
+      const maxRows = Math.max(1, Math.floor((panelH - (cy - py) - 80) / rowH));
       const visible = Math.min(items.length, maxRows);
       ctx.font = '14px system-ui, sans-serif';
       for (let i = 0; i < visible; i++) {

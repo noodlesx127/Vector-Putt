@@ -3415,15 +3415,37 @@ class LevelEditorImpl implements LevelEditor {
     if (!this.env) return;
     const env = this.env;
     this.syncEditorDataFromGlobals(env);
-
-    // Current values with sensible defaults
-    const currentTitle = this.editorLevelData?.course?.title || 'Untitled';
+    
+    const currentTitle = (this.editorLevelData?.course?.title || this.editorLevelData?.meta?.title || 'Untitled').toString();
     const currentAuthor = (this.editorLevelData?.meta?.authorName || '').toString();
-    const currentPar = Number.isFinite(this.editorLevelData?.par) ? String(this.editorLevelData.par) : '3';
+    const currentPar = String((this.editorLevelData?.par ?? 3) | 0);
     const currentDesc = (this.editorLevelData?.meta?.description || '').toString();
     const currentTags = Array.isArray(this.editorLevelData?.meta?.tags)
       ? (this.editorLevelData.meta.tags as string[]).join(', ')
       : (this.editorLevelData?.meta?.tags || '').toString();
+    
+    // Prefer the new panelized form if host provides it
+    if (typeof env.showMetadataForm === 'function') {
+      const formResult = await env.showMetadataForm(
+        { title: currentTitle, author: currentAuthor, par: currentPar, description: currentDesc, tags: currentTags },
+        'Metadata'
+      );
+      if (!formResult) return; // canceled
+      let par = parseInt((formResult.par || '').trim(), 10);
+      if (!Number.isFinite(par)) par = 3;
+      par = Math.max(1, Math.min(20, par));
+      if (!this.editorLevelData.meta) this.editorLevelData.meta = {} as any;
+      this.editorLevelData.meta.title = (formResult.title || '').toString();
+      this.editorLevelData.meta.authorName = (formResult.author || '').toString();
+      this.editorLevelData.meta.description = (formResult.description || '').toString();
+      this.editorLevelData.meta.tags = (formResult.tags || '').split(',').map((t: string) => t.trim()).filter((t: string) => !!t);
+      this.editorLevelData.par = par;
+      env.showToast('Metadata updated');
+      await this.save();
+      return;
+    }
+    
+    // Fallback: legacy prompt sequence
     const title = await env.showPrompt('Level Title:', currentTitle, 'Metadata');
     if (title === null) return;
     const author = await env.showPrompt('Author Name:', currentAuthor, 'Metadata');
@@ -3436,23 +3458,12 @@ class LevelEditorImpl implements LevelEditor {
     if (tagsInput === null) return;
     let par = parseInt((parInput || '').trim(), 10);
     if (!Number.isFinite(par)) par = 3;
-    par = Math.max(1, Math.min(20, Math.round(par)));
-
-    this.pushUndoSnapshot('Edit metadata');
-    this.editorLevelData.course = this.editorLevelData.course || { index: 1, total: 1 };
-    (this.editorLevelData.course as any).title = title;
-    this.editorLevelData.meta = this.editorLevelData.meta || {};
-    this.editorLevelData.meta.title = title;
-    this.editorLevelData.meta.authorName = author;
-    // Optional metadata
-    if (typeof description === 'string') {
-      this.editorLevelData.meta.description = description.trim();
-    }
-    if (typeof tagsInput === 'string') {
-      const tags = tagsInput.split(',').map(s => s.trim()).filter(s => s.length > 0);
-      // store as array when possible; keep string if empty
-      if (tags.length > 0) (this.editorLevelData.meta as any).tags = tags; else delete (this.editorLevelData.meta as any).tags;
-    }
+    par = Math.max(1, Math.min(20, par));
+    if (!this.editorLevelData.meta) this.editorLevelData.meta = {} as any;
+    this.editorLevelData.meta.title = (title || '').toString();
+    this.editorLevelData.meta.authorName = (author || '').toString();
+    this.editorLevelData.meta.description = (description || '').toString();
+    this.editorLevelData.meta.tags = (tagsInput || '').split(',').map((t: string) => t.trim()).filter((t: string) => !!t);
     this.editorLevelData.par = par;
     // Also mirror created/modified timestamps in meta
     const nowIso = new Date().toISOString();

@@ -4983,23 +4983,35 @@ function draw() {
       ctx.fillText(`Role: ${sel.role}`, rightX + 12, rightY + 64);
       ctx.fillText(`Status: ${sel.enabled ? 'Active' : 'Disabled'}`, rightX + 12, rightY + 84);
 
-      // Action buttons
+      // Action buttons (responsive grid within right panel)
       const aY = rightY + 120;
-      const aW = 140, aH = 36; const gap = 12;
-      let ax = rightX + 12;
-      function drawBtn(lbl: string, kind: UsersHotspot['kind'], id: string) {
+      const gap = 10;
+      const innerPad = 12;
+      const availableW = Math.max(0, rightW - innerPad * 2);
+      const minBtnW = 110;
+      // Determine column count to fit within available width (max 3)
+      let cols = Math.min(3, Math.max(1, Math.floor((availableW + gap) / (minBtnW + gap))));
+      // Compute button width from columns
+      const aW = Math.floor((availableW - gap * (cols - 1)) / cols);
+      const aH = 32;
+      const font = '14px system-ui, sans-serif';
+      const buttons: Array<{ label: string; kind: UsersHotspot['kind']; id: string }> = [];
+      if (sel.role === 'admin') buttons.push({ label: 'Demote', kind: 'demote', id: sel.id });
+      else buttons.push({ label: 'Promote', kind: 'promote', id: sel.id });
+      buttons.push({ label: sel.enabled ? 'Disable' : 'Enable', kind: sel.enabled ? 'disable' : 'enable', id: sel.id });
+      buttons.push({ label: 'Delete', kind: 'remove', id: sel.id });
+      buttons.forEach((b, i) => {
+        const row = Math.floor(i / cols);
+        const col = i % cols;
+        const x = rightX + innerPad + col * (aW + gap);
+        const y = aY + row * (aH + gap);
         ctx.fillStyle = 'rgba(255,255,255,0.10)';
-        ctx.fillRect(ax, aY, aW, aH);
-        ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(ax, aY, aW, aH);
-        ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '16px system-ui, sans-serif';
-        ctx.fillText(lbl, ax + aW/2, aY + aH/2 + 0.5);
-        usersUiHotspots.push({ kind, id, x: ax, y: aY, w: aW, h: aH });
-        ax += aW + gap;
-      }
-      if (sel.role === 'admin') drawBtn('Demote', 'demote', sel.id);
-      else drawBtn('Promote', 'promote', sel.id);
-      drawBtn(sel.enabled ? 'Disable' : 'Enable', sel.enabled ? 'disable' : 'enable', sel.id);
-      drawBtn('Delete', 'remove', sel.id);
+        ctx.fillRect(x, y, aW, aH);
+        ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(x, y, aW, aH);
+        ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = font;
+        ctx.fillText(b.label, x + aW/2, y + aH/2 + 0.5);
+        usersUiHotspots.push({ kind: b.kind, id: b.id, x, y, w: aW, h: aH });
+      });
     } else {
       ctx.font = '14px system-ui, sans-serif'; ctx.fillText('No user selected', rightX + 12, rightY + 36);
     }
@@ -5391,7 +5403,7 @@ function draw() {
     const startRect = getMainStartRect();
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = hoverMainStart ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = hoverMainStart ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillStyle = hoverMainStart ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.10)';
     ctx.fillRect(startRect.x, startRect.y, startRect.w, startRect.h);
     ctx.strokeRect(startRect.x, startRect.y, startRect.w, startRect.h);
     ctx.fillStyle = '#ffffff';
@@ -5401,7 +5413,7 @@ function draw() {
     
     const editorRect = getMainLevelEditorRect();
     ctx.strokeStyle = hoverMainLevelEditor ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = hoverMainLevelEditor ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillStyle = hoverMainLevelEditor ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.10)';
     ctx.fillRect(editorRect.x, editorRect.y, editorRect.w, editorRect.h);
     ctx.strokeRect(editorRect.x, editorRect.y, editorRect.w, editorRect.h);
     ctx.fillStyle = '#ffffff';

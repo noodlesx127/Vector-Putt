@@ -1394,6 +1394,8 @@ const COLORS = {
 const COURSE_MARGIN = 40; // inset for fairway rect
 const HUD_HEIGHT = 32;
 let physicsSlopeAccel = 720; // tuned base acceleration applied by hills (px/s^2)
+// Anti-jam: count consecutive frames the slope is pushing the ball into an obstacle
+let hillJamFrames = 0;
 const levelCache = new Map<string, Level>();
 
 // User profile (minimal local profile)
@@ -4221,10 +4223,12 @@ function update(dt: number) {
 
     // Collide with walls (axis-aligned)
     let collidedThisFrame = false; // detect corner jamming
+    let lastCollisionNx = 0, lastCollisionNy = 0; // track the last collision normal
     for (const w of walls) {
       const hit = circleRectResolve(ball.x, ball.y, ball.r, w);
       if (hit) {
         collidedThisFrame = true;
+        lastCollisionNx = hit.nx; lastCollisionNy = hit.ny;
         // push out along normal
         ball.x += hit.nx * hit.depth;
         ball.y += hit.ny * hit.depth;
@@ -4245,6 +4249,7 @@ function update(dt: number) {
       const hit = circleCircleResolve(ball.x, ball.y, ball.r, p.x, p.y, p.r);
       if (hit) {
         collidedThisFrame = true;
+        lastCollisionNx = hit.nx; lastCollisionNy = hit.ny;
         ball.x += hit.nx * hit.depth;
         ball.y += hit.ny * hit.depth;
         const vn = ball.vx * hit.nx + ball.vy * hit.ny;
@@ -4266,6 +4271,7 @@ function update(dt: number) {
         const hit = circleSegmentResolve(ball.x, ball.y, ball.r, x1, y1, x2, y2);
         if (hit) {
           collidedThisFrame = true;
+          lastCollisionNx = hit.nx; lastCollisionNy = hit.ny;
           ball.x += hit.nx * hit.depth;
           ball.y += hit.ny * hit.depth;
           const vn = ball.vx * hit.nx + ball.vy * hit.ny;
@@ -4294,12 +4300,33 @@ function update(dt: number) {
     // but permit it if we collided this frame (corner jam near walls/posts).
     const hasSlopeAccel = inSlopeZone && (Math.hypot(slopeAx, slopeAy) > 1e-3);
     const allowStopDueToCorner = collidedThisFrame; // unblock endless jitter in concave corners
+    // Detect jam case: slope acceleration pushing into the obstacle normal repeatedly
+    const pushingIntoObstacle = hasSlopeAccel && collidedThisFrame && ((slopeAx * lastCollisionNx + slopeAy * lastCollisionNy) > 0);
+    if (pushingIntoObstacle) {
+      hillJamFrames = Math.min(30, hillJamFrames + 1);
+      // Heavier damping while jammed to bleed energy quickly
+      if (speed < stopSpeed * 3) {
+        ball.vx *= 0.5;
+        ball.vy *= 0.5;
+      }
+      // Remove any residual velocity into the obstacle normal at very low speeds
+      if (speed < stopSpeed * 4) {
+        const vn = ball.vx * lastCollisionNx + ball.vy * lastCollisionNy;
+        if (vn > 0) { ball.vx -= vn * lastCollisionNx; ball.vy -= vn * lastCollisionNy; }
+      }
+    } else {
+      hillJamFrames = 0;
+    }
     // Add a touch of extra damping when colliding at very low speeds to kill jitter
     if (collidedThisFrame && speed < stopSpeed * 1.2) {
       ball.vx *= 0.6;
       ball.vy *= 0.6;
     }
-    if ((!hasSlopeAccel || allowStopDueToCorner) && (speed < stopSpeed && disp < 0.25)) {
+    if (
+      ((!hasSlopeAccel || allowStopDueToCorner) && (speed < stopSpeed && disp < 0.25)) ||
+      // Anti-jam: if hill keeps pushing into obstacle for a short window and speed is low, stop
+      (pushingIntoObstacle && hillJamFrames >= 6 && speed < stopSpeed * 3)
+    ) {
       ball.vx = 0; ball.vy = 0; ball.moving = false;
     }
   }

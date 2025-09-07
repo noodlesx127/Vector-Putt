@@ -63,9 +63,12 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
        - Tasks:
          - [ ] File menu parity: New, Load, Save, Save As, Delete, Back/Exit — confirm labels, ordering, and keyboard shortcuts
          - [ ] Load Level dialog: standard panel layout with scrollable list, search/filter, confirm/cancel buttons
+          - Updated to use standard 800×600 panel, blue-themed panel background/border, centered title, 40px row height, and standard 28px buttons per `UI_Design.md`. (`src/main.ts`)
+          - Active/inactive filter styling aligned to design (blue highlight vs subtle). Click handling fixed by wiring capture-phase `mousedown` listener for overlays.
          - [ ] Save flow: inline Save feedback (toast) and error handling per overlay guidelines
          - [ ] Save As dialog: name input, validation messages, confirm/cancel, consistent spacing
          - [ ] Metadata editor dialog: Title and Author fields with validation and standard form styling
+          - Now uses standard 800×600 panel sizing to prevent cramped layout and overlapping buttons; form rows spaced consistently. (`src/main.ts`)
          - [ ] Suggest Par overlay: description text and action buttons styled to spec
          - [ ] Delete confirmation dialog: warning color accents, explicit level name, confirm/cancel alignment
   

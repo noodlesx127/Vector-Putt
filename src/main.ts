@@ -674,6 +674,8 @@ function handleOverlayMouseDown(e: MouseEvent) {
     }
   }
 }
+// Ensure overlay clicks are handled before underlying UI by using capture phase
+canvas.addEventListener('mousedown', handleOverlayMouseDown, { capture: true });
 canvas.addEventListener('mousemove', handleOverlayMouseMove, { capture: true });
 
 function handleOverlayMouseMove(e: MouseEvent) {
@@ -6577,6 +6579,7 @@ function renderGlobalOverlays(): void {
     if (uiOverlay.kind === 'prompt') { panelW = standardW; panelH = standardH; }
     if (uiOverlay.kind === 'list') { panelW = standardW; panelH = standardH; }
     if (uiOverlay.kind === 'loadLevels') { panelW = standardW; panelH = standardH; }
+    if (uiOverlay.kind === 'metadata') { panelW = standardW; panelH = standardH; }
     if (uiOverlay.kind === 'dndList') {
       const items = uiOverlay.listItems ?? [];
       const visible = Math.min(items.length, 10);
@@ -6593,20 +6596,25 @@ function renderGlobalOverlays(): void {
     // Update stored position to clamped values to avoid drift
     uiOverlay.posX = px;
     uiOverlay.posY = py;
-    // panel background
-    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    // panel background and border per UI_Design.md
+    const isCoursePanels = (uiOverlay.kind === 'courseEditor' || uiOverlay.kind === 'courseCreator');
+    const panelBg = isCoursePanels ? 'rgba(0,0,0,0.85)' : 'rgba(20,30,40,0.95)';
+    const panelBorder = isCoursePanels ? '#cfd2cf' : 'rgba(100,150,200,0.5)';
+    ctx.fillStyle = panelBg;
     ctx.fillRect(px, py, panelW, panelH);
-    ctx.strokeStyle = '#cfd2cf';
+    ctx.strokeStyle = panelBorder;
     ctx.lineWidth = 1.5;
     ctx.strokeRect(px + 0.5, py + 0.5, panelW - 1, panelH - 1);
     ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     let cy = py + pad;
     // title
     if (hasTitle) {
-      ctx.font = '18px system-ui, sans-serif';
-      ctx.fillText(uiOverlay.title!, px + pad, cy);
+      const centerTitle = !isCoursePanels; // center titles for standard panels
+      ctx.font = '24px system-ui, sans-serif';
+      ctx.textAlign = centerTitle ? 'center' : 'left';
+      if (centerTitle) ctx.fillText(uiOverlay.title!, px + panelW / 2, cy);
+      else ctx.fillText(uiOverlay.title!, px + pad, cy);
       cy += titleH;
     }
     // Title bar drag handle (top region)
@@ -6839,19 +6847,21 @@ function renderGlobalOverlays(): void {
       const detailW = panelW - listW - pad * 3;
       const listX = px + pad;
       const listY = cy;
-      const rowH = 34;
+      const rowH = 40; // UI_Design.md standard list row height
       const listH = panelH - (cy - py) - 80;
       const maxRows = Math.max(1, Math.floor(listH / rowH));
       const scroll = Math.max(0, Math.min(Math.max(0, filtered.length - maxRows), uiOverlay.scrollOffset ?? 0));
-      ctx.font = '14px system-ui, sans-serif';
+      ctx.font = '16px system-ui, sans-serif';
       for (let vi = 0; vi < Math.min(filtered.length - scroll, maxRows); vi++) {
         const i = scroll + vi;
         const item = filtered[i];
         const iy = listY + vi * rowH;
         const selected = (uiOverlay.selectedLevelIndex ?? 0) === i;
-        ctx.fillStyle = selected ? 'rgba(136, 212, 255, 0.20)' : 'rgba(255,255,255,0.06)';
+        ctx.fillStyle = selected ? 'rgba(100,150,200,0.30)' : 'rgba(255,255,255,0.05)';
         ctx.fillRect(listX, iy, listW, rowH - 2);
-        ctx.strokeStyle = selected ? '#88d4ff' : '#666666'; ctx.lineWidth = 1; ctx.strokeRect(listX + 0.5, iy + 0.5, listW - 1, rowH - 2 - 1);
+        ctx.strokeStyle = selected ? 'rgba(100,150,200,0.8)' : 'rgba(255,255,255,0.1)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(listX + 0.5, iy + 0.5, listW - 1, rowH - 2 - 1);
         ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
         const label = `${item.title} — ${item.author}`;
         ctx.fillText(label, listX + 10, iy + (rowH - 2)/2 + 0.5);
@@ -6875,23 +6885,23 @@ function renderGlobalOverlays(): void {
         ctx.fillText(meta2, detX + 10, detY + 34);
       }
 
-      // Buttons: Load and Cancel
-      const bw = 110, bh = 30, gap = 12;
+      // Buttons: Load and Cancel per UI_Design.md (standard height 28px)
+      const bw = 110, bh = 28, gap = 12;
       const by = py + panelH - pad - bh;
       const loadX = px + panelW - pad - bw * 2 - gap;
       const cancelX = px + panelW - pad - bw;
       const canLoad = filtered.length > 0;
-      ctx.fillStyle = canLoad ? 'rgba(0,128,0,0.30)' : 'rgba(100,100,100,0.20)';
+      ctx.fillStyle = canLoad ? 'rgba(100,150,200,0.80)' : 'rgba(100,100,100,0.20)';
       ctx.fillRect(loadX, by, bw, bh);
-      ctx.strokeStyle = canLoad ? '#008000' : '#666666'; ctx.lineWidth = 1.5; ctx.strokeRect(loadX, by, bw, bh);
-      ctx.fillStyle = canLoad ? '#ffffff' : '#999999'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '15px system-ui, sans-serif';
+      ctx.strokeStyle = canLoad ? 'rgba(100,150,200,0.80)' : '#666666'; ctx.lineWidth = 1.5; ctx.strokeRect(loadX, by, bw, bh);
+      ctx.fillStyle = canLoad ? '#ffffff' : '#999999'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '14px system-ui, sans-serif';
       ctx.fillText('Load', loadX + bw/2, by + bh/2 + 0.5);
       if (canLoad) overlayHotspots.push({ kind: 'btn', action: 'load', x: loadX, y: by, w: bw, h: bh });
 
       ctx.fillStyle = 'rgba(255,255,255,0.10)';
       ctx.fillRect(cancelX, by, bw, bh);
       ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(cancelX, by, bw, bh);
-      ctx.fillStyle = '#ffffff'; ctx.fillText('Cancel', cancelX + bw/2, by + bh/2 + 0.5);
+      ctx.fillStyle = '#ffffff'; ctx.font = '14px system-ui, sans-serif'; ctx.fillText('Cancel', cancelX + bw/2, by + bh/2 + 0.5);
       overlayHotspots.push({ kind: 'btn', action: 'cancel', x: cancelX, y: by, w: bw, h: bh });
 
     } else if (uiOverlay.kind === 'courseEditor') {

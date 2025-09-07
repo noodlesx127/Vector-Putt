@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Level Editor • Suggest Cup Positions: tuned ranking by including bank/corridor weighting; the editor passes a sensible default `bankWeight` tied to grid size. (`src/editor/levelEditor.ts`)
+- UI • Overlay dialogs: Load Level and Metadata dialogs now use the standard 800×600 centered panel layout, with blue-themed panel background/border, centered title for standard panels, 40px list rows, and standardized 28px buttons per `UI_Design.md`. (`src/main.ts`)
+- UI • Overlay input handling: wired capture-phase `mousedown` listener for overlays so buttons and list items respond reliably. (`src/main.ts`)
 
 ## v0.3.28 — 2025-09-06
 

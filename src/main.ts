@@ -547,6 +547,30 @@ function handleOverlayMouseDown(e: MouseEvent) {
           return;
         }
       }
+      if (uiOverlay.kind === 'metadata') {
+        if (hs.kind === 'btn' && typeof hs.index === 'number') {
+          const isSave = hs.index === 0; // 0: Save, 1: Cancel
+          if (isSave) {
+            uiOverlay.resolve?.({
+              title: uiOverlay.metaTitle || '',
+              author: uiOverlay.metaAuthor || '',
+              par: uiOverlay.metaPar || '3',
+              description: uiOverlay.metaDescription || '',
+              tags: uiOverlay.metaTags || ''
+            });
+          } else {
+            uiOverlay.resolve?.(null);
+          }
+          uiOverlay = { kind: 'none' };
+          return;
+        }
+        if (hs.kind === 'input' && typeof hs.index === 'number') {
+          const order = ['title','author','par','description','tags'] as const;
+          const idx = Math.max(0, Math.min(order.length - 1, hs.index));
+          uiOverlay.metaFocus = order[idx];
+          return;
+        }
+      }
       if (uiOverlay.kind === 'courseEditor') {
         if (hs.kind === 'btn') {
           const action = hs.action || '';
@@ -6616,6 +6640,8 @@ function renderGlobalOverlays(): void {
       if (centerTitle) ctx.fillText(uiOverlay.title!, px + panelW / 2, cy);
       else ctx.fillText(uiOverlay.title!, px + pad, cy);
       cy += titleH;
+      // Reset alignment for body content to left to avoid off-center text
+      ctx.textAlign = 'left';
     }
     // Title bar drag handle (top region)
     const dragH = Math.max(24, titleH || 0);

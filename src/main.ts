@@ -1708,6 +1708,7 @@ let userLevelsList: UserLevelEntry[] = [];
 let filteredUserLevelsList: UserLevelEntry[] = [];
 let selectedUserLevelIndex = 0;
 let hoverUserLevelsBack = false;
+let hoverUserLevelsAction: string | null = null; // 'play' | 'edit' | 'duplicate' | 'delete'
 let levelSearchQuery = '';
 let levelFilterSource = 'all'; // 'all', 'bundled', 'filesystem', 'localStorage'
 
@@ -3540,9 +3541,18 @@ canvas.addEventListener('mousemove', (e) => {
     return;
   }
   if (gameState === 'userLevels') {
-    const back = getCourseBackRect();
-    hoverUserLevelsBack = p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h;
-    canvas.style.cursor = hoverUserLevelsBack ? 'pointer' : 'default';
+    // Inspect current hotspots to drive hover feedback (buttons, list, filters, search)
+    let overAny = false;
+    let overBtn: string | null = null;
+    for (const hs of userLevelsHotspots) {
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
+        overAny = true;
+        if (hs.kind === 'btn' && hs.action) overBtn = hs.action;
+        break;
+      }
+    }
+    hoverUserLevelsAction = overBtn;
+    canvas.style.cursor = overAny ? 'pointer' : 'default';
     return;
   }
   if (gameState === 'summary') {
@@ -5520,6 +5530,10 @@ function draw() {
       const scrollOffset = userLevelsState.scrollOffset || 0;
       const startIndex = Math.max(0, Math.min(filteredUserLevelsList.length - maxVisible, scrollOffset));
       const endIndex = Math.min(filteredUserLevelsList.length, startIndex + maxVisible);
+      const needsScrollbar = filteredUserLevelsList.length > maxVisible;
+      const scW = needsScrollbar ? 8 : 0;
+      const scPad = needsScrollbar ? 6 : 0; // gap between items and scrollbar
+      const rowW = (listW - 20) - (scW + scPad);
       
       for (let i = startIndex; i < endIndex; i++) {
         const level = filteredUserLevelsList[i];
@@ -5528,12 +5542,12 @@ function draw() {
         
         // Item background
         ctx.fillStyle = isSelected ? 'rgba(100, 150, 200, 0.3)' : 'rgba(255, 255, 255, 0.05)';
-        ctx.fillRect(panelX + 20, itemY, listW - 20, itemH - 2);
+        ctx.fillRect(panelX + 20, itemY, rowW, itemH - 2);
         
         // Item border
         ctx.strokeStyle = isSelected ? 'rgba(100, 150, 200, 0.8)' : 'rgba(255, 255, 255, 0.1)';
         ctx.lineWidth = 1;
-        ctx.strokeRect(panelX + 20, itemY, listW - 20, itemH - 2);
+        ctx.strokeRect(panelX + 20, itemY, rowW, itemH - 2);
         
         // Level name
         ctx.fillStyle = '#ffffff';
@@ -5551,14 +5565,14 @@ function draw() {
         ctx.fillText(`by ${level.author} • ${sourceLabel}`, panelX + 35, itemY + 28);
         
         // Add level item hotspot
-        userLevelsHotspots.push({ kind: 'levelItem', index: i, x: panelX + 20, y: itemY, w: listW - 20, h: itemH - 2 });
+        userLevelsHotspots.push({ kind: 'levelItem', index: i, x: panelX + 20, y: itemY, w: rowW, h: itemH - 2 });
       }
       
-      // Scroll indicator (shifted left to avoid clipping into list divider)
-      if (filteredUserLevelsList.length > maxVisible) {
-        const scrollBarX = panelX + listW - 24; // push inward for better visual spacing
-        const scrollBarW = 8;
+      // Scroll indicator aligned to the right edge of the reserved list area
+      if (needsScrollbar) {
+        const scrollBarW = scW;
         const scrollBarH = listH;
+        const scrollBarX = panelX + 20 + rowW + 2; // 2px gap after item area
         
         // Track
         ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
@@ -5584,8 +5598,8 @@ function draw() {
     const sel = filteredUserLevelsList[selectedUserLevelIndex];
     if (sel) {
       ctx.font = '20px system-ui, sans-serif'; ctx.fillText(sel.name || 'Untitled', rightX + 12, rightY + 36);
-      // Thumbnail
-      const thumbY = rightY + 64; const thumbH = 120; const thumbW = rightW - 24; const thumbX = rightX + 12;
+      // Thumbnail (slightly shorter to leave room for metadata)
+      const thumbY = rightY + 64; const thumbH = 100; const thumbW = rightW - 24; const thumbX = rightX + 12;
       const dataUrl = getLevelThumbnail(sel);
       if (dataUrl) {
         if (!sel.thumbnailImage) { const img = new Image(); img.src = dataUrl; sel.thumbnailImage = img; }
@@ -5600,21 +5614,7 @@ function draw() {
         }
       }
       // Reserve space for action buttons first, then render metadata above to avoid overlap
-      // Action buttons (auto-wrap rows to avoid overflow)
-      const btnW = 120, btnH = 32, gap = 12;
-      const labels: Array<{label: string; action: string}> = [
-        { label: 'Play', action: 'play' },
-        { label: 'Edit', action: 'edit' },
-        { label: 'Duplicate', action: 'duplicate' },
-        { label: 'Delete', action: 'delete' }
-      ];
-      const avail = rightW - 24; // padding inside right pane
-      const perRow = Math.max(1, Math.floor((avail + gap) / (btnW + gap)));
-      const rows = Math.max(1, Math.ceil(labels.length / perRow));
-      const totalHeight = rows * btnH + (rows - 1) * gap;
-      let baseY = rightY + rightH - totalHeight - 12; // anchor from bottom with margin
-      
-      // Metadata (word-wrapped for Description/Tags)
+      // Metadata (word-wrapped for Description/Tags) — use full pane height (buttons moved to panel bottom)
       ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.font = '14px system-ui, sans-serif'; ctx.fillStyle = '#ffffff';
       const meta = (sel as any).data?.meta || {};
       const createdAt = meta.created ? new Date(meta.created).toLocaleString() : '—';
@@ -5657,33 +5657,19 @@ function draw() {
       if (desc) lines.push(...wrapLabelValue('Description:', desc));
       if (tags) lines.push(...wrapLabelValue('Tags:', tags));
       const yStart = thumbY + thumbH + 10;
-      const yMax = baseY - 12;
-      const lineH = 18;
+      const yMax = rightY + rightH - 12;
+      const lineH = 16; // tighter lines to fit more metadata
       let yMeta = yStart;
       const maxLines = Math.max(0, Math.floor((yMax - yMeta) / lineH));
       for (let i = 0; i < Math.min(maxLines, lines.length); i++) {
         ctx.fillText(lines[i], rightX + 12, yMeta); yMeta += lineH;
       }
-      // Action buttons
-      for (let i = 0; i < labels.length; i++) {
-        const row = Math.floor(i / perRow);
-        const col = i % perRow;
-        // Center row if extra space
-        const usedW = perRow * btnW + (perRow - 1) * gap;
-        const startX = rightX + Math.max(12, Math.floor((rightW - usedW) / 2));
-        const x = startX + col * (btnW + gap);
-        const y = baseY + row * (btnH + gap);
-        ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(x, y, btnW, btnH);
-        ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(x, y, btnW, btnH);
-        ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '14px system-ui, sans-serif';
-        ctx.fillText(labels[i].label, x + btnW/2, y + btnH/2 + 0.5);
-        userLevelsHotspots.push({ kind: 'btn', action: labels[i].action, x, y, w: btnW, h: btnH });
-      }
+      // Note: action buttons are now drawn at the panel bottom (outside the right pane)
     } else {
       ctx.font = '14px system-ui, sans-serif'; ctx.fillText('No level selected', rightX + 12, rightY + 36);
     }
     
-    // Back button (bottom-left)
+    // Bottom controls: Back (left) and actions (right)
     const backBtnW = 100;
     const backBtnH = 36;
     const backBtnX = panelX + 20;
@@ -5703,6 +5689,28 @@ function draw() {
     
     // Add back button hotspot
     userLevelsHotspots.push({ kind: 'btn', action: 'back', x: backBtnX, y: backBtnY, w: backBtnW, h: backBtnH });
+
+    // Action buttons (moved to bottom-right area)
+    const actions: Array<{ label: string; action: string }> = [
+      { label: 'Play', action: 'play' },
+      { label: 'Edit', action: 'edit' },
+      { label: 'Duplicate', action: 'duplicate' },
+      { label: 'Delete', action: 'delete' }
+    ];
+    const btnW = 120, btnH = 32, gap = 12;
+    const totalW = actions.length * btnW + (actions.length - 1) * gap;
+    let startX = panelX + panelW - 20 - totalW;
+    const y = backBtnY + Math.max(0, Math.floor((backBtnH - btnH) / 2));
+    for (const a of actions) {
+      const isHover = hoverUserLevelsAction === a.action;
+      ctx.fillStyle = isHover ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.10)';
+      ctx.fillRect(startX, y, btnW, btnH);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(startX, y, btnW, btnH);
+      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '14px system-ui, sans-serif';
+      ctx.fillText(a.label, startX + btnW/2, y + btnH/2 + 0.5);
+      userLevelsHotspots.push({ kind: 'btn', action: a.action, x: startX, y, w: btnW, h: btnH });
+      startX += btnW + gap;
+    }
     
     // Instructions
     ctx.fillStyle = '#888888';

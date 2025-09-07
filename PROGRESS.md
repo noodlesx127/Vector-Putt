@@ -84,11 +84,11 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
       - Implemented optional `regionPoly` constraint and added corridor/bank scoring via blocked-neighbor weighting during path traversal in `src/editor/levelHeuristics.ts::suggestCupPositions()`. Bank weight is tunable; editor currently uses a sensible default tied to grid size.
     - [x] Validator lint: flag cups bypassing intended obstacles
       - Added `lintCupPath()` in `src/editor/levelHeuristics.ts` and integrated into the editor flow so after choosing a suggested cup, up to two warnings are surfaced via toasts if the path is nearly straight and avoids obstacles or the cup is too close to edges. (`src/editor/levelEditor.ts`)
-    [ ] Optional: slopes, moving blocks, boosters, tunnels
+    [ ] Optional: slopes, boosters, tunnels
   
   Recommended next steps
-  - [ ] Visual Path Preview overlay
-    - Temporary toggle to render the computed A* path, turns, and terrain cells (sand/hill) in the editor after Suggest Par. Helps tune and validate heuristics quickly.
+  - [x] Visual Path Preview overlay
+    - Implemented an editor overlay that renders the A* path as a polyline with per-node markers (sand = sand color, hill = white), and X marks at turns. Automatically computed after File → Suggest Par; press `P` to toggle visibility. (`src/editor/levelHeuristics.ts::computePathDebug()`, `src/editor/levelEditor.ts`)
   - [ ] Coefficient tuning via Admin/Game Settings
     - Expose D baseline (px per stroke), sand multiplier, turn penalty, and hill bump as adjustable settings to calibrate par estimates on sample levels.
   - [ ] Cup position suggestions integration

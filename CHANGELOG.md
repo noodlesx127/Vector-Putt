@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - UI • Users Admin: Converted to standard 800×600 centered panel with header, search box, scrollable user list (keyboard + wheel), right-side action column. Hotspots and keyboard handling implemented for selection and actions. (`src/main.ts`)
 - Level System • Cup placement heuristics: added optional region constraint (`regionPoly`) and corridor/bank-aware scoring that rewards paths running through narrow corridors or along banks. (`src/editor/levelHeuristics.ts`)
 - Level System • Cup path linting: introduced `lintCupPath()` to warn when a cup placement bypasses obstacles (nearly straight path with low obstacle contact) or is too close to fairway edges. Integrated into the editor flow to surface warnings via toasts after selecting a suggested cup position. (`src/editor/levelHeuristics.ts`, `src/editor/levelEditor.ts`)
+- Level System • Visual Path Preview: editor overlay that renders the A* path polyline with terrain markers (sand/hill) and turn indicators. Auto-computed after Suggest Par; toggle with `P`. (`src/editor/levelHeuristics.ts::computePathDebug()`, `src/editor/levelEditor.ts`)
 
 ### Changed
 - UI • Changelog: Migrated to centered 800×600 panel with proper header, panel border, panel-local Back button, and panel-anchored scrollbar visuals. (`src/main.ts`)

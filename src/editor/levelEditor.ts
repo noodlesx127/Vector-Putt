@@ -17,7 +17,8 @@ import {
 import firebaseLevelStore from '../firebase/FirebaseLevelStore';
 import type { LevelEntry as FirebaseLevelEntry } from '../firebase/FirebaseLevelStore';
 import firebaseCourseStore from '../firebase/FirebaseCourseStore';
-import { estimatePar, suggestCupPositions as heuristicSuggestCups, lintCupPath } from './levelHeuristics';
+import { estimatePar, suggestCupPositions as heuristicSuggestCups, lintCupPath, computePathDebug } from './levelHeuristics';
+import type { PathDebug } from './levelHeuristics';
 
 // Local palette for the editor module (matches docs/PALETTE.md and main.ts)
 const COLORS = {
@@ -198,6 +199,9 @@ class LevelEditorImpl implements LevelEditor {
   private editorMenuActiveItemIndex: number = -1;
   // Suggest Cup markers (transient hints rendered on canvas)
   private suggestedCupCandidates: Array<{ x: number; y: number; score: number; lengthPx: number; turns: number }> | null = null;
+  // Visual Path Preview (computed from A* used in Suggest Par)
+  private pathPreview: PathDebug | null = null;
+  private showPathPreview: boolean = false;
 
   // Undo/Redo system
   private undoStack: EditorSnapshot[] = [];
@@ -1354,6 +1358,50 @@ class LevelEditorImpl implements LevelEditor {
         ctx.strokeStyle = '#333333'; ctx.lineWidth = 1.5; ctx.stroke();
         ctx.fillStyle = '#111111';
         ctx.fillText(String(i + 1), s.x, s.y + 10);
+      }
+      ctx.restore();
+    }
+
+    // Visual Path Preview overlay (debug)
+    if (this.showPathPreview && this.pathPreview && this.pathPreview.found) {
+      const pp = this.pathPreview;
+      // Polyline of the path
+      ctx.save();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = '#ffd24a';
+      ctx.beginPath();
+      for (let i = 0; i < pp.worldPoints.length; i++) {
+        const p = pp.worldPoints[i];
+        if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+      }
+      ctx.stroke();
+
+      // Nodes: color code terrain
+      for (let i = 0; i < pp.worldPoints.length; i++) {
+        const p = pp.worldPoints[i];
+        const isSand = pp.sandAt[i];
+        const isHill = pp.hillAt[i];
+        ctx.lineWidth = 2;
+        if (isSand) { ctx.strokeStyle = '#d4b36a'; }
+        else if (isHill) { ctx.strokeStyle = 'rgba(255,255,255,0.8)'; }
+        else { ctx.strokeStyle = '#333333'; }
+        ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI * 2); ctx.stroke();
+      }
+
+      // Mark turns
+      for (let i = 2; i < pp.pathCells.length; i++) {
+        const a = pp.pathCells[i - 2], b = pp.pathCells[i - 1], c = pp.pathCells[i];
+        const v1c = b.c - a.c, v1r = b.r - a.r;
+        const v2c = c.c - b.c, v2r = c.r - b.r;
+        if (v1c !== v2c || v1r !== v2r) {
+          const p = pp.worldPoints[i - 1];
+          ctx.strokeStyle = '#ff6ea6';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(p.x - 5, p.y - 5); ctx.lineTo(p.x + 5, p.y + 5);
+          ctx.moveTo(p.x - 5, p.y + 5); ctx.lineTo(p.x + 5, p.y - 5);
+          ctx.stroke();
+        }
       }
       ctx.restore();
     }
@@ -2800,6 +2848,7 @@ class LevelEditorImpl implements LevelEditor {
       this.postRadiusPicker = null;
       this.hillDirectionPicker = null;
       this.suggestedCupCandidates = null;
+      this.showPathPreview = false;
       this.resizeHandleIndex = null;
       this.resizeStartBounds = null;
       this.resizeStartMouse = null;
@@ -2853,6 +2902,25 @@ class LevelEditorImpl implements LevelEditor {
           } catch {}
           return;
       }
+    }
+
+    // Toggle Path Preview overlay (debug): P
+    if (key.toLowerCase() === 'p') {
+      if (this.pathPreview && this.pathPreview.found) {
+        e.preventDefault();
+        this.showPathPreview = !this.showPathPreview;
+        env.showToast(`Path Preview ${this.showPathPreview ? 'ON' : 'OFF'}`);
+      } else {
+        // If no preview yet, compute one quickly with current grid size
+        const fair = env.fairwayRect();
+        let cellSize = 20;
+        try { const g = env.getGridSize(); if (typeof g === 'number' && g > 0) cellSize = Math.max(10, Math.min(40, g)); } catch {}
+        this.syncEditorDataFromGlobals(env);
+        this.pathPreview = computePathDebug(this.editorLevelData, fair, cellSize);
+        this.showPathPreview = !!this.pathPreview?.found;
+        env.showToast(`Path Preview ${this.showPathPreview ? 'ON' : 'OFF'} (cell=${cellSize})`);
+      }
+      return;
     }
 
     // Delete selection
@@ -3514,6 +3582,13 @@ class LevelEditorImpl implements LevelEditor {
     let cellSize = 20;
     try { const g = env.getGridSize(); if (typeof g === 'number' && g > 0) cellSize = Math.max(10, Math.min(40, g)); } catch {}
 
+    // Pull gameplay friction settings from global state when available
+    const gsAll = env.getGlobalState?.() || {};
+    const frictionK = typeof gsAll.frictionK === 'number' ? gsAll.frictionK
+      : (typeof gsAll.physicsFrictionK === 'number' ? gsAll.physicsFrictionK : 1.2);
+    const sandMult = typeof gsAll.sandMultiplier === 'number' ? gsAll.sandMultiplier
+      : (typeof gsAll.physicsSandMultiplier === 'number' ? gsAll.physicsSandMultiplier : 6.0);
+
     const { reachable, suggestedPar, pathLengthPx, notes } = estimatePar(this.editorLevelData, fair, cellSize, {
       baselineShotPx: 320,
       sandPenaltyPerCell: 0.01,
@@ -3521,8 +3596,16 @@ class LevelEditorImpl implements LevelEditor {
       turnPenaltyMax: 1.5,
       hillBump: 0.2,
       bankWeight: 0.12,
-      bankPenaltyMax: 1.0
+      bankPenaltyMax: 1.0,
+      // Physics-aware scaling so D (px per stroke) adjusts with friction
+      frictionK,
+      referenceFrictionK: 1.2,
+      sandFrictionMultiplier: sandMult
     });
+    // Compute debug path for overlay
+    this.pathPreview = computePathDebug(this.editorLevelData, fair, cellSize);
+    this.showPathPreview = !!this.pathPreview?.found;
+
     const extra = [] as string[];
     extra.push(reachable ? 'Path: reachable' : 'Path: no path (fallback heuristic)');
     extra.push(`Path length ~${Math.round(pathLengthPx)} px`);
@@ -3534,6 +3617,18 @@ class LevelEditorImpl implements LevelEditor {
     this.pushUndoSnapshot('Set par');
     this.editorLevelData.par = suggestedPar;
     env.showToast(`Par set to ${suggestedPar}`);
+    env.showToast('Path Preview ON — press P to toggle');
+  }
+
+  async testLevel(): Promise<void> {
+    if (!this.env) return;
+    const env = this.env;
+    this.syncEditorDataFromGlobals(env);
+    if (typeof env.testLevel === 'function') {
+      await env.testLevel(this.editorLevelData);
+    } else {
+      env.showToast('Test not supported in this build');
+    }
   }
 
   async suggestCup(): Promise<void> {
@@ -3559,17 +3654,6 @@ class LevelEditorImpl implements LevelEditor {
 
     this.suggestedCupCandidates = picks;
     env.showToast('Click a numbered marker to set the Cup. Press Esc to cancel.');
-  }
-
-  async testLevel(): Promise<void> {
-    if (!this.env) return;
-    const env = this.env;
-    this.syncEditorDataFromGlobals(env);
-    if (typeof env.testLevel === 'function') {
-      await env.testLevel(this.editorLevelData);
-    } else {
-      env.showToast('Test not supported in this build');
-    }
   }
 
   // Interface implementation: minimal state exposure for main UI

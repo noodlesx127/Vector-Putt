@@ -26,6 +26,59 @@ function pointInRect(px: number, py: number, r: Rect): boolean {
   return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
 }
 
+// Debug helper for editor: compute world-space path and simple terrain tags for path cells
+export type PathDebug = {
+  found: boolean;
+  pathCells: Array<{ c: number; r: number }>; // grid cells
+  worldPoints: Array<{ x: number; y: number }>; // polyline through cell centers
+  cellSize: number;
+  cols: number;
+  rows: number;
+  sandAt: Array<boolean>; // parallel to pathCells
+  hillAt: Array<boolean>; // parallel to pathCells
+};
+
+export function computePathDebug(
+  level: LevelLike,
+  fairway: Fairway,
+  cellSize: number
+): PathDebug {
+  const { grid, cols, rows } = buildGrid(level, fairway, cellSize);
+  const toCell = (x: number, y: number) => ({ c: clamp(Math.floor((x - fairway.x) / cellSize), 0, cols - 1), r: clamp(Math.floor((y - fairway.y) / cellSize), 0, rows - 1) });
+  const toWorld = (c: number, r: number) => ({ x: fairway.x + c * cellSize + cellSize / 2, y: fairway.y + r * cellSize + cellSize / 2 });
+
+  const start = toCell(level.tee.x, level.tee.y);
+  const goal = toCell(level.cup.x, level.cup.y);
+  const { found, path } = aStar(grid, cols, rows, start, goal);
+  if (!found) {
+    return { found: false, pathCells: [], worldPoints: [], cellSize, cols, rows, sandAt: [], hillAt: [] };
+  }
+
+  const sands = level.sand || [];
+  const sandsPoly = level.sandPoly || [];
+  const hills = level.hills || [];
+
+  const pointInRectLocal = (px: number, py: number, r: Rect) => px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+
+  const worldPoints: Array<{ x: number; y: number }> = [];
+  const sandAt: boolean[] = [];
+  const hillAt: boolean[] = [];
+  for (const p of path) {
+    const w = toWorld(p.c, p.r);
+    worldPoints.push(w);
+    // classify terrain for this cell center
+    let inSand = false;
+    for (const s of sands) { if (pointInRectLocal(w.x, w.y, s)) { inSand = true; break; } }
+    if (!inSand) for (const sp of sandsPoly) { if (pointInPoly(w.x, w.y, sp.points)) { inSand = true; break; } }
+    let inHill = false;
+    for (const h of hills) { if (pointInRectLocal(w.x, w.y, h as any)) { inHill = true; break; } }
+    sandAt.push(inSand);
+    hillAt.push(inHill);
+  }
+
+  return { found: true, pathCells: path, worldPoints, cellSize, cols, rows, sandAt, hillAt };
+}
+
 export function suggestCupPositions(
   level: LevelLike,
   fairway: Fairway,
@@ -336,6 +389,10 @@ export function estimatePar(
     hillBump?: number;                // extra bump if any hills exist
     bankWeight?: number;              // converts average blocked-neighbor count into extra strokes
     bankPenaltyMax?: number;          // cap for bank/corridor penalty
+    // New: physics-aware scaling
+    frictionK?: number;               // global ball friction K (from gameplay), higher = more friction
+    referenceFrictionK?: number;      // reference K that baselineShotPx was tuned for (default 1.2)
+    sandFrictionMultiplier?: number;  // gameplay sand multiplier (default 6.0)
   }
 ): {
   reachable: boolean;
@@ -394,13 +451,20 @@ export function estimatePar(
   for (const p of path) blockedSum += neighborBlockedCount(p.c, p.r);
   const blockedAvg = blockedSum / Math.max(1, path.length);
 
-  // Base shots: assume typical effective shot distance D
-  const D = opts?.baselineShotPx ?? 320; // px per stroke baseline
+  // Base shots: assume typical effective shot distance D, scaled by friction
+  const D0 = opts?.baselineShotPx ?? 320; // px per stroke baseline (tuned at refK)
+  const refK = Math.max(0.05, opts?.referenceFrictionK ?? 1.2);
+  const k = Math.max(0.05, opts?.frictionK ?? refK);
+  // Under exponential friction, distance ~ v0/k, so scale by refK/k
+  const frictionScale = refK / k;
+  const D = D0 * frictionScale;
   let strokes = pathLengthPx / D;
 
   // Add penalties based on terrain cost encountered along path
   const sandCellsOnPath = path.filter(p => !grid[p.r][p.c].blocked && grid[p.r][p.c].cost > 1).length;
-  const sandPenaltyPerCell = opts?.sandPenaltyPerCell ?? 0.01; // default small cumulative penalty
+  const baseSandPenaltyPerCell = opts?.sandPenaltyPerCell ?? 0.01; // default small cumulative penalty
+  const sandMult = opts?.sandFrictionMultiplier ?? 6.0; // gameplay default
+  const sandPenaltyPerCell = baseSandPenaltyPerCell * (sandMult / 6.0);
   const sandPenalty = sandCellsOnPath * sandPenaltyPerCell;
 
   const turnPenaltyPerTurn = opts?.turnPenaltyPerTurn ?? 0.08;

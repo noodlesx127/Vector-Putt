@@ -1079,9 +1079,10 @@ type UiHotspot = {
 };
 
 type UsersHotspot = {
-  kind: 'back' | 'addUser' | 'addAdmin' | 'export' | 'import' | 'promote' | 'demote' | 'enable' | 'disable' | 'remove';
+  kind: 'back' | 'addUser' | 'addAdmin' | 'export' | 'import' | 'promote' | 'demote' | 'enable' | 'disable' | 'remove' | 'listItem' | 'search';
   x: number; y: number; w: number; h: number;
   id?: string;
+  index?: number;
 };
 
 let usersUiHotspots: UsersHotspot[] = [];
@@ -1430,6 +1431,21 @@ let bounces: BounceFx[] = [];
 // Offscreen layer for hill arrows (masked composite)
 let arrowsLayer: HTMLCanvasElement | null = null;
 let arrowsCtx: CanvasRenderingContext2D | null = null;
+
+// Users admin state (panelized)
+let usersState: { selectedIndex: number; scrollOffset: number; search: string } = {
+  selectedIndex: 0,
+  scrollOffset: 0,
+  search: ''
+};
+
+function getFilteredUsers(): Array<{ id: string; name: string; role: string; enabled: boolean }> {
+  if (!firebaseReady) return [] as any[];
+  const all = firebaseManager.users.getAll().slice();
+  all.sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''));
+  const q = (usersState.search || '').trim().toLowerCase();
+  return q ? all.filter((u: any) => (u.name || '').toLowerCase().includes(q)) : all;
+}
 
 function getViewOffsetX(): number {
   const extra = WIDTH - levelCanvas.width;
@@ -2173,19 +2189,33 @@ let changelogDragStartY = 0;
 let changelogScrollStartY = 0;
 
 function getChangelogBackRect() {
-  const w = 120, h = 28;
-  const x = WIDTH / 2 - w / 2;
-  const y = HEIGHT - 90;
+  const panelW = Math.min(800, WIDTH - 80);
+  const panelH = Math.min(600, HEIGHT - 120);
+  const pad = 20;
+  let px = Math.floor(WIDTH / 2 - panelW / 2);
+  let py = Math.floor(HEIGHT / 2 - panelH / 2);
+  px = Math.max(20, Math.min(WIDTH - panelW - 20, px));
+  py = Math.max(20, Math.min(HEIGHT - panelH - 20, py));
+  const w = 120, h = 40;
+  const x = px + panelW - pad - w;
+  const y = py + panelH - pad - h;
   return { x, y, w, h };
 }
 
 // Changelog content viewport
 function getChangelogContentRect() {
-  const left = 60;
-  const top = 100;
-  const right = WIDTH - 60;
-  const bottom = HEIGHT - 140;
-  return { x: left, y: top, w: right - left, h: bottom - top };
+  const panelW = Math.min(800, WIDTH - 80);
+  const panelH = Math.min(600, HEIGHT - 120);
+  const pad = 20;
+  let px = Math.floor(WIDTH / 2 - panelW / 2);
+  let py = Math.floor(HEIGHT / 2 - panelH / 2);
+  px = Math.max(20, Math.min(WIDTH - panelW - 20, px));
+  py = Math.max(20, Math.min(HEIGHT - panelH - 20, py));
+  const x = px + pad;
+  const y = py + pad + 32; // leave room for header
+  const w = panelW - pad * 2 - 20; // leave space for scrollbar
+  const h = panelH - pad * 2 - 32 - 60; // leave space for back button row
+  return { x, y, w, h };
 }
 
 function clampChangelogScroll(): void {
@@ -3100,6 +3130,22 @@ canvas.addEventListener('mousedown', (e) => {
             case 'back':
               gameState = 'adminMenu';
               break;
+            case 'listItem':
+              if (typeof hs.index === 'number') {
+                usersState.selectedIndex = hs.index;
+              }
+              break;
+            case 'search': {
+              (async () => {
+                const q = await showUiPrompt('Search users:', usersState.search, 'Search Users');
+                if (q !== null) {
+                  usersState.search = q;
+                  usersState.scrollOffset = 0;
+                  usersState.selectedIndex = 0;
+                }
+              })();
+              break;
+            }
             case 'addUser': {
               (async () => {
                 const name = await showUiPrompt('Enter new user name', '', 'Add User');
@@ -3599,6 +3645,23 @@ canvas.addEventListener('wheel', (e) => {
     const visibleItems = Math.floor(400 / 52); // listH / (itemH + itemGap)
     const maxScroll = Math.max(0, levelManagementState.levels.length - visibleItems);
     levelManagementState.scrollOffset = Math.max(0, Math.min(maxScroll, levelManagementState.scrollOffset + scrollDelta));
+    return;
+  }
+  if (gameState === 'users') {
+    e.preventDefault();
+    const filtered = getFilteredUsers();
+    // Mirror layout math from renderer
+    const panelH = Math.min(600, HEIGHT - 120);
+    const pad = 20;
+    const searchH = 28;
+    const contentTop = (Math.floor(HEIGHT / 2 - panelH / 2) + pad + searchH + 14);
+    const listY = contentTop;
+    const listH = Math.max(0, (Math.floor(HEIGHT / 2 - panelH / 2) + panelH - pad - 60) - listY);
+    const rowH = 36;
+    const maxRows = Math.max(1, Math.floor(listH / rowH));
+    const maxScroll = Math.max(0, filtered.length - maxRows);
+    const delta = Math.sign(e.deltaY);
+    usersState.scrollOffset = Math.max(0, Math.min(maxScroll, usersState.scrollOffset + delta));
     return;
   }
 }, { passive: false });
@@ -4801,144 +4864,157 @@ function draw() {
   // Users admin screen
   if (gameState === 'users') {
     usersUiHotspots = [];
-    
-    // Title
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.font = '28px system-ui, sans-serif';
-    ctx.fillText('User Management', WIDTH/2, 60);
-    
-    // Active user info panel
-    const activeName = (userProfile.name || '').trim() || '(unnamed)';
-    const infoPanel = { x: WIDTH/2 - 200, y: 100, w: 400, h: 32 };
-    ctx.fillStyle = 'rgba(0,0,0,0.15)';
-    ctx.fillRect(infoPanel.x, infoPanel.y, infoPanel.w, infoPanel.h);
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(infoPanel.x, infoPanel.y, infoPanel.w, infoPanel.h);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '14px system-ui, sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(`Active: ${activeName} (${userProfile.role})`, infoPanel.x + infoPanel.w/2, infoPanel.y + infoPanel.h/2);
+    // Panel dimensions
+    const panelW = Math.min(800, WIDTH - 80);
+    const panelH = Math.min(600, HEIGHT - 120);
+    const margin = 20;
+    const pad = 20;
+    let px = Math.floor(WIDTH / 2 - panelW / 2);
+    let py = Math.floor(HEIGHT / 2 - panelH / 2);
+    px = Math.max(margin, Math.min(WIDTH - panelW - margin, px));
+    py = Math.max(margin, Math.min(HEIGHT - panelH - margin, py));
 
-    // Action buttons - consistent with main menu style
-    const btnY = 150;
-    const btnW = 140, btnH = 36, btnGap = 16;
-    const totalBtnWidth = btnW * 4 + btnGap * 3;
-    let btnX = WIDTH/2 - totalBtnWidth/2;
-    
-    function drawActionBtn(label: string, kind: UsersHotspot['kind'], isHovered = false) {
-      ctx.fillStyle = isHovered ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
-      ctx.fillRect(btnX, btnY, btnW, btnH);
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(btnX, btnY, btnW, btnH);
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '16px system-ui, sans-serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(label, btnX + btnW/2, btnY + btnH/2 + 0.5);
-      usersUiHotspots.push({ kind, x: btnX, y: btnY, w: btnW, h: btnH });
-      btnX += btnW + btnGap;
-    }
-    
-    drawActionBtn('Add User', 'addUser');
-    drawActionBtn('Add Admin', 'addAdmin');
-    drawActionBtn('Export JSON', 'export');
-    drawActionBtn('Import JSON', 'import');
+    // Panel background
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(px, py, panelW, panelH);
+    ctx.strokeStyle = '#cfd2cf';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(px + 0.5, py + 0.5, panelW - 1, panelH - 1);
 
-    // Users list - card-based layout
-    const list = firebaseReady ? firebaseManager.users.getAll() : [];
-    const cardY = 210;
-    const cardW = 680, cardH = 50;
-    const cardX = WIDTH/2 - cardW/2;
-    
     // Header
     ctx.fillStyle = '#ffffff';
+    ctx.font = '20px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('Users', px + pad, py + pad);
+
+    // Search box (top-right)
+    const searchW = 220, searchH = 28;
+    const searchX = px + panelW - pad - searchW;
+    const searchY = py + pad;
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#cfd2cf';
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fillRect(searchX, searchY, searchW, searchH);
+    ctx.strokeRect(searchX, searchY, searchW, searchH);
+    ctx.fillStyle = usersState.search ? '#ffffff' : '#888888';
     ctx.font = '14px system-ui, sans-serif';
-    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    ctx.fillText('Name', cardX + 20, cardY - 10);
-    ctx.fillText('Role', cardX + 200, cardY - 10);
-    ctx.fillText('Status', cardX + 300, cardY - 10);
-    ctx.fillText('Actions', cardX + 400, cardY - 10);
-    
-    // User cards
-    let currentY = cardY;
-    for (let i = 0; i < list.length; i++) {
-      const u = list[i];
-      
-      // Card background
-      ctx.fillStyle = 'rgba(0,0,0,0.15)';
-      ctx.fillRect(cardX, currentY, cardW, cardH);
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(cardX, currentY, cardW, cardH);
-      
-      // User info
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(usersState.search || 'Search users…', searchX + 10, searchY + searchH/2 + 0.5);
+    usersUiHotspots.push({ kind: 'search', x: searchX, y: searchY, w: searchW, h: searchH });
+
+    // Layout areas
+    const contentTop = searchY + searchH + 14;
+    const listW = Math.floor(panelW * 0.55);
+    const rightW = panelW - listW - pad * 3;
+    const listX = px + pad;
+    const listY = contentTop;
+    const listH = py + panelH - pad - 60 - listY; // leave action row
+    const rightX = listX + listW + pad;
+    const rightY = listY;
+    const rightH = listH;
+
+    // Fetch and filter users
+    const allUsers = (firebaseReady ? firebaseManager.users.getAll() : []).slice();
+    allUsers.sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''));
+    const q = (usersState.search || '').trim().toLowerCase();
+    const filtered = q ? allUsers.filter((u: any) => (u.name || '').toLowerCase().includes(q)) : allUsers;
+    const rowH = 36;
+    const maxRows = Math.floor(listH / rowH);
+    const maxScroll = Math.max(0, filtered.length - maxRows);
+    usersState.scrollOffset = Math.max(0, Math.min(usersState.scrollOffset, maxScroll));
+    if (usersState.selectedIndex >= filtered.length) usersState.selectedIndex = Math.max(0, filtered.length - 1);
+
+    // List panel
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fillRect(listX, listY, listW, listH);
+    ctx.strokeStyle = '#cfd2cf';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(listX, listY, listW, listH);
+
+    // List rows
+    const start = usersState.scrollOffset;
+    const end = Math.min(filtered.length, start + maxRows);
+    ctx.font = '14px system-ui, sans-serif';
+    for (let i = start; i < end; i++) {
+      const u = filtered[i];
+      const y = listY + (i - start) * rowH;
+      const isSel = i === usersState.selectedIndex;
+      ctx.fillStyle = isSel ? 'rgba(100,150,200,0.30)' : 'rgba(255,255,255,0.04)';
+      ctx.fillRect(listX + 1, y + 1, listW - 2, rowH - 2);
+      // name
       ctx.fillStyle = '#ffffff';
-      ctx.font = '16px system-ui, sans-serif';
       ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-      ctx.fillText(u.name, cardX + 20, currentY + cardH/2);
-      
-      // Role with color coding
-      ctx.fillStyle = u.role === 'admin' ? '#ffd700' : '#ffffff';
-      ctx.fillText(u.role, cardX + 200, currentY + cardH/2);
-      
-      // Status with color coding
-      ctx.fillStyle = u.enabled ? '#90ee90' : '#ff6b6b';
-      ctx.fillText(u.enabled ? 'Active' : 'Disabled', cardX + 300, currentY + cardH/2);
-      
-      // Action buttons
-      const actionBtnW = 60, actionBtnH = 24;
-      let actionX = cardX + 400;
-      const actionY = currentY + (cardH - actionBtnH)/2;
-      
-      function drawUserActionBtn(label: string, kind: UsersHotspot['kind'], id: string, color = '#ffffff') {
-        ctx.fillStyle = 'rgba(0,0,0,0.25)';
-        ctx.fillRect(actionX, actionY, actionBtnW, actionBtnH);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(actionX, actionY, actionBtnW, actionBtnH);
-        ctx.fillStyle = color;
-        ctx.font = '12px system-ui, sans-serif';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(label, actionX + actionBtnW/2, actionY + actionBtnH/2);
-        usersUiHotspots.push({ kind, id, x: actionX, y: actionY, w: actionBtnW, h: actionBtnH });
-        actionX += actionBtnW + 8;
-      }
-      
-      // Role toggle
-      if (u.role === 'admin') {
-        drawUserActionBtn('Demote', 'demote', u.id, '#ffd700');
-      } else {
-        drawUserActionBtn('Promote', 'promote', u.id, '#90ee90');
-      }
-      
-      // Enable/Disable
-      if (u.enabled) {
-        drawUserActionBtn('Disable', 'disable', u.id, '#ff6b6b');
-      } else {
-        drawUserActionBtn('Enable', 'enable', u.id, '#90ee90');
-      }
-      
-      // Remove
-      drawUserActionBtn('Remove', 'remove', u.id, '#ff6b6b');
-      
-      currentY += cardH + 8;
+      ctx.fillText(u.name || '(unnamed)', listX + 10, y + rowH/2);
+      // role pill
+      const role = u.role || 'user';
+      ctx.fillStyle = role === 'admin' ? '#ffd700' : '#cfd2cf';
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(role, listX + listW - 14, y + rowH/2);
+      usersUiHotspots.push({ kind: 'listItem', index: i, x: listX, y, w: listW, h: rowH });
+      ctx.font = '14px system-ui, sans-serif'; // restore
+    }
+    // Scrollbar
+    if (filtered.length > maxRows) {
+      const trackX = listX + listW - 10;
+      const trackW = 6;
+      const trackY = listY;
+      const trackH = listH;
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.fillRect(trackX, trackY, trackW, trackH);
+      const thumbH = Math.max(20, (maxRows / filtered.length) * trackH);
+      const thumbY = trackY + (usersState.scrollOffset / maxScroll) * (trackH - thumbH);
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillRect(trackX, thumbY, trackW, thumbH);
     }
 
-    // Back button - consistent with other screens
-    const back = getCourseBackRect();
+    // Right: details and actions
     ctx.fillStyle = 'rgba(0,0,0,0.15)';
-    ctx.fillRect(back.x, back.y, back.w, back.h);
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(back.x, back.y, back.w, back.h);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '16px system-ui, sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('Back', back.x + back.w/2, back.y + back.h/2 + 0.5);
-    usersUiHotspots.push({ kind: 'back', x: back.x, y: back.y, w: back.w, h: back.h });
-    
+    ctx.fillRect(rightX, rightY, rightW, rightH);
+    ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(rightX, rightY, rightW, rightH);
+    ctx.fillStyle = '#ffffff'; ctx.font = '16px system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillText('Selected', rightX + 12, rightY + 10);
+    const sel = filtered[usersState.selectedIndex];
+    if (sel) {
+      ctx.font = '20px system-ui, sans-serif'; ctx.fillText(sel.name || '(unnamed)', rightX + 12, rightY + 36);
+      ctx.font = '14px system-ui, sans-serif';
+      ctx.fillText(`Role: ${sel.role}`, rightX + 12, rightY + 64);
+      ctx.fillText(`Status: ${sel.enabled ? 'Active' : 'Disabled'}`, rightX + 12, rightY + 84);
+
+      // Action buttons
+      const aY = rightY + 120;
+      const aW = 140, aH = 36; const gap = 12;
+      let ax = rightX + 12;
+      function drawBtn(lbl: string, kind: UsersHotspot['kind'], id: string) {
+        ctx.fillStyle = 'rgba(255,255,255,0.10)';
+        ctx.fillRect(ax, aY, aW, aH);
+        ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(ax, aY, aW, aH);
+        ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '16px system-ui, sans-serif';
+        ctx.fillText(lbl, ax + aW/2, aY + aH/2 + 0.5);
+        usersUiHotspots.push({ kind, id, x: ax, y: aY, w: aW, h: aH });
+        ax += aW + gap;
+      }
+      if (sel.role === 'admin') drawBtn('Demote', 'demote', sel.id);
+      else drawBtn('Promote', 'promote', sel.id);
+      drawBtn(sel.enabled ? 'Disable' : 'Enable', sel.enabled ? 'disable' : 'enable', sel.id);
+      drawBtn('Delete', 'remove', sel.id);
+    } else {
+      ctx.font = '14px system-ui, sans-serif'; ctx.fillText('No user selected', rightX + 12, rightY + 36);
+    }
+
+    // Back button (bottom-right)
+    const backW = 120, backH = 40;
+    const backX = px + panelW - pad - backW;
+    const backY = py + panelH - pad - backH;
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
+    ctx.fillRect(backX, backY, backW, backH);
+    ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(backX, backY, backW, backH);
+    ctx.fillStyle = '#ffffff'; ctx.font = '16px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Back', backX + backW/2, backY + backH/2 + 0.5);
+    usersUiHotspots.push({ kind: 'back', x: backX, y: backY, w: backW, h: backH });
+
     renderGlobalOverlays();
     return;
   }
@@ -5450,18 +5526,33 @@ function draw() {
   }
   // Changelog screen
   if (gameState === 'changelog') {
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    // Panel metrics
+    const panelW = Math.min(800, WIDTH - 80);
+    const panelH = Math.min(600, HEIGHT - 120);
+    const pad = 20;
+    let px = Math.floor(WIDTH / 2 - panelW / 2);
+    let py = Math.floor(HEIGHT / 2 - panelH / 2);
+    px = Math.max(20, Math.min(WIDTH - panelW - 20, px));
+    py = Math.max(20, Math.min(HEIGHT - panelH - 20, py));
+
+    // Panel background + border
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(px, py, panelW, panelH);
+    ctx.strokeStyle = '#cfd2cf';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(px + 0.5, py + 0.5, panelW - 1, panelH - 1);
+
+    // Header
     ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.font = '28px system-ui, sans-serif';
-    ctx.fillText('Changelog', WIDTH/2, 52);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.font = '20px system-ui, sans-serif';
+    ctx.fillText('Changelog', px + pad, py + pad);
     // content area
     const cr = getChangelogContentRect();
     ctx.font = '14px system-ui, sans-serif';
     if (changelogText === null) {
       ctx.textAlign = 'center';
-      ctx.fillText('Loading…', WIDTH/2, HEIGHT/2);
+      ctx.fillText('Loading…', px + panelW/2, py + panelH/2);
     } else {
       if (changelogLines.length === 0) {
         ctx.textAlign = 'left';
@@ -5502,17 +5593,17 @@ function draw() {
     const bk = getChangelogBackRect();
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = hoverChangelogBack ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = hoverChangelogBack ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillStyle = hoverChangelogBack ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.10)';
     ctx.fillRect(bk.x, bk.y, bk.w, bk.h);
     ctx.strokeRect(bk.x, bk.y, bk.w, bk.h);
     ctx.fillStyle = '#ffffff';
     ctx.font = '16px system-ui, sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('Back', bk.x + bk.w/2, bk.y + bk.h/2 + 0.5);
-    // Version bottom-left
+    // Version bottom-left (panel)
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.font = '12px system-ui, sans-serif';
-    ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
+    ctx.fillText(`v${APP_VERSION}`, px + pad, py + panelH - pad);
     renderGlobalOverlays();
     return;
   }

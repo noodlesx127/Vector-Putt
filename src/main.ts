@@ -4301,21 +4301,39 @@ function update(dt: number) {
     const hasSlopeAccel = inSlopeZone && (Math.hypot(slopeAx, slopeAy) > 1e-3);
     const allowStopDueToCorner = collidedThisFrame; // unblock endless jitter in concave corners
     // Detect jam case: slope acceleration pushing into the obstacle normal repeatedly
+    const slopeMag = Math.hypot(slopeAx, slopeAy);
     const pushingIntoObstacle = hasSlopeAccel && collidedThisFrame && ((slopeAx * lastCollisionNx + slopeAy * lastCollisionNy) > 0);
+    
+    // Debug logging for jam detection
+    if (hasSlopeAccel && collidedThisFrame && speed > 10) {
+      const dotProduct = slopeAx * lastCollisionNx + slopeAy * lastCollisionNy;
+      console.log(`Hill collision: speed=${speed.toFixed(1)}, slopeMag=${slopeMag.toFixed(1)}, dot=${dotProduct.toFixed(2)}, jamFrames=${hillJamFrames}`);
+    }
+    
     if (pushingIntoObstacle) {
-      hillJamFrames = Math.min(30, hillJamFrames + 1);
-      // Heavier damping while jammed to bleed energy quickly
-      if (speed < stopSpeed * 3) {
-        ball.vx *= 0.5;
-        ball.vy *= 0.5;
+      hillJamFrames = Math.min(60, hillJamFrames + 1);
+      // Much more aggressive damping while jammed
+      if (speed < stopSpeed * 5) {
+        ball.vx *= 0.3;
+        ball.vy *= 0.3;
       }
-      // Remove any residual velocity into the obstacle normal at very low speeds
-      if (speed < stopSpeed * 4) {
+      // Remove any residual velocity into the obstacle normal at higher speeds
+      if (speed < stopSpeed * 6) {
         const vn = ball.vx * lastCollisionNx + ball.vy * lastCollisionNy;
-        if (vn > 0) { ball.vx -= vn * lastCollisionNx; ball.vy -= vn * lastCollisionNy; }
+        if (vn > 0) { 
+          ball.vx -= vn * lastCollisionNx; 
+          ball.vy -= vn * lastCollisionNy; 
+        }
+      }
+      // Emergency stop for persistent jams
+      if (hillJamFrames >= 3 && speed < stopSpeed * 8) {
+        console.log(`Emergency stop: jamFrames=${hillJamFrames}, speed=${speed.toFixed(1)}`);
+        ball.vx = 0; ball.vy = 0; ball.moving = false;
+        hillJamFrames = 0;
+        return;
       }
     } else {
-      hillJamFrames = 0;
+      hillJamFrames = Math.max(0, hillJamFrames - 1); // decay slowly instead of instant reset
     }
     // Add a touch of extra damping when colliding at very low speeds to kill jitter
     if (collidedThisFrame && speed < stopSpeed * 1.2) {
@@ -4324,10 +4342,11 @@ function update(dt: number) {
     }
     if (
       ((!hasSlopeAccel || allowStopDueToCorner) && (speed < stopSpeed && disp < 0.25)) ||
-      // Anti-jam: if hill keeps pushing into obstacle for a short window and speed is low, stop
-      (pushingIntoObstacle && hillJamFrames >= 6 && speed < stopSpeed * 3)
+      // Anti-jam: if hill keeps pushing into obstacle briefly and speed is moderate, stop
+      (pushingIntoObstacle && hillJamFrames >= 2 && speed < stopSpeed * 6)
     ) {
       ball.vx = 0; ball.vy = 0; ball.moving = false;
+      hillJamFrames = 0;
     }
   }
 

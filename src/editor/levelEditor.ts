@@ -132,6 +132,8 @@ export interface EditorEnv {
   showToast(message: string): void;
   showConfirm(message: string, title?: string): Promise<boolean>;
   showPrompt(message: string, defaultValue?: string, title?: string): Promise<string | null>;
+  // Optional panelized metadata form; returns null on cancel
+  showMetadataForm?(init: { title: string; author: string; par: string; description?: string; tags?: string }, dialogTitle?: string): Promise<{ title: string; author: string; par: string; description: string; tags: string } | null>;
   showList(title: string, items: Array<{label: string; value: any}>, startIndex?: number): Promise<any>;
   showDnDList?(title: string, items: Array<{label: string; value: any}>): Promise<Array<{label: string; value: any}> | null>;
   showCourseEditor?(courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] }): Promise<{ action: string; courseData?: any; levelIndex?: number } | null>;
@@ -1682,7 +1684,8 @@ class LevelEditorImpl implements LevelEditor {
 
     // Menubar (drawn last)
     const menubarX = 0, menubarY = 0, menubarW = WIDTH, menubarH = 28;
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    // Darker bar to match UI_Design panel aesthetic
+    ctx.fillStyle = 'rgba(0,0,0,0.70)';
     ctx.fillRect(menubarX, menubarY, menubarW, menubarH);
     ctx.strokeStyle = '#cfd2cf';
     ctx.lineWidth = 1;
@@ -1737,7 +1740,8 @@ class LevelEditorImpl implements LevelEditor {
       const dropdownX = headerX;
       const dropdownY = menubarH;
 
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      // Panel-like dropdown per updated UI: dark background with light border
+      ctx.fillStyle = 'rgba(0,0,0,0.85)';
       ctx.fillRect(dropdownX, dropdownY, dropdownW, dropdownH);
       ctx.strokeStyle = '#cfd2cf';
       ctx.lineWidth = 1;
@@ -3412,27 +3416,48 @@ class LevelEditorImpl implements LevelEditor {
     const env = this.env;
     this.syncEditorDataFromGlobals(env);
 
+    // Current values with sensible defaults
     const currentTitle = this.editorLevelData?.course?.title || 'Untitled';
     const currentAuthor = (this.editorLevelData?.meta?.authorName || '').toString();
     const currentPar = Number.isFinite(this.editorLevelData?.par) ? String(this.editorLevelData.par) : '3';
+    const currentDesc = (this.editorLevelData?.meta?.description || '').toString();
+    const currentTags = Array.isArray(this.editorLevelData?.meta?.tags)
+      ? (this.editorLevelData.meta.tags as string[]).join(', ')
+      : (this.editorLevelData?.meta?.tags || '').toString();
     const title = await env.showPrompt('Level Title:', currentTitle, 'Metadata');
     if (title === null) return;
     const author = await env.showPrompt('Author Name:', currentAuthor, 'Metadata');
     if (author === null) return;
     const parInput = await env.showPrompt('Par (1-20):', currentPar, 'Metadata');
     if (parInput === null) return;
+    const description = await env.showPrompt('Description (optional):', currentDesc, 'Metadata');
+    if (description === null) return;
+    const tagsInput = await env.showPrompt('Tags (comma-separated, optional):', currentTags, 'Metadata');
+    if (tagsInput === null) return;
     let par = parseInt((parInput || '').trim(), 10);
     if (!Number.isFinite(par)) par = 3;
     par = Math.max(1, Math.min(20, Math.round(par)));
 
     this.pushUndoSnapshot('Edit metadata');
     this.editorLevelData.course = this.editorLevelData.course || { index: 1, total: 1 };
-    this.editorLevelData.course.title = title || 'Untitled';
+    (this.editorLevelData.course as any).title = title;
     this.editorLevelData.meta = this.editorLevelData.meta || {};
-    this.editorLevelData.meta.authorName = author || undefined;
-    // Persist meta.title alongside course.title so Firebase title isn't undefined
-    this.editorLevelData.meta.title = (title || 'Untitled');
-    this.editorLevelData.meta.modified = new Date().toISOString();
+    this.editorLevelData.meta.title = title;
+    this.editorLevelData.meta.authorName = author;
+    // Optional metadata
+    if (typeof description === 'string') {
+      this.editorLevelData.meta.description = description.trim();
+    }
+    if (typeof tagsInput === 'string') {
+      const tags = tagsInput.split(',').map(s => s.trim()).filter(s => s.length > 0);
+      // store as array when possible; keep string if empty
+      if (tags.length > 0) (this.editorLevelData.meta as any).tags = tags; else delete (this.editorLevelData.meta as any).tags;
+    }
+    this.editorLevelData.par = par;
+    // Also mirror created/modified timestamps in meta
+    const nowIso = new Date().toISOString();
+    if (!this.editorLevelData.meta.created) this.editorLevelData.meta.created = nowIso;
+    this.editorLevelData.meta.modified = nowIso;
     (this.editorLevelData.meta as any).lastModified = Date.now();
     this.editorLevelData.par = par;
     env.showToast('Metadata updated');

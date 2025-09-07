@@ -19,6 +19,33 @@ function isDevBuild(): boolean {
   }
 }
 
+// Course thumbnails (generated from first level in the course)
+const courseThumbnailCache = new Map<string, string>();
+const courseImageCache = new Map<string, HTMLImageElement>();
+
+function getCourseThumbnail(course: { id: string; courseData?: any }): string {
+  const key = String(course.id || '');
+  if (!key) return '';
+  if (courseThumbnailCache.has(key)) return courseThumbnailCache.get(key)!;
+  // Kick off async generation (simple: first level's thumbnail)
+  (async () => {
+    try {
+      if (!firebaseReady) return;
+      const levelIds: string[] = course.courseData?.levelIds || [];
+      const firstId = levelIds[0];
+      if (!firstId) return;
+      const all = await firebaseManager.levels.getAllLevels(undefined);
+      const entry = all.find((e: any) => e?.name === firstId);
+      if (!entry || !entry.data) return;
+      const thumb = generateLevelThumbnail(entry.data);
+      courseThumbnailCache.set(key, thumb);
+    } catch (err) {
+      console.warn('Failed to generate course thumbnail for', key, err);
+    }
+  })();
+  return '';
+}
+
 // Ensure the current profile (by name) is synchronized with Firebase users
 // Sets userProfile.id to the Firebase ID. No legacy migrations are performed.
 async function ensureUserSyncedWithFirebase(): Promise<void> {
@@ -79,7 +106,7 @@ function newLevelId(): string {
 // ------------------------------
 // In-Game Modal Overlay System
 // ------------------------------
-type UiOverlayKind = 'none' | 'toast' | 'confirm' | 'prompt' | 'list' | 'dndList' | 'courseEditor' | 'courseCreator';
+type UiOverlayKind = 'none' | 'toast' | 'confirm' | 'prompt' | 'list' | 'dndList' | 'courseEditor' | 'courseCreator' | 'metadata';
 type UiToast = { id: number; message: string; expiresAt: number };
 type UiListItem = { id?: string; label: string; value?: any; disabled?: boolean };
 type UiOverlayState = {
@@ -131,6 +158,13 @@ type UiOverlayState = {
   resolve?: (value: any) => void;
   reject?: (reason?: any) => void;
   cancelable?: boolean;
+  // Metadata form fields
+  metaTitle?: string;
+  metaAuthor?: string;
+  metaPar?: string; // keep as string while editing
+  metaDescription?: string;
+  metaTags?: string; // comma-separated while editing
+  metaFocus?: 'title' | 'author' | 'par' | 'description' | 'tags' | 'none';
 };
 
 let uiOverlay: UiOverlayState = { kind: 'none' };
@@ -153,6 +187,24 @@ function showUiConfirm(message: string, title = 'Confirm'): Promise<boolean> {
 function showUiPrompt(message: string, def = '', title = 'Input'): Promise<string | null> {
   return new Promise<string | null>((resolve) => {
     uiOverlay = { kind: 'prompt', title, message, inputText: def, cancelable: true, resolve };
+  });
+}
+
+// Metadata form overlay
+function showUiMetadataForm(init: { title: string; author: string; par: string; description?: string; tags?: string }, dialogTitle = 'Metadata') {
+  return new Promise<{ title: string; author: string; par: string; description: string; tags: string } | null>((resolve) => {
+    uiOverlay = {
+      kind: 'metadata',
+      title: dialogTitle,
+      metaTitle: init.title ?? '',
+      metaAuthor: init.author ?? '',
+      metaPar: init.par ?? '3',
+      metaDescription: init.description ?? '',
+      metaTags: init.tags ?? '',
+      metaFocus: 'title',
+      cancelable: true,
+      resolve
+    } as any;
   });
 }
 
@@ -237,6 +289,47 @@ function handleOverlayKey(e: KeyboardEvent) {
       uiOverlay.resolve?.(items[idx] ?? null); uiOverlay = { kind: 'none' }; return;
     }
     if (e.code === 'Escape') { uiOverlay.resolve?.(null); uiOverlay = { kind: 'none' }; return; }
+  } else if (k === 'metadata') {
+    if (e.code === 'Escape') { uiOverlay.resolve?.(null); uiOverlay = { kind: 'none' }; return; }
+    if (e.code === 'Tab') {
+      const order: Array<typeof uiOverlay.metaFocus> = ['title','author','par','description','tags'];
+      const idx = order.indexOf(uiOverlay.metaFocus || 'title');
+      const next = (idx + 1) % order.length;
+      uiOverlay.metaFocus = order[next];
+      return;
+    }
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+      uiOverlay.resolve?.({
+        title: uiOverlay.metaTitle || '',
+        author: uiOverlay.metaAuthor || '',
+        par: uiOverlay.metaPar || '3',
+        description: uiOverlay.metaDescription || '',
+        tags: uiOverlay.metaTags || ''
+      });
+      uiOverlay = { kind: 'none' };
+      return;
+    }
+    // Text input into the focused field
+    const key = e.key;
+    if (key && key.length === 1 && !e.ctrlKey && !e.metaKey) {
+      const f = uiOverlay.metaFocus || 'title';
+      if (f === 'title') uiOverlay.metaTitle = (uiOverlay.metaTitle || '') + key;
+      else if (f === 'author') uiOverlay.metaAuthor = (uiOverlay.metaAuthor || '') + key;
+      else if (f === 'par') uiOverlay.metaPar = (uiOverlay.metaPar || '') + key;
+      else if (f === 'description') uiOverlay.metaDescription = (uiOverlay.metaDescription || '') + key;
+      else if (f === 'tags') uiOverlay.metaTags = (uiOverlay.metaTags || '') + key;
+      return;
+    }
+    if (e.code === 'Backspace') {
+      const f = uiOverlay.metaFocus || 'title';
+      const rm1 = (s?: string) => (s ?? '').slice(0, Math.max(0, (s ?? '').length - 1));
+      if (f === 'title') uiOverlay.metaTitle = rm1(uiOverlay.metaTitle);
+      else if (f === 'author') uiOverlay.metaAuthor = rm1(uiOverlay.metaAuthor);
+      else if (f === 'par') uiOverlay.metaPar = rm1(uiOverlay.metaPar);
+      else if (f === 'description') uiOverlay.metaDescription = rm1(uiOverlay.metaDescription);
+      else if (f === 'tags') uiOverlay.metaTags = rm1(uiOverlay.metaTags);
+      return;
+    }
   } else if (k === 'courseEditor') {
     if (uiOverlay.courseEditingTitle) {
       if (e.code === 'Enter' || e.code === 'NumpadEnter') {
@@ -2467,40 +2560,52 @@ async function startFirebaseCourse(courseData: any): Promise<void> {
   }
 }
 
-// Main Menu layout helpers
+// Main Menu layout helpers (panelized)
+function getMainPanelRect() {
+  const panelW = Math.min(800, WIDTH - 80);
+  const panelH = Math.min(600, HEIGHT - 120);
+  const panelX = Math.floor(WIDTH / 2 - panelW / 2);
+  const panelY = Math.floor(HEIGHT / 2 - panelH / 2);
+  const pad = 20;
+  return { x: panelX, y: panelY, w: panelW, h: panelH, pad };
+}
 function getMainStartRect() {
-  const w = 160, h = 36;
-  const x = WIDTH / 2 - w / 2;
-  const y = HEIGHT / 2 + 4; // moved down slightly to give the hint more room
+  const p = getMainPanelRect();
+  const w = 200, h = 36;
+  const x = p.x + Math.floor((p.w - w) / 2);
+  const y = p.y + p.pad + 48 + 160; // below art
   return { x, y, w, h };
 }
 function getMainLevelEditorRect() {
-  const w = 160, h = 36;
-  const x = WIDTH / 2 - w / 2;
-  const y = HEIGHT / 2 + 54; // between Start and Options
+  const s = getMainStartRect();
+  const w = s.w, h = s.h;
+  const x = s.x;
+  const y = s.y + 50;
   return { x, y, w, h };
 }
 function getMainOptionsRect() {
-  const w = 160, h = 36;
-  const x = WIDTH / 2 - w / 2;
-  const y = HEIGHT / 2 + 104; // moved down to sit below Level Editor
+  const le = getMainLevelEditorRect();
+  const w = le.w, h = le.h;
+  const x = le.x;
+  const y = le.y + 50;
   return { x, y, w, h };
 }
 
 // Main Menu: Username input (above Start, below graphic)
 function getMainNameRect() {
-  const w = 260, h = 28;
-  const s = getMainStartRect();
-  const x = WIDTH / 2 - w / 2;
-  const y = s.y - 46; // increased gap to give disabled-user hint more room
+  const p = getMainPanelRect();
+  const w = 300, h = 28;
+  const x = p.x + Math.floor((p.w - w) / 2);
+  const y = p.y + p.pad + 48 + 110; // between art and buttons
   return { x, y, w, h };
 }
 
-// Main Menu: Changelog button (bottom-right)
+// Main Menu: Changelog button (bottom-right inside panel)
 function getMainChangelogRect() {
+  const p = getMainPanelRect();
   const w = 160, h = 36;
-  const x = WIDTH - 12 - w;
-  const y = HEIGHT - 12 - h;
+  const x = p.x + p.w - p.pad - w;
+  const y = p.y + p.h - p.pad - h;
   return { x, y, w, h };
 }
 
@@ -2658,6 +2763,7 @@ canvas.addEventListener('mousedown', (e) => {
             showToast: (msg: string) => showUiToast(msg),
             showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
             showPrompt: (msg: string, def?: string, title?: string) => showUiPrompt(msg, def, title),
+      showMetadataForm: (init: any, title?: string) => showUiMetadataForm(init, title),
             showList: (title: string, items: Array<{label: string; value: any}>, startIndex?: number) => showUiList(title, items, startIndex),
             showDnDList: async (title: string, items: Array<{label: string; value: any}>) => {
               const res = await showUiDnDList(title, items as any);
@@ -2771,6 +2877,27 @@ canvas.addEventListener('mousedown', (e) => {
             void loadUserLevelsList();
             return;
           }
+          if (hs.action === 'playSelectedCourse') {
+            const c = courseSelectState.courses[courseSelectState.selectedCourseIndex];
+            if (!c) return;
+            uiOverlay = {
+              kind: 'confirm',
+              title: 'Load Course',
+              message: `Load "${c.title}" (${c.levelCount} levels)?`,
+              cancelable: true,
+              resolve: (confirmed) => {
+                uiOverlay = { kind: 'none' };
+                if (confirmed) {
+                  if (c.type === 'dev') {
+                    void startDevCourseFromFirebase();
+                  } else if (c.type === 'firebase' && c.courseData) {
+                    void startFirebaseCourse(c.courseData);
+                  }
+                }
+              }
+            };
+            return;
+          }
           if (hs.action === 'courseCreator' && userProfile.role === 'admin') {
             // Open Course Creator overlay for admin users
             void showUiCourseCreator([]);
@@ -2809,6 +2936,27 @@ canvas.addEventListener('mousedown', (e) => {
         if (hs.kind === 'btn') {
           if (hs.action === 'back') {
             gameState = 'course';
+            return;
+          }
+          const sel = filteredUserLevelsList[selectedUserLevelIndex];
+          if (!sel) return;
+          if (hs.action === 'play') {
+            uiOverlay = {
+              kind: 'confirm', title: 'Load Level', message: `Load "${sel.name}" by ${sel.author || 'Unknown'}?`, cancelable: true,
+              resolve: (ok) => { uiOverlay = { kind: 'none' }; if (ok) void playUserLevel(sel); }
+            };
+            return;
+          }
+          if (hs.action === 'edit') {
+            void editUserLevel(sel);
+            return;
+          }
+          if (hs.action === 'duplicate') {
+            void duplicateUserLevel(sel);
+            return;
+          }
+          if (hs.action === 'delete') {
+            void deleteUserLevel(sel);
             return;
           }
         }
@@ -4327,20 +4475,28 @@ function draw() {
   const fairH = Math.max(0, Math.min(levelCanvas.height, HEIGHT) - COURSE_MARGIN * 2);
   // Main Menu screen
   if (gameState === 'menu') {
-    // Title top center
+    // Panel background and border
+    const p = getMainPanelRect();
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(p.x, p.y, p.w, p.h);
+    ctx.strokeStyle = '#cfd2cf';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(p.x + 0.5, p.y + 0.5, p.w - 1, p.h - 1);
+
+    // Title inside panel
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.font = '32px system-ui, sans-serif';
-    ctx.fillText('Vector Putt', WIDTH/2, 52);
-    // Simple vector mini-golf illustration
+    ctx.fillText('Vector Putt', p.x + p.w / 2, p.y + p.pad);
+    // Illustration inside panel
     (function drawMainMenuGraphic() {
-      const artWidth = Math.min(420, WIDTH - 120);
+      const artWidth = Math.min(420, p.w - p.pad * 2 - 40);
       const artHeight = 140;
-      const artX = WIDTH / 2 - artWidth / 2;
-      const artY = 110;
+      const artX = p.x + Math.floor((p.w - artWidth) / 2);
+      const artY = p.y + p.pad + 48;
       // Fairway panel
-  ctx.fillStyle = COLORS.fairway;
+      ctx.fillStyle = COLORS.fairway;
       ctx.fillRect(artX, artY, artWidth, artHeight);
       ctx.lineWidth = 2;
       ctx.strokeStyle = COLORS.fairwayLine;
@@ -4508,10 +4664,11 @@ function draw() {
     ctx.font = '14px system-ui, sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('Changelog', cg.x + cg.w/2, cg.y + cg.h/2 + 0.5);
-    // Version bottom-left
+    // Version bottom-left (panel)
+    const pv = getMainPanelRect();
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.font = '12px system-ui, sans-serif';
-    ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
+    ctx.fillText(`v${APP_VERSION}`, pv.x + pv.pad, pv.y + pv.h - pv.pad);
     renderGlobalOverlays();
     return;
   }
@@ -5061,7 +5218,10 @@ function draw() {
     
     let contentY = py + pad + 32;
     
-    // Course list area
+    // Split layout: left list, right preview/metadata
+    const listW = Math.floor(panelW * 0.55);
+    const rightW = panelW - pad * 3 - listW;
+    const listX = px + pad;
     const listStartY = contentY;
     const listEndY = py + panelH - 80; // Leave space for buttons
     const listHeight = listEndY - listStartY;
@@ -5074,7 +5234,7 @@ function draw() {
     
     // Draw scrollbar if needed
     if (courses.length > maxVisibleRows) {
-      const scrollbarX = px + panelW - 20;
+      const scrollbarX = listX + listW - 12;
       const scrollbarY = listStartY;
       const scrollbarH = listHeight;
       const scrollbarW = 16;
@@ -5100,8 +5260,8 @@ function draw() {
       const actualIndex = scrollOffset + i;
       const course = visibleCourses[i];
       const rowY = listStartY + i * rowHeight;
-      const rowX = px + pad;
-      const rowW = panelW - pad * 2 - (courses.length > maxVisibleRows ? 24 : 0);
+      const rowX = listX;
+      const rowW = listW - (courses.length > maxVisibleRows ? 24 : 0);
       const isSelected = (courseSelectState.selectedCourseIndex === actualIndex);
       
       // Row background
@@ -5123,6 +5283,58 @@ function draw() {
       
       // Add hotspot for course selection
       courseSelectHotspots.push({ kind: 'courseItem', index: actualIndex, x: rowX, y: rowY, w: rowW, h: rowHeight - 2 });
+    }
+    // Right preview/metadata panel
+    const rightX = listX + listW + pad;
+    const rightY = listStartY;
+    const rightH = listHeight;
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fillRect(rightX, rightY, rightW, rightH);
+    ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(rightX, rightY, rightW, rightH);
+    ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.font = '16px system-ui, sans-serif';
+    ctx.fillText('Selected Course', rightX + 12, rightY + 10);
+    const selCourse = courses[courseSelectState.selectedCourseIndex] || null;
+    if (selCourse) {
+      ctx.font = '20px system-ui, sans-serif'; ctx.fillText(selCourse.title || 'Untitled', rightX + 12, rightY + 36);
+      ctx.font = '14px system-ui, sans-serif';
+      const createdAny: any = (selCourse as any);
+      const createdVal = createdAny?.createdAt ?? createdAny?.courseData?.createdAt;
+      const lastVal = createdAny?.lastModified ?? createdAny?.courseData?.lastModified;
+      const createdAt = (typeof createdVal === 'number') ? new Date(createdVal).toLocaleString() : '—';
+      const lastMod = (typeof lastVal === 'number') ? new Date(lastVal).toLocaleString() : '—';
+      ctx.fillText(`Levels: ${selCourse.levelCount ?? (selCourse.courseData?.levelIds?.length || '—')}`, rightX + 12, rightY + 64);
+      ctx.fillText(`Created: ${createdAt}`, rightX + 12, rightY + 84);
+      ctx.fillText(`Last Edited: ${lastMod}`, rightX + 12, rightY + 104);
+      // Preview thumbnail (from first level)
+      const pvY = rightY + 130; const pvH = 140; const pvW = rightW - 24; const pvX = rightX + 12;
+      const thumbData = courseThumbnailCache.get(selCourse.id) || getCourseThumbnail(selCourse) || '';
+      if (thumbData) {
+        let img = courseImageCache.get(selCourse.id);
+        if (!img) { img = new Image(); img.src = thumbData; courseImageCache.set(selCourse.id, img); }
+        if (img.complete && (img as any).naturalWidth) {
+          ctx.drawImage(img as any, pvX, pvY, pvW, pvH);
+          ctx.strokeStyle = '#666'; ctx.lineWidth = 1; ctx.strokeRect(pvX + 0.5, pvY + 0.5, pvW - 1, pvH - 1);
+        } else {
+          ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(pvX, pvY, pvW, pvH);
+          ctx.strokeStyle = '#666'; ctx.lineWidth = 1; ctx.strokeRect(pvX + 0.5, pvY + 0.5, pvW - 1, pvH - 1);
+          ctx.fillStyle = '#bbbbbb'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '12px system-ui, sans-serif';
+          ctx.fillText('Generating preview…', pvX + pvW/2, pvY + pvH/2);
+        }
+      } else {
+        ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(pvX, pvY, pvW, pvH);
+        ctx.strokeStyle = '#666'; ctx.lineWidth = 1; ctx.strokeRect(pvX + 0.5, pvY + 0.5, pvW - 1, pvH - 1);
+        ctx.fillStyle = '#bbbbbb'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '12px system-ui, sans-serif';
+        ctx.fillText('Generating preview…', pvX + pvW/2, pvY + pvH/2);
+      }
+      // Action button: Play Course
+      const btnW = 140, btnH = 36; const btnY = rightY + rightH - btnH - 12; const btnX = rightX + 12;
+      ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(btnX, btnY, btnW, btnH);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(btnX, btnY, btnW, btnH);
+      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '16px system-ui, sans-serif';
+      ctx.fillText('Play Course', btnX + btnW/2, btnY + btnH/2 + 0.5);
+      courseSelectHotspots.push({ kind: 'btn', action: 'playSelectedCourse', x: btnX, y: btnY, w: btnW, h: btnH });
+    } else {
+      ctx.font = '14px system-ui, sans-serif'; ctx.fillText('No course selected', rightX + 12, rightY + 36);
     }
     
     // Bottom buttons
@@ -5276,8 +5488,10 @@ function draw() {
     ctx.textAlign = 'left';
     ctx.fillText(`${filteredUserLevelsList.length} of ${userLevelsList.length} levels`, searchX, searchY + filterH + 15);
     
-    // Level list area
+    // Split layout
     const listY = searchY + filterH + 35;
+    const listW = Math.floor(panelW * 0.55);
+    const rightW = panelW - 20 * 3 - listW;
     const listH = panelH - (listY - panelY) - 60; // Leave space for back button
     const itemH = 50;
     const maxVisible = Math.floor(listH / itemH);
@@ -5285,10 +5499,10 @@ function draw() {
     if (filteredUserLevelsList.length === 0) {
       // Empty state
       ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-      ctx.fillRect(panelX + 20, listY, panelW - 40, listH);
+      ctx.fillRect(panelX + 20, listY, listW - 20, listH);
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
       ctx.lineWidth = 1;
-      ctx.strokeRect(panelX + 20, listY, panelW - 40, listH);
+      ctx.strokeRect(panelX + 20, listY, listW - 20, listH);
       
       ctx.fillStyle = '#ffffff';
       ctx.font = '16px system-ui, sans-serif';
@@ -5319,12 +5533,12 @@ function draw() {
         
         // Item background
         ctx.fillStyle = isSelected ? 'rgba(100, 150, 200, 0.3)' : 'rgba(255, 255, 255, 0.05)';
-        ctx.fillRect(panelX + 20, itemY, panelW - 40, itemH - 2);
+        ctx.fillRect(panelX + 20, itemY, listW - 20, itemH - 2);
         
         // Item border
         ctx.strokeStyle = isSelected ? 'rgba(100, 150, 200, 0.8)' : 'rgba(255, 255, 255, 0.1)';
         ctx.lineWidth = 1;
-        ctx.strokeRect(panelX + 20, itemY, panelW - 40, itemH - 2);
+        ctx.strokeRect(panelX + 20, itemY, listW - 20, itemH - 2);
         
         // Level name
         ctx.fillStyle = '#ffffff';
@@ -5342,12 +5556,12 @@ function draw() {
         ctx.fillText(`by ${level.author} • ${sourceLabel}`, panelX + 35, itemY + 28);
         
         // Add level item hotspot
-        userLevelsHotspots.push({ kind: 'levelItem', index: i, x: panelX + 20, y: itemY, w: panelW - 40, h: itemH - 2 });
+        userLevelsHotspots.push({ kind: 'levelItem', index: i, x: panelX + 20, y: itemY, w: listW - 20, h: itemH - 2 });
       }
       
       // Scroll indicator
       if (filteredUserLevelsList.length > maxVisible) {
-        const scrollBarX = panelX + panelW - 15;
+        const scrollBarX = panelX + listW - 15;
         const scrollBarW = 8;
         const scrollBarH = listH;
         
@@ -5363,7 +5577,63 @@ function draw() {
       }
     }
     
-    // Back button
+    // Right preview/metadata pane
+    const rightX = panelX + 20 + listW;
+    const rightY = listY;
+    const rightH = listH;
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fillRect(rightX, rightY, rightW, rightH);
+    ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(rightX, rightY, rightW, rightH);
+    ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.font = '16px system-ui, sans-serif';
+    ctx.fillText('Selected Level', rightX + 12, rightY + 10);
+    const sel = filteredUserLevelsList[selectedUserLevelIndex];
+    if (sel) {
+      ctx.font = '20px system-ui, sans-serif'; ctx.fillText(sel.name || 'Untitled', rightX + 12, rightY + 36);
+      // Thumbnail
+      const thumbY = rightY + 64; const thumbH = 120; const thumbW = rightW - 24; const thumbX = rightX + 12;
+      const dataUrl = getLevelThumbnail(sel);
+      if (dataUrl) {
+        if (!sel.thumbnailImage) { const img = new Image(); img.src = dataUrl; sel.thumbnailImage = img; }
+        if (sel.thumbnailImage && (sel.thumbnailImage.complete || (sel.thumbnailImage as any).naturalWidth)) {
+          ctx.drawImage(sel.thumbnailImage as any, thumbX, thumbY, thumbW, thumbH);
+          ctx.strokeStyle = '#666'; ctx.strokeRect(thumbX + 0.5, thumbY + 0.5, thumbW - 1, thumbH - 1);
+        } else {
+          ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(thumbX, thumbY, thumbW, thumbH);
+          ctx.strokeStyle = '#666'; ctx.strokeRect(thumbX + 0.5, thumbY + 0.5, thumbW - 1, thumbH - 1);
+          ctx.fillStyle = '#bbbbbb'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '12px system-ui, sans-serif';
+          ctx.fillText('Generating preview…', thumbX + thumbW/2, thumbY + thumbH/2);
+        }
+      }
+      // Metadata
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.font = '14px system-ui, sans-serif'; ctx.fillStyle = '#ffffff';
+      const meta = (sel as any).data?.meta || {};
+      const createdAt = meta.created ? new Date(meta.created).toLocaleString() : '—';
+      const lastMod = meta.lastModified ? new Date(meta.lastModified).toLocaleString() : (meta.modified || '—');
+      const par = (sel as any).data?.par; const parText = (typeof par === 'number') ? String(par) : '—';
+      const desc = (meta.description || '').toString();
+      const tags = Array.isArray(meta.tags) ? meta.tags.join(', ') : ((meta.tags || '').toString());
+      let yMeta = thumbY + thumbH + 10;
+      ctx.fillText(`Author: ${sel.author || meta.authorName || 'Unknown'}`, rightX + 12, yMeta); yMeta += 18;
+      ctx.fillText(`Par: ${parText}`, rightX + 12, yMeta); yMeta += 18;
+      ctx.fillText(`Created: ${createdAt}`, rightX + 12, yMeta); yMeta += 18;
+      ctx.fillText(`Last Edited: ${lastMod}`, rightX + 12, yMeta); yMeta += 18;
+      if (desc) { ctx.fillText(`Description: ${desc}`, rightX + 12, yMeta); yMeta += 18; }
+      if (tags) { ctx.fillText(`Tags: ${tags}`, rightX + 12, yMeta); yMeta += 18; }
+      // Action buttons
+      const btnW = 120, btnH = 32, gap = 12; let ax = rightX + 12; const ay = rightY + rightH - btnH - 12;
+      const addBtn = (label: string, action: string) => {
+        ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(ax, ay, btnW, btnH);
+        ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(ax, ay, btnW, btnH);
+        ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '14px system-ui, sans-serif';
+        ctx.fillText(label, ax + btnW/2, ay + btnH/2 + 0.5);
+        userLevelsHotspots.push({ kind: 'btn', action, x: ax, y: ay, w: btnW, h: btnH }); ax += btnW + gap;
+      };
+      addBtn('Play', 'play'); addBtn('Edit', 'edit'); addBtn('Duplicate', 'duplicate'); addBtn('Delete', 'delete');
+    } else {
+      ctx.font = '14px system-ui, sans-serif'; ctx.fillText('No level selected', rightX + 12, rightY + 36);
+    }
+    
+    // Back button (bottom-left)
     const backBtnW = 100;
     const backBtnH = 36;
     const backBtnX = panelX + 20;
@@ -5395,33 +5665,8 @@ function draw() {
   }
   // Main Menu
   if ((gameState as any) === 'menu') {
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.font = '32px system-ui, sans-serif';
-    ctx.fillText('Vector Putt', WIDTH/2, 100);
-    
-    const startRect = getMainStartRect();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = hoverMainStart ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = hoverMainStart ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.10)';
-    ctx.fillRect(startRect.x, startRect.y, startRect.w, startRect.h);
-    ctx.strokeRect(startRect.x, startRect.y, startRect.w, startRect.h);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '18px system-ui, sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('Start', startRect.x + startRect.w/2, startRect.y + startRect.h/2 + 0.5);
-    
-    const editorRect = getMainLevelEditorRect();
-    ctx.strokeStyle = hoverMainLevelEditor ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = hoverMainLevelEditor ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.10)';
-    ctx.fillRect(editorRect.x, editorRect.y, editorRect.w, editorRect.h);
-    ctx.strokeRect(editorRect.x, editorRect.y, editorRect.w, editorRect.h);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText('Level Editor', editorRect.x + editorRect.w/2, editorRect.y + editorRect.h/2 + 0.5);
-    
-    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-    ctx.font = '12px system-ui, sans-serif';
-    ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
+    // Legacy duplicate menu path; the panelized Main Menu draws earlier in draw().
+    // Intentionally skip to avoid double-draw with old layout.
     renderGlobalOverlays();
     return;
   }
@@ -6406,6 +6651,52 @@ function renderGlobalOverlays(): void {
       ctx.fillStyle = '#ffffff'; ctx.font = '15px system-ui, sans-serif';
       ctx.fillText('Cancel', cancelX + bw / 2, by + bh / 2 + 0.5);
       overlayHotspots.push({ kind: 'btn', index: 1, x: cancelX, y: by, w: bw, h: bh });
+    } else if (uiOverlay.kind === 'metadata') {
+      // Build a simple 2-column form inside a panel
+      const labels = ['Title','Author','Par','Description','Tags'];
+      const values = [uiOverlay.metaTitle||'', uiOverlay.metaAuthor||'', uiOverlay.metaPar||'3', uiOverlay.metaDescription||'', uiOverlay.metaTags||''];
+      const rows = labels.length;
+      const lh = 28;
+      const lw = 110;
+      const iw = panelW - pad * 3 - lw;
+      for (let i = 0; i < rows; i++) {
+        const iy = cy + i * (lh + 10);
+        // Label
+        ctx.fillStyle = '#ffffff'; ctx.font = '14px system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText(labels[i], px + pad, iy + lh/2);
+        // Input
+        const ix = px + pad + lw;
+        const ih = (i === 3) ? 60 : lh; // bigger for Description
+        const multi = i === 3;
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.fillRect(ix, iy, iw, ih);
+        ctx.strokeStyle = (uiOverlay.metaFocus === ['title','author','par','description','tags'][i]) ? '#ffffff' : '#cfd2cf';
+        ctx.lineWidth = 1.2; ctx.strokeRect(ix + 0.5, iy + 0.5, iw - 1, ih - 1);
+        ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.font = '14px system-ui, sans-serif';
+        const text = values[i];
+        const ty = multi ? iy + 6 : iy + (ih/2 - 8);
+        ctx.fillText(text, ix + 8, ty + 0.5);
+        overlayHotspots.push({ kind: 'input', index: i, x: ix, y: iy, w: iw, h: ih });
+        if (multi) { cy += 32; }
+      }
+      cy += rows * 4;
+      // Buttons: Save (index 0) and Cancel (index 1)
+      const bw = 120, bh = 30, gap = 12;
+      const by = py + panelH - pad - bh;
+      const okx = px + panelW - pad - bw * 2 - gap;
+      const cxBtn = px + panelW - pad - bw;
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillRect(okx, by, bw, bh);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(okx, by, bw, bh);
+      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '15px system-ui, sans-serif';
+      ctx.fillText('Save', okx + bw / 2, by + bh / 2 + 0.5);
+      overlayHotspots.push({ kind: 'btn', index: 0, x: okx, y: by, w: bw, h: bh });
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillRect(cxBtn, by, bw, bh);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(cxBtn, by, bw, bh);
+      ctx.fillStyle = '#ffffff'; ctx.font = '15px system-ui, sans-serif';
+      ctx.fillText('Cancel', cxBtn + bw / 2, by + bh / 2 + 0.5);
+      overlayHotspots.push({ kind: 'btn', index: 1, x: cxBtn, y: by, w: bw, h: bh });
     } else if (uiOverlay.kind === 'courseEditor') {
       // Course Editor UI - single screen with center-listed levels
       const courseData = uiOverlay.courseData;

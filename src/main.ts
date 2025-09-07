@@ -4417,7 +4417,7 @@ function draw() {
     const nr = getMainNameRect();
     ctx.lineWidth = isEditingUserName ? 2 : 1.5;
     ctx.strokeStyle = (hoverMainName || isEditingUserName) ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
     ctx.fillRect(nr.x, nr.y, nr.w, nr.h);
     ctx.strokeRect(nr.x, nr.y, nr.w, nr.h);
     ctx.fillStyle = '#ffffff';
@@ -4466,7 +4466,7 @@ function draw() {
     const canStart = isStartEnabled();
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = canStart ? (hoverMainStart ? '#ffffff' : '#cfd2cf') : 'rgba(255,255,255,0.15)';
-    ctx.fillStyle = hoverMainStart && canStart ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillStyle = hoverMainStart && canStart ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.10)';
     ctx.fillRect(s.x, s.y, s.w, s.h);
     ctx.strokeRect(s.x, s.y, s.w, s.h);
     ctx.fillStyle = '#ffffff';
@@ -4479,7 +4479,7 @@ function draw() {
     const le = getMainLevelEditorRect();
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = canStart ? (hoverMainLevelEditor ? '#ffffff' : '#cfd2cf') : 'rgba(255,255,255,0.15)';
-    ctx.fillStyle = hoverMainLevelEditor && canStart ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillStyle = hoverMainLevelEditor && canStart ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.10)';
     ctx.fillRect(le.x, le.y, le.w, le.h);
     ctx.strokeRect(le.x, le.y, le.w, le.h);
     ctx.fillStyle = '#ffffff';
@@ -4491,7 +4491,7 @@ function draw() {
     const o = getMainOptionsRect();
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = hoverMainOptions ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = hoverMainOptions ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillStyle = hoverMainOptions ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.10)';
     ctx.fillRect(o.x, o.y, o.w, o.h);
     ctx.strokeRect(o.x, o.y, o.w, o.h);
     ctx.fillStyle = '#ffffff';
@@ -4501,7 +4501,7 @@ function draw() {
     const cg = getMainChangelogRect();
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = hoverMainChangelog ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = hoverMainChangelog ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillStyle = hoverMainChangelog ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.10)';
     ctx.fillRect(cg.x, cg.y, cg.w, cg.h);
     ctx.strokeRect(cg.x, cg.y, cg.w, cg.h);
     ctx.fillStyle = '#ffffff';

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v0.3.28 — 2025-09-06
+
+### Added
+- UI • Users Admin: Converted to standard 800×600 centered panel with header, search box, scrollable user list (keyboard + wheel), right-side action column. Hotspots and keyboard handling implemented for selection and actions. (`src/main.ts`)
+
+### Changed
+- UI • Changelog: Migrated to centered 800×600 panel with proper header, panel border, panel-local Back button, and panel-anchored scrollbar visuals. (`src/main.ts`)
+- UI • Main Menu: Button/input style parity with `UI_Design.md`. Default fill `rgba(255,255,255,0.10)`, hover `rgba(255,255,255,0.15)`, borders `#cfd2cf`; username input matches the same visual system. (`src/main.ts`)
+- Play • Hill arrows visibility: arrows are rendered on an offscreen layer and masked to the fairway minus geometry (walls, poly walls, posts, bridges, water). Arrows draw as white with a subtle dark outline for contrast and are inset from hill edges. Prevents arrows from drawing over objects and improves legibility. (`src/main.ts`)
+
+### Fixed
+- Physics • Hills: stop condition no longer triggers while the ball is in a hill with active downhill acceleration. Prevents the ball from occasionally “parking” on a slope at very low speeds. (`src/main.ts`)
+
+
 ## v0.3.27 — 2025-09-06
 
 ### Added

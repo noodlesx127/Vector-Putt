@@ -51,7 +51,7 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
      - [x] Refresh Options screen to centered 800x600 panel with standard header, controls layout, and Back button styling. Implemented dark overlay, responsive panel sizing, background rgba(0,0,0,0.85), border #cfd2cf; reflowed Controls/Audio sections within panel. (`src/main.ts`)
      - [x] Refresh Users admin screen to panelized layout and standard button styles; added search, scroll, and keyboard support. (`src/main.ts`)
      - [x] Refresh Changelog screen to use standard panel, header, and scrollbar visuals. (`src/main.ts`)
-     - [ ] Audit Main Menu input/buttons for style parity (borders, fills, fonts)
+     - [x] Audit Main Menu input/buttons for style parity (borders, fills, fonts). Updated default fill to rgba(255,255,255,0.10), hover rgba(255,255,255,0.15), borders #cfd2cf, and aligned username input styling. (`src/main.ts`)
      - Level Editor — Menus & Dialogs (must follow standard panel/button styles and typography; see `UI_Design.md`):
        - Findings: Menubar and dialogs exist but styling/spacing varies from standard panel spec. Ensure 800x600 overlay panels for modal flows, consistent header, borders `#cfd2cf`, background `rgba(0,0,0,0.85)`, padding/margins, and button hover states.
        - Tasks:

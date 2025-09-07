@@ -77,8 +77,10 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
     - [x] Editor assist: auto-suggest 3–5 candidate cup positions ranked by difficulty
       - Menu: File → "Suggest Cup Positions"; renders numbered markers you can click to apply. Press Esc to cancel overlay.
       - Constraints (initial): min distance from tee (25% of max axis), avoid edges (≥ 2× grid), reject trivial straight paths (length ≥ 1.06× straight-line), optional min turns.
-    - [ ] Define additional constraints (inside intended region mask, corridor/bank scoring) and tune ranking
-    - [ ] Validator lint: flag cups bypassing intended obstacles
+    - [x] Define additional constraints (inside intended region mask, corridor/bank scoring) and tune ranking
+      - Implemented optional `regionPoly` constraint and added corridor/bank scoring via blocked-neighbor weighting during path traversal in `src/editor/levelHeuristics.ts::suggestCupPositions()`. Bank weight is tunable; editor currently uses a sensible default tied to grid size.
+    - [x] Validator lint: flag cups bypassing intended obstacles
+      - Added `lintCupPath()` in `src/editor/levelHeuristics.ts` and integrated into the editor flow so after choosing a suggested cup, up to two warnings are surfaced via toasts if the path is nearly straight and avoids obstacles or the cup is too close to edges. (`src/editor/levelEditor.ts`)
     [ ] Optional: slopes, moving blocks, boosters, tunnels
   
   Recommended next steps

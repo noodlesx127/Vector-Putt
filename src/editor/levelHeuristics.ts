@@ -31,7 +31,16 @@ export function suggestCupPositions(
   fairway: Fairway,
   cellSize: number,
   count = 5,
-  opts?: { edgeMargin?: number; minStraightnessRatio?: number; minTurns?: number; minDistancePx?: number }
+  opts?: {
+    edgeMargin?: number;
+    minStraightnessRatio?: number;
+    minTurns?: number;
+    minDistancePx?: number;
+    // Additional constraints
+    regionPoly?: number[]; // candidate cup must lie within this polygon (optional)
+    // Scoring weights
+    bankWeight?: number; // additional score per blocked neighbor along path (corridor/bank effect)
+  }
 ): Array<{ x: number; y: number; score: number; lengthPx: number; turns: number }> {
   const { grid, cols, rows } = buildGrid(level, fairway, cellSize);
   const toCell = (x: number, y: number) => ({ c: clamp(Math.floor((x - fairway.x) / cellSize), 0, cols - 1), r: clamp(Math.floor((y - fairway.y) / cellSize), 0, rows - 1) });
@@ -46,6 +55,19 @@ export function suggestCupPositions(
   const minTurns = opts?.minTurns ?? 0; // at least this many turns (0 allows straight with obstacles)
 
   const candidates: Array<{ c: number; r: number; score: number; lengthPx: number; turns: number }> = [];
+
+  const neighborBlockedCount = (c: number, r: number) => {
+    let cnt = 0;
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        if (dc === 0 && dr === 0) continue;
+        const nc = c + dc, nr = r + dr;
+        if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue;
+        if (grid[nr][nc].blocked) cnt++;
+      }
+    }
+    return cnt;
+  };
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -74,8 +96,14 @@ export function suggestCupPositions(
       // reject trivial straight paths (length close to straight-line)
       if (lengthPx < dist * minStraightness) continue;
       if (turns < minTurns) continue;
+      // optional region constraint
+      if (opts?.regionPoly && !pointInPoly(w.x, w.y, opts.regionPoly)) continue;
+      // corridor/bank scoring: reward paths that run near blocked cells (narrow corridors or banks)
+      let bankAdj = 0;
+      for (const p of path) bankAdj += neighborBlockedCount(p.c, p.r);
+      const bankWeight = opts?.bankWeight ?? (cellSize * 0.5);
       // score favors longer, more-turn paths moderately (harder holes)
-      const score = lengthPx + turns * (cellSize * 2);
+      const score = lengthPx + turns * (cellSize * 2) + bankAdj * bankWeight;
       candidates.push({ c, r, score, lengthPx, turns });
     }
   }
@@ -91,6 +119,65 @@ export function suggestCupPositions(
     if (picked.length >= count) break;
   }
   return picked;
+}
+
+// Lint the current cup placement; warn if the path trivially bypasses intended obstacles
+export function lintCupPath(
+  level: LevelLike,
+  fairway: Fairway,
+  cellSize: number
+): string[] {
+  const warnings: string[] = [];
+  const { grid, cols, rows } = buildGrid(level, fairway, cellSize);
+  const toCell = (x: number, y: number) => ({ c: clamp(Math.floor((x - fairway.x) / cellSize), 0, cols - 1), r: clamp(Math.floor((y - fairway.y) / cellSize), 0, rows - 1) });
+  const start = toCell(level.tee.x, level.tee.y);
+  const goal = toCell(level.cup.x, level.cup.y);
+  const { found, path, lengthCost } = aStar(grid, cols, rows, start, goal);
+  if (!found) {
+    warnings.push('Cup is not reachable by A* path');
+    return warnings;
+  }
+  // metrics
+  let turns = 0;
+  for (let i = 2; i < path.length; i++) {
+    const a = path[i - 2], b = path[i - 1], c = path[i];
+    if ((b.c - a.c) !== (c.c - b.c) || (b.r - a.r) !== (c.r - b.r)) turns++;
+  }
+  const pathLengthPx = lengthCost * cellSize;
+  const straight = Math.hypot(level.cup.x - level.tee.x, level.cup.y - level.tee.y);
+  // neighbor blocked average (corridor indicator)
+  const neighborBlockedCount = (c: number, r: number) => {
+    let cnt = 0;
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        if (dc === 0 && dr === 0) continue;
+        const nc = c + dc, nr = r + dr;
+        if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue;
+        if (grid[nr][nc].blocked) cnt++;
+      }
+    }
+    return cnt;
+  };
+  let blockedSum = 0;
+  for (const p of path) blockedSum += neighborBlockedCount(p.c, p.r);
+  const blockedAvg = blockedSum / Math.max(1, path.length);
+
+  const obstacleCount = (level.walls?.length || 0) + (level.wallsPoly?.length || 0) + (level.water?.length || 0) + (level.waterPoly?.length || 0);
+  // If there are obstacles but the path is nearly straight and not near obstacles, warn
+  if (obstacleCount > 0 && turns <= 1 && pathLengthPx < straight * 1.08 && blockedAvg < 1.0) {
+    warnings.push('Cup path appears to bypass obstacles (nearly straight, low corridor contact)');
+  }
+  // Edge proximity lint
+  const edgeMargin = Math.max(2 * cellSize, 20);
+  if (
+    level.cup.x < fairway.x + edgeMargin ||
+    level.cup.x > fairway.x + fairway.w - edgeMargin ||
+    level.cup.y < fairway.y + edgeMargin ||
+    level.cup.y > fairway.y + fairway.h - edgeMargin
+  ) {
+    warnings.push('Cup is very close to fairway edge');
+  }
+  return warnings;
 }
 
 function pointInPoly(px: number, py: number, pts: number[]): boolean {
@@ -237,7 +324,20 @@ export function aStar(
   return { found: false, path: [], lengthCost: 0 };
 }
 
-export function estimatePar(level: LevelLike, fairway: Fairway, cellSize: number): {
+export function estimatePar(
+  level: LevelLike,
+  fairway: Fairway,
+  cellSize: number,
+  opts?: {
+    baselineShotPx?: number;          // D baseline in px per stroke
+    sandPenaltyPerCell?: number;      // per grid cell of sand encountered along the path
+    turnPenaltyPerTurn?: number;      // per path turn penalty
+    turnPenaltyMax?: number;          // cap for turn penalty
+    hillBump?: number;                // extra bump if any hills exist
+    bankWeight?: number;              // converts average blocked-neighbor count into extra strokes
+    bankPenaltyMax?: number;          // cap for bank/corridor penalty
+  }
+): {
   reachable: boolean;
   suggestedPar: number;
   pathLengthPx: number;
@@ -277,26 +377,53 @@ export function estimatePar(level: LevelLike, fairway: Fairway, cellSize: number
     if (v1c !== v2c || v1r !== v2r) turns++;
   }
 
+  // Corridor/bank contact: average number of blocked neighbors along the path
+  const neighborBlockedCount = (cc: number, rr: number) => {
+    let cnt = 0;
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        if (dc === 0 && dr === 0) continue;
+        const nc = cc + dc, nr = rr + dr;
+        if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue;
+        if (grid[nr][nc].blocked) cnt++;
+      }
+    }
+    return cnt;
+  };
+  let blockedSum = 0;
+  for (const p of path) blockedSum += neighborBlockedCount(p.c, p.r);
+  const blockedAvg = blockedSum / Math.max(1, path.length);
+
   // Base shots: assume typical effective shot distance D
-  const D = 320; // px per stroke baseline
+  const D = opts?.baselineShotPx ?? 320; // px per stroke baseline
   let strokes = pathLengthPx / D;
 
   // Add penalties based on terrain cost encountered along path
   const sandCellsOnPath = path.filter(p => !grid[p.r][p.c].blocked && grid[p.r][p.c].cost > 1).length;
-  const sandPenalty = sandCellsOnPath * 0.01; // small cumulative penalty
+  const sandPenaltyPerCell = opts?.sandPenaltyPerCell ?? 0.01; // default small cumulative penalty
+  const sandPenalty = sandCellsOnPath * sandPenaltyPerCell;
 
-  const turnPenalty = Math.min(1.5, turns * 0.08);
+  const turnPenaltyPerTurn = opts?.turnPenaltyPerTurn ?? 0.08;
+  const turnPenaltyMax = opts?.turnPenaltyMax ?? 1.5;
+  const turnPenalty = Math.min(turnPenaltyMax, turns * turnPenaltyPerTurn);
 
-  strokes = strokes + sandPenalty + turnPenalty;
+  // Corridor/bank penalty: reward complexity by adding strokes when path hugs blockers
+  const bankWeight = opts?.bankWeight ?? 0.12; // each neighbor on average contributes some fraction of a stroke
+  const bankPenaltyMax = opts?.bankPenaltyMax ?? 1.0;
+  const bankPenalty = Math.min(bankPenaltyMax, blockedAvg * bankWeight);
+
+  strokes = strokes + sandPenalty + turnPenalty + bankPenalty;
 
   // Hills: rough complexity bump if present
-  if (level.hills && level.hills.length > 0) strokes += 0.2;
+  const hillBump = opts?.hillBump ?? 0.2;
+  if (level.hills && level.hills.length > 0) strokes += hillBump;
 
   let suggested = Math.round(strokes + 1); // add 1 for tee off
   suggested = Math.max(2, Math.min(7, suggested));
 
   if (sandCellsOnPath > 0) notes.push(`sand cells ~${sandCellsOnPath}`);
   if (turns > 0) notes.push(`turns ~${turns}`);
+  if (blockedAvg > 0) notes.push(`corridor contact ~${blockedAvg.toFixed(2)}`);
 
   return { reachable: true, suggestedPar: suggested, pathLengthPx, notes };
 }

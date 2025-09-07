@@ -18,20 +18,6 @@ function isDevBuild(): boolean {
     return false;
   }
 
-// Load Levels overlay (left-list/right-preview)
-function showUiLoadLevels(levels: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>): Promise<any | null> {
-  return new Promise<any | null>((resolve) => {
-    uiOverlay = {
-      kind: 'loadLevels',
-      title: 'Load Level',
-      loadLevels: [...levels],
-      selectedLevelIndex: 0,
-      scrollOffset: 0,
-      cancelable: true,
-      resolve
-    } as any;
-  });
-}
 }
 
 // Course thumbnails (generated from first level in the course)
@@ -455,6 +441,25 @@ function handleOverlayKey(e: KeyboardEvent) {
       return;
     }
     if (e.code === 'Escape') { uiOverlay.resolve?.(null); uiOverlay = { kind: 'none' }; return; }
+  } else if (k === 'loadLevels') {
+    const levels = uiOverlay.loadLevels ?? [];
+    if (e.code === 'ArrowDown') {
+      const newIdx = Math.min(levels.length - 1, (uiOverlay.selectedLevelIndex ?? 0) + 1);
+      uiOverlay.selectedLevelIndex = newIdx;
+      return;
+    }
+    if (e.code === 'ArrowUp') {
+      const newIdx = Math.max(0, (uiOverlay.selectedLevelIndex ?? 0) - 1);
+      uiOverlay.selectedLevelIndex = newIdx;
+      return;
+    }
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+      const idx = uiOverlay.selectedLevelIndex ?? 0;
+      uiOverlay.resolve?.(levels[idx] ?? null);
+      uiOverlay = { kind: 'none' };
+      return;
+    }
+    if (e.code === 'Escape') { uiOverlay.resolve?.(null); uiOverlay = { kind: 'none' }; return; }
   }
 }
 // Use capture phase so we intercept before other global handlers
@@ -627,6 +632,35 @@ function handleOverlayMouseDown(e: MouseEvent) {
           return;
         }
       }
+      if (uiOverlay.kind === 'loadLevels') {
+        if (hs.kind === 'btn') {
+          const action = hs.action || '';
+          if (action.startsWith('filter_')) {
+            const f = action.replace('filter_', '') as any;
+            uiOverlay.loadFilter = f;
+            // Reset scrolling and selection when filter changes
+            uiOverlay.scrollOffset = 0;
+            uiOverlay.selectedLevelIndex = 0;
+            return;
+          }
+          if (action === 'load') {
+            const all = uiOverlay.loadLevels ?? [];
+            const idx = uiOverlay.selectedLevelIndex ?? 0;
+            uiOverlay.resolve?.(all[idx] ?? null);
+            uiOverlay = { kind: 'none' };
+            return;
+          }
+          if (action === 'cancel') {
+            uiOverlay.resolve?.(null);
+            uiOverlay = { kind: 'none' };
+            return;
+          }
+        }
+        if (hs.kind === 'levelItem' && typeof hs.index === 'number') {
+          uiOverlay.selectedLevelIndex = hs.index;
+          return;
+        }
+      }
       // Drag start (title bar)
       if (hs.kind === 'drag') {
         uiOverlay.dragActive = true;
@@ -640,7 +674,7 @@ function handleOverlayMouseDown(e: MouseEvent) {
     }
   }
 }
-canvas.addEventListener('mousedown', handleOverlayMouseDown, { capture: true });
+canvas.addEventListener('mousemove', handleOverlayMouseMove, { capture: true });
 
 function handleOverlayMouseMove(e: MouseEvent) {
   if (!isOverlayActive()) return;
@@ -707,7 +741,7 @@ function handleOverlayMouseMove(e: MouseEvent) {
     }
   }
 }
-canvas.addEventListener('mousemove', handleOverlayMouseMove, { capture: true });
+
 
 function handleOverlayMouseUp(e: MouseEvent) {
   if (!isOverlayActive()) return;
@@ -743,17 +777,13 @@ function handleOverlayMouseUp(e: MouseEvent) {
         // Reorder level IDs and titles
         const levelIds = [...courseData.levelIds];
         const levelTitles = [...courseData.levelTitles];
-        
         const [movedId] = levelIds.splice(from, 1);
         const [movedTitle] = levelTitles.splice(from, 1);
-        
         const insertIndex = to > from ? to - 1 : to;
         levelIds.splice(insertIndex, 0, movedId);
         levelTitles.splice(insertIndex, 0, movedTitle);
-        
         courseData.levelIds = levelIds;
         courseData.levelTitles = levelTitles;
-        
         // Update selected index to follow the moved item
         uiOverlay.selectedLevelIndex = insertIndex;
       }
@@ -1140,45 +1170,49 @@ function validateLevelSchema(data: any): { valid: boolean; errors: string[] } {
   return { valid: errors.length === 0, errors };
 }
 
-
-function applyLevelToGlobals(parsed: Level): void {
-  // Apply to globals for rendering
-  levelCanvas = { width: parsed.canvas?.width ?? WIDTH, height: parsed.canvas?.height ?? HEIGHT };
-  walls = parsed.walls ?? [];
-  sands = parsed.sand ?? [];
-  sandsPoly = (parsed as any).sandsPoly || (parsed.sandPoly ?? []);
-  waters = parsed.water ?? [];
-  watersPoly = (parsed as any).watersPoly || (parsed.waterPoly ?? []);
-  decorations = parsed.decorations ?? [];
-  hills = parsed.hills ?? [];
-  bridges = parsed.bridges ?? [];
-  posts = parsed.posts ?? [];
-  polyWalls = parsed.wallsPoly ?? [];
-  ball.x = parsed.tee.x; ball.y = parsed.tee.y; ball.vx = 0; ball.vy = 0; ball.moving = false;
-  hole.x = parsed.cup.x; hole.y = parsed.cup.y; (hole as any).r = parsed.cup.r;
+// Load levels from Firebase for Load Levels overlay
+async function loadLevelsFromFirebase(): Promise<Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>> {
+  if (!firebaseReady) {
+    console.warn('Firebase not ready; cannot load levels from Firebase');
+    return [];
+  }
+  
+  try {
+    // Load levels from Firebase
+    const levels = await firebaseManager.levels.getAllLevels(undefined);
+    
+    // Convert Firebase levels to Load Levels format
+    const levelList: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }> = levels.map(level => ({
+      id: level.name,
+      title: level.title,
+      author: level.author,
+      source: 'cloud',
+      data: adaptFirebaseLevelToMain(level.data),
+      lastModified: level.lastModified
+    }));
+    
+    return levelList;
+  } catch (error) {
+    console.error('Failed to load levels from Firebase:', error);
+    return [];
+  }
 }
 
-function canModifyLevel(level: Level): boolean {
-  const authorId = (level as any)?.meta?.authorId;
-  const isOwner = authorId && authorId === getUserId();
-  const isAdmin = userProfile.role === 'admin';
-  return !!(isOwner || isAdmin);
+// Show Load Levels overlay
+function showUiLoadLevels(levels: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>): Promise<any> {
+  return new Promise((resolve) => {
+    uiOverlay = {
+      kind: 'loadLevels',
+      title: 'Load Levels',
+      loadLevels: levels,
+      loadFilter: 'all',
+      selectedLevelIndex: 0,
+      resolve
+    };
+  });
 }
 
-
-
-
-
-
-// Deprecated: legacy cross-id level migration is no longer supported
-async function migrateLevelsToNewUserId(_oldUserId: string, _newUserId: string): Promise<void> {
-  // No-op
-}
-
-// Deprecated: legacy single-slot editor level migration
-function migrateSingleSlotIfNeeded(): void {
-  // No-op - legacy migration removed
-}
+// (removed accidental LevelEditorEnv type/init block)
 
 // Users Admin UI hotspots (rebuilt every frame while in users screen)
 type UiHotspot = {
@@ -2825,7 +2859,6 @@ canvas.addEventListener('mousedown', (e) => {
               if (state.hole) { hole.x = state.hole.x; hole.y = state.hole.y; if (state.hole.r !== undefined) (hole as any).r = state.hole.r; }
             },
             getUserId,
-            migrateSingleSlotIfNeeded,
             exitToMenu: () => { try { levelEditor.reset(); } catch {} gameState = 'menu'; },
             testLevel: testLevelFromEditor,
             getUserName: () => { const n = (userProfile?.name || '').trim(); return n || getUserId(); },
@@ -3014,6 +3047,7 @@ canvas.addEventListener('mousedown', (e) => {
         const res = await showUiDnDList(title, items as any);
         return res ? res.map(it => ({ label: it.label, value: (it as any).value })) : null;
       },
+      showLoadLevels: (levels: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>) => showUiLoadLevels(levels),
       showCourseEditor: (courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] }) => showUiCourseEditor(courseData),
       showUiCourseCreator: (courseList: Array<{ id: string; title: string; levelIds: string[]; levelTitles: string[] }>) => showUiCourseCreator(courseList),
       getGlobalState: () => ({
@@ -3051,7 +3085,6 @@ canvas.addEventListener('mousedown', (e) => {
         if (state.hole) { hole.x = state.hole.x; hole.y = state.hole.y; if (state.hole.r !== undefined) (hole as any).r = state.hole.r; }
       },
       getUserId,
-      migrateSingleSlotIfNeeded,
       exitToMenu: () => { try { levelEditor.reset(); } catch {} gameState = 'menu'; },
       testLevel: testLevelFromEditor,
       getUserName: () => ((userProfile?.name ?? getUserId()) + ''),
@@ -3520,7 +3553,6 @@ canvas.addEventListener('mousemove', (e) => {
         if (state.hole) { hole.x = state.hole.x; hole.y = state.hole.y; if (state.hole.r !== undefined) (hole as any).r = state.hole.r; }
       },
       getUserId,
-      migrateSingleSlotIfNeeded,
       exitToMenu: () => { try { levelEditor.reset(); } catch {} gameState = 'menu'; },
       testLevel: testLevelFromEditor,
       getUserName: () => ((userProfile?.name ?? getUserId()) + ''),
@@ -3717,7 +3749,6 @@ canvas.addEventListener('mouseup', (e) => {
         if (state.hole) { hole.x = state.hole.x; hole.y = state.hole.y; if (state.hole.r !== undefined) (hole as any).r = state.hole.r; }
       },
       getUserId,
-      migrateSingleSlotIfNeeded,
       exitToMenu: () => { gameState = 'menu'; },
       testLevel: testLevelFromEditor,
       getUserName: () => ((userProfile?.name ?? getUserId()) + ''),
@@ -3891,6 +3922,7 @@ function handleLevelEditorKeys(e: KeyboardEvent) {
       const res = await showUiDnDList(title, items as any);
       return res ? res.map(it => ({ label: it.label, value: (it as any).value })) : null;
     },
+    showLoadLevels: (levels: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>) => showUiLoadLevels(levels),
     showCourseEditor: (courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] }) => showUiCourseEditor(courseData),
     showUiCourseCreator: (courseList: Array<{ id: string; title: string; levelIds: string[]; levelTitles: string[] }>) => showUiCourseCreator(courseList),
     getGlobalState: () => ({
@@ -3928,7 +3960,6 @@ function handleLevelEditorKeys(e: KeyboardEvent) {
       if (state.hole) { hole.x = state.hole.x; hole.y = state.hole.y; if (state.hole.r !== undefined) (hole as any).r = state.hole.r; }
     },
     getUserId,
-    migrateSingleSlotIfNeeded,
     exitToMenu: () => { gameState = 'menu'; },
     testLevel: testLevelFromEditor,
     getUserName: () => ((userProfile?.name ?? getUserId()) + ''),
@@ -4757,7 +4788,6 @@ function draw() {
         if (state.hole) { hole.x = state.hole.x; hole.y = state.hole.y; if (state.hole.r !== undefined) (hole as any).r = state.hole.r; }
       },
       getUserId,
-      migrateSingleSlotIfNeeded,
       exitToMenu: () => { gameState = 'menu'; },
       testLevel: testLevelFromEditor,
       getUserName: () => ((userProfile?.name ?? getUserId()) + ''),
@@ -6546,6 +6576,7 @@ function renderGlobalOverlays(): void {
     const standardH = Math.min(600, HEIGHT - 120);
     if (uiOverlay.kind === 'prompt') { panelW = standardW; panelH = standardH; }
     if (uiOverlay.kind === 'list') { panelW = standardW; panelH = standardH; }
+    if (uiOverlay.kind === 'loadLevels') { panelW = standardW; panelH = standardH; }
     if (uiOverlay.kind === 'dndList') {
       const items = uiOverlay.listItems ?? [];
       const visible = Math.min(items.length, 10);
@@ -6770,6 +6801,99 @@ function renderGlobalOverlays(): void {
       ctx.fillStyle = '#ffffff'; ctx.font = '15px system-ui, sans-serif';
       ctx.fillText('Cancel', cxBtn + bw / 2, by + bh / 2 + 0.5);
       overlayHotspots.push({ kind: 'btn', index: 1, x: cxBtn, y: by, w: bw, h: bh });
+    } else if (uiOverlay.kind === 'loadLevels') {
+      // Level Load overlay: filters + scrollable list + Load/Cancel
+      const all = uiOverlay.loadLevels ?? [];
+      const padSm = 10;
+      // Filters row
+      const filters: Array<{ id: 'all'|'built-in'|'user'|'local'; label: string }>= [
+        { id: 'all', label: 'All' },
+        { id: 'built-in', label: 'Bundled' },
+        { id: 'user', label: 'User' },
+        { id: 'local', label: 'Local' }
+      ];
+      const active = uiOverlay.loadFilter || 'all';
+      let fx = px + pad;
+      const fy = cy;
+      const fH = 28;
+      for (const f of filters) {
+        const fw = 100;
+        ctx.fillStyle = (active === f.id) ? 'rgba(100,150,200,0.8)' : 'rgba(255,255,255,0.1)';
+        ctx.fillRect(fx, fy, fw, fH);
+        ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(fx + 0.5, fy + 0.5, fw - 1, fH - 1);
+        ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '14px system-ui, sans-serif';
+        ctx.fillText(f.label, fx + fw/2, fy + fH/2 + 0.5);
+        overlayHotspots.push({ kind: 'btn', action: `filter_${f.id}`, x: fx, y: fy, w: fw, h: fH });
+        fx += fw + padSm;
+      }
+      cy += fH + 12;
+
+      // Filter items
+      const filtered = all.filter((it) => {
+        if (active === 'all') return true;
+        return it.source === active;
+      });
+
+      // Layout: list on left, details on right
+      const listW = Math.floor(panelW * 0.58);
+      const detailW = panelW - listW - pad * 3;
+      const listX = px + pad;
+      const listY = cy;
+      const rowH = 34;
+      const listH = panelH - (cy - py) - 80;
+      const maxRows = Math.max(1, Math.floor(listH / rowH));
+      const scroll = Math.max(0, Math.min(Math.max(0, filtered.length - maxRows), uiOverlay.scrollOffset ?? 0));
+      ctx.font = '14px system-ui, sans-serif';
+      for (let vi = 0; vi < Math.min(filtered.length - scroll, maxRows); vi++) {
+        const i = scroll + vi;
+        const item = filtered[i];
+        const iy = listY + vi * rowH;
+        const selected = (uiOverlay.selectedLevelIndex ?? 0) === i;
+        ctx.fillStyle = selected ? 'rgba(136, 212, 255, 0.20)' : 'rgba(255,255,255,0.06)';
+        ctx.fillRect(listX, iy, listW, rowH - 2);
+        ctx.strokeStyle = selected ? '#88d4ff' : '#666666'; ctx.lineWidth = 1; ctx.strokeRect(listX + 0.5, iy + 0.5, listW - 1, rowH - 2 - 1);
+        ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        const label = `${item.title} — ${item.author}`;
+        ctx.fillText(label, listX + 10, iy + (rowH - 2)/2 + 0.5);
+        overlayHotspots.push({ kind: 'levelItem', index: i, x: listX, y: iy, w: listW, h: rowH - 2 });
+      }
+
+      // Right-side details
+      const detX = listX + listW + pad;
+      const detY = listY;
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.fillRect(detX, detY, detailW, listH);
+      ctx.strokeStyle = '#666666'; ctx.lineWidth = 1; ctx.strokeRect(detX + 0.5, detY + 0.5, detailW - 1, listH - 1);
+      // Selected details text
+      const idx = uiOverlay.selectedLevelIndex ?? 0;
+      if (filtered[idx]) {
+        ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+        const sel = filtered[idx];
+        ctx.fillText(sel.title, detX + 10, detY + 10);
+        ctx.fillStyle = '#aaaaaa';
+        const meta2 = `by ${sel.author} • ${sel.source}${sel.lastModified ? ' • ' + new Date(sel.lastModified).toLocaleString() : ''}`;
+        ctx.fillText(meta2, detX + 10, detY + 34);
+      }
+
+      // Buttons: Load and Cancel
+      const bw = 110, bh = 30, gap = 12;
+      const by = py + panelH - pad - bh;
+      const loadX = px + panelW - pad - bw * 2 - gap;
+      const cancelX = px + panelW - pad - bw;
+      const canLoad = filtered.length > 0;
+      ctx.fillStyle = canLoad ? 'rgba(0,128,0,0.30)' : 'rgba(100,100,100,0.20)';
+      ctx.fillRect(loadX, by, bw, bh);
+      ctx.strokeStyle = canLoad ? '#008000' : '#666666'; ctx.lineWidth = 1.5; ctx.strokeRect(loadX, by, bw, bh);
+      ctx.fillStyle = canLoad ? '#ffffff' : '#999999'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '15px system-ui, sans-serif';
+      ctx.fillText('Load', loadX + bw/2, by + bh/2 + 0.5);
+      if (canLoad) overlayHotspots.push({ kind: 'btn', action: 'load', x: loadX, y: by, w: bw, h: bh });
+
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillRect(cancelX, by, bw, bh);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(cancelX, by, bw, bh);
+      ctx.fillStyle = '#ffffff'; ctx.fillText('Cancel', cancelX + bw/2, by + bh/2 + 0.5);
+      overlayHotspots.push({ kind: 'btn', action: 'cancel', x: cancelX, y: by, w: bw, h: bh });
+
     } else if (uiOverlay.kind === 'courseEditor') {
       // Course Editor UI - single screen with center-listed levels
       const courseData = uiOverlay.courseData;
@@ -7238,6 +7362,20 @@ function handleOverlayWheel(e: WheelEvent) {
     const maxVisibleRows = Math.floor(listHeight / rowHeight);
     const maxScroll = Math.max(0, totalItems - maxVisibleRows);
     uiOverlay.courseScrollOffset = Math.max(0, Math.min(maxScroll, (uiOverlay.courseScrollOffset ?? 0) + scrollDelta));
+    return;
+  }
+  if (uiOverlay.kind === 'loadLevels') {
+    try { e.preventDefault(); } catch {}
+    try { e.stopPropagation(); } catch {}
+    const scrollDelta = e.deltaY > 0 ? 1 : -1;
+    const all = uiOverlay.loadLevels ?? [];
+    // Estimate rows similar to renderer
+    const rowH = 34;
+    const listH = Math.min(600, HEIGHT - 120) - 200;
+    const maxRows = Math.max(1, Math.floor(listH / rowH));
+    const filteredLen = all.filter(it => (uiOverlay.loadFilter === 'all') ? true : it.source === uiOverlay.loadFilter).length;
+    const maxScroll = Math.max(0, filteredLen - maxRows);
+    uiOverlay.scrollOffset = Math.max(0, Math.min(maxScroll, (uiOverlay.scrollOffset ?? 0) + scrollDelta));
     return;
   }
 }

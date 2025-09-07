@@ -17,7 +17,7 @@ import {
 import firebaseLevelStore from '../firebase/FirebaseLevelStore';
 import type { LevelEntry as FirebaseLevelEntry } from '../firebase/FirebaseLevelStore';
 import firebaseCourseStore from '../firebase/FirebaseCourseStore';
-import { estimatePar, suggestCupPositions as heuristicSuggestCups } from './levelHeuristics';
+import { estimatePar, suggestCupPositions as heuristicSuggestCups, lintCupPath } from './levelHeuristics';
 
 // Local palette for the editor module (matches docs/PALETTE.md and main.ts)
 const COLORS = {
@@ -1834,6 +1834,34 @@ class LevelEditorImpl implements LevelEditor {
           env.setGlobalState(gs);
           this.suggestedCupCandidates = null;
           env.showToast(`Cup set to suggestion #${i + 1}`);
+          // Lint and offer Par Suggest immediately after setting the cup
+          try {
+            let cellSize = 20;
+            try { const g = env.getGridSize(); if (typeof g === 'number' && g > 0) cellSize = Math.max(10, Math.min(40, g)); } catch {}
+            const fair = env.fairwayRect();
+            const warnings = lintCupPath(this.editorLevelData, fair, cellSize);
+            if (warnings && warnings.length) {
+              env.showToast(warnings[0]);
+              if (warnings[1]) env.showToast(warnings[1]);
+            }
+            const parInfo = estimatePar(this.editorLevelData, fair, cellSize, {
+              baselineShotPx: 320,
+              sandPenaltyPerCell: 0.01,
+              turnPenaltyPerTurn: 0.08,
+              turnPenaltyMax: 1.5,
+              hillBump: 0.2,
+              bankWeight: 0.12,
+              bankPenaltyMax: 1.0
+            });
+            void env.showConfirm(`Suggested par is ${parInfo.suggestedPar}. Apply now?`, 'Suggest Par')
+              .then((apply) => {
+                if (apply) {
+                  this.pushUndoSnapshot('Set par');
+                  this.editorLevelData.par = parInfo.suggestedPar;
+                  env.showToast(`Par set to ${parInfo.suggestedPar}`);
+                }
+              });
+          } catch {}
           return;
         }
       }
@@ -3486,7 +3514,15 @@ class LevelEditorImpl implements LevelEditor {
     let cellSize = 20;
     try { const g = env.getGridSize(); if (typeof g === 'number' && g > 0) cellSize = Math.max(10, Math.min(40, g)); } catch {}
 
-    const { reachable, suggestedPar, pathLengthPx, notes } = estimatePar(this.editorLevelData, fair, cellSize);
+    const { reachable, suggestedPar, pathLengthPx, notes } = estimatePar(this.editorLevelData, fair, cellSize, {
+      baselineShotPx: 320,
+      sandPenaltyPerCell: 0.01,
+      turnPenaltyPerTurn: 0.08,
+      turnPenaltyMax: 1.5,
+      hillBump: 0.2,
+      bankWeight: 0.12,
+      bankPenaltyMax: 1.0
+    });
     const extra = [] as string[];
     extra.push(reachable ? 'Path: reachable' : 'Path: no path (fallback heuristic)');
     extra.push(`Path length ~${Math.round(pathLengthPx)} px`);
@@ -3511,7 +3547,8 @@ class LevelEditorImpl implements LevelEditor {
     const picks = heuristicSuggestCups(this.editorLevelData, fair, cellSize, 5, {
       edgeMargin: Math.max(20, cellSize * 2),
       minStraightnessRatio: 1.06,
-      minTurns: 0
+      minTurns: 0,
+      bankWeight: Math.max(8, Math.round(cellSize * 0.5))
     });
 
     if (!picks || picks.length === 0) {

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+- Level System • Cup placement heuristics: added optional region constraint (`regionPoly`) and corridor/bank-aware scoring that rewards paths running through narrow corridors or along banks. (`src/editor/levelHeuristics.ts`)
+- Level System • Cup path linting: introduced `lintCupPath()` to warn when a cup placement bypasses obstacles (nearly straight path with low obstacle contact) or is too close to fairway edges. Integrated into the editor flow to surface warnings via toasts after selecting a suggested cup position. (`src/editor/levelHeuristics.ts`, `src/editor/levelEditor.ts`)
+
+### Changed
+- Level Editor • Suggest Cup Positions: tuned ranking by including bank/corridor weighting; the editor passes a sensible default `bankWeight` tied to grid size. (`src/editor/levelEditor.ts`)
+
 ## v0.3.28 — 2025-09-06
 
 ### Added

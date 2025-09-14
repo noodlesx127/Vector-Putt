@@ -61,17 +61,40 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
      - Level Editor — Menus & Dialogs (must follow standard panel/button styles and typography; see `UI_Design.md`):
        - Findings: Menubar and dialogs exist but styling/spacing varies from standard panel spec. Ensure 800x600 overlay panels for modal flows, consistent header, borders `#cfd2cf`, background `rgba(0,0,0,0.85)`, padding/margins, and button hover states.
        - Tasks:
-         - [ ] File menu parity: New, Load, Save, Save As, Delete, Back/Exit — confirm labels, ordering, and keyboard shortcuts
-         - [ ] Load Level dialog: standard panel layout with scrollable list, search/filter, confirm/cancel buttons
-          - Updated to use standard 800×600 panel, blue-themed panel background/border, centered title, 40px row height, and standard 28px buttons per `UI_Design.md`. (`src/main.ts`)
-          - Active/inactive filter styling aligned to design (blue highlight vs subtle). Click handling fixed by wiring capture-phase `mousedown` listener for overlays.
-         - [ ] Save flow: inline Save feedback (toast) and error handling per overlay guidelines
-         - [ ] Save As dialog: name input, validation messages, confirm/cancel, consistent spacing
-         - [ ] Metadata editor dialog: Title and Author fields with validation and standard form styling
-          - Now uses standard 800×600 panel sizing to prevent cramped layout and overlapping buttons; form rows spaced consistently. (`src/main.ts`)
-         - [ ] Suggest Par overlay: description text and action buttons styled to spec
-         - [ ] Delete confirmation dialog: warning color accents, explicit level name, confirm/cancel alignment
-  
+         - [x] File menu parity: New, Load, Save, Save As, Delete, Back/Exit — labels, ordering, and shortcuts verified. (`src/editor/levelEditor.ts` EDITOR_MENUS)
+         - [x] Load Level dialog: standard panel layout with scrollable list, filters, confirm/cancel buttons
+          - Uses standard 800×600 panel, blue-themed background/border, centered title, 40px row height, and 28px buttons per `UI_Design.md`. (`src/main.ts`)
+          - Active/inactive filter styling aligned to design; click handling fixed via capture-phase input for overlays.
+          - Added search box (title/author) with keyboard focus and inline hint; hover visuals for filters, rows, and Load/Cancel. (`src/main.ts`)
+         - [x] Save flow: inline Save feedback (toasts) and clear error handling; prompt primary button shows “Save” when context is Save/Save As/Metadata. (`src/main.ts`)
+         - [x] Save As dialog: title input with validation (non-empty, ≤120 chars), consistent spacing, Save/Cancel buttons. (`src/editor/levelEditor.ts`)
+         - [x] Metadata editor dialog: Title/Author validation and panel form styling; persists immediately via Save. (`src/main.ts`, `src/editor/levelEditor.ts`)
+         - [x] Suggest Par overlay: description text and actions use standard confirm panel styling. (`src/main.ts`)
+         - [x] Delete confirmation dialog: danger styling (red OK labeled “Delete”), explicit level name, confirm/cancel alignment. (`src/main.ts`)
+  - UI Consistency — Audit findings (2025-09-14)
+    - Users Admin (`gameState === 'users'` in `src/main.ts`)
+      - [x] Right-pane action buttons hover states (Promote/Demote, Enable/Disable, Delete) with standard hover fill and border
+      - [x] List row hover brighten (selection remains blue-highlighted)
+      - [ ] Search box focused typing (currently uses prompt on click); consider inline focused input
+    - Admin Menu (`gameState === 'adminMenu'`)
+      - [ ] Hover highlight for large menu buttons (Level Management, User Management, Game Settings)
+      - [ ] Optional: align title font size to 28px to match other panels (currently bold 32px)
+    - Level Management (Admin) (`gameState === 'levelManagement'`)
+      - [x] Hover states for list rows and Delete buttons
+      - [x] Unify list panel border color to `#cfd2cf` (was `#666`)
+    - Course Select (`gameState === 'course'`)
+      - [x] Unify Back button styling to standard border color `#cfd2cf` and add hover
+      - [x] Add hover states for bottom-row buttons (User Made Levels, Course Creator, Back)
+      - [x] Add hover state for right-pane “Play Course” button
+    - User Made Levels (`gameState === 'userLevels'`)
+      - [x] List row hover visuals (selection remains blue-highlighted)
+      - [ ] Ensure search/filter bar hover/focus parity with Load Levels overlay (current is acceptable but could match exactly)
+    - Overlays — DnD List (`uiOverlay.kind === 'dndList'`)
+      - [ ] Add row hover visuals and grabbed/target slot indicators for better affordance
+    - Global polish
+      - [ ] Sweep to ensure all panel borders use consistent stroke width (prefer 1.5) and color `#cfd2cf`
+      - [ ] Verify all primary/secondary buttons follow the standard sizes (28–32px) with hover fills per `UI_Design.md`
+
 - **Level System**
   - [x] Suggest Par: integrate grid/A* path-based heuristic
     - Implemented coarse grid build over fairway, 8-connected A* with octile heuristic, terrain costs (sand higher), diagonal corner-cut prevention, turns and sand penalties, and hill complexity bump. Falls back to distance/obstacles if no path. Wired to File → Suggest Par with a detailed confirm message. (`src/editor/levelHeuristics.ts`, `src/editor/levelEditor.ts`)

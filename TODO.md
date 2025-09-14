@@ -262,6 +262,12 @@ Notes:
 - [x] HUD: Menu button toggles Pause (replaces HUD Replay)
 - [x] Main Menu: simple vector graphic (flag, hole, ball, putter)
 
+ - [x] Overlay consistency per `UI_Design.md`
+   - [x] Prompt primary button shows “Save” for Save/Save As/Metadata
+   - [x] Delete confirmation uses danger styling with red “Delete” button
+   - [x] Save As: title validation (non-empty, ≤120 chars) and spacing
+   - [x] Metadata dialog: Title/Author validation; persists immediately
+
 ## Audio
 - [ ] SFX list and placeholders
   - [x] Ball hit (putt)

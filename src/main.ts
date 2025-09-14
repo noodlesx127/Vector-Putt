@@ -158,6 +158,12 @@ type UiOverlayState = {
   // Load Levels overlay state
   loadLevels?: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>; 
   loadFilter?: 'all' | 'built-in' | 'user' | 'local';
+  loadSearch?: string;
+  loadSearchFocus?: boolean;
+  hoverFilter?: 'all' | 'built-in' | 'user' | 'local' | null;
+  hoverLevelIndex?: number | null;
+  hoverBtn?: 'load' | 'cancel' | null;
+  hoverSearch?: boolean;
   // Resolution
   resolve?: (value: any) => void;
   reject?: (reason?: any) => void;
@@ -334,6 +340,21 @@ function handleOverlayKey(e: KeyboardEvent) {
       else if (f === 'tags') uiOverlay.metaTags = rm1(uiOverlay.metaTags);
       return;
     }
+  } else if (k === 'loadLevels') {
+    // Keyboard handling for Load Levels overlay
+    const items = uiOverlay.loadLevels ?? [];
+    if (uiOverlay.loadSearchFocus) {
+      if (e.code === 'Escape') { uiOverlay.loadSearchFocus = false; return; }
+      if (e.code === 'Enter' || e.code === 'NumpadEnter') { /* keep focus but do not close */ return; }
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) { uiOverlay.loadSearch = (uiOverlay.loadSearch || '') + e.key; return; }
+      if (e.code === 'Backspace') { const t = uiOverlay.loadSearch || ''; uiOverlay.loadSearch = t.slice(0, Math.max(0, t.length - 1)); return; }
+      return;
+    }
+    // Arrow navigation and quick load
+    if (e.code === 'ArrowDown') { uiOverlay.selectedLevelIndex = Math.min(items.length - 1, (uiOverlay.selectedLevelIndex ?? 0) + 1); return; }
+    if (e.code === 'ArrowUp') { uiOverlay.selectedLevelIndex = Math.max(0, (uiOverlay.selectedLevelIndex ?? 0) - 1); return; }
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') { const idx = uiOverlay.selectedLevelIndex ?? 0; uiOverlay.resolve?.(items[idx] ?? null); uiOverlay = { kind: 'none' }; return; }
+    if (e.code === 'Escape') { uiOverlay.resolve?.(null); uiOverlay = { kind: 'none' }; return; }
   } else if (k === 'courseEditor') {
     if (uiOverlay.courseEditingTitle) {
       if (e.code === 'Enter' || e.code === 'NumpadEnter') {
@@ -441,25 +462,6 @@ function handleOverlayKey(e: KeyboardEvent) {
       return;
     }
     if (e.code === 'Escape') { uiOverlay.resolve?.(null); uiOverlay = { kind: 'none' }; return; }
-  } else if (k === 'loadLevels') {
-    const levels = uiOverlay.loadLevels ?? [];
-    if (e.code === 'ArrowDown') {
-      const newIdx = Math.min(levels.length - 1, (uiOverlay.selectedLevelIndex ?? 0) + 1);
-      uiOverlay.selectedLevelIndex = newIdx;
-      return;
-    }
-    if (e.code === 'ArrowUp') {
-      const newIdx = Math.max(0, (uiOverlay.selectedLevelIndex ?? 0) - 1);
-      uiOverlay.selectedLevelIndex = newIdx;
-      return;
-    }
-    if (e.code === 'Enter' || e.code === 'NumpadEnter') {
-      const idx = uiOverlay.selectedLevelIndex ?? 0;
-      uiOverlay.resolve?.(levels[idx] ?? null);
-      uiOverlay = { kind: 'none' };
-      return;
-    }
-    if (e.code === 'Escape') { uiOverlay.resolve?.(null); uiOverlay = { kind: 'none' }; return; }
   }
 }
 // Use capture phase so we intercept before other global handlers
@@ -478,7 +480,7 @@ window.addEventListener('keypress', swallowOverlayKey as any, true);
 document.addEventListener('keypress', swallowOverlayKey as any, true);
 try { canvas.addEventListener('keypress', swallowOverlayKey as any, true); } catch {}
 
-type OverlayHotspot = { kind: 'btn' | 'listItem' | 'input' | 'drag' | 'levelItem'; index?: number; action?: string; x: number; y: number; w: number; h: number };
+type OverlayHotspot = { kind: 'btn' | 'listItem' | 'input' | 'drag' | 'levelItem'; index?: number; action?: string; id?: string; x: number; y: number; w: number; h: number };
 let overlayHotspots: OverlayHotspot[] = [];
 
 // Course Select hotspots
@@ -657,6 +659,13 @@ function handleOverlayMouseDown(e: MouseEvent) {
         }
       }
       if (uiOverlay.kind === 'loadLevels') {
+        // Click into search field
+        if (hs.kind === 'input' && hs.id === 'loadSearch') {
+          uiOverlay.loadSearchFocus = true;
+          return;
+        }
+        // Clicking elsewhere clears search focus
+        uiOverlay.loadSearchFocus = false;
         if (hs.kind === 'btn') {
           const action = hs.action || '';
           if (action.startsWith('filter_')) {
@@ -1233,6 +1242,12 @@ function showUiLoadLevels(levels: Array<{ id: string; title: string; author: str
       loadLevels: levels,
       loadFilter: 'all',
       selectedLevelIndex: 0,
+      loadSearch: '',
+      loadSearchFocus: false,
+      hoverFilter: null,
+      hoverLevelIndex: null,
+      hoverBtn: null,
+      hoverSearch: false,
       resolve
     };
   });
@@ -2357,6 +2372,16 @@ const CLICK_SWALLOW_MS = 180; // shorten delay for snappier feel
 
 let previousGameState: 'menu' | 'course' | 'options' | 'users' | 'changelog' | 'loading' | 'play' | 'sunk' | 'summary' | 'levelEditor' | 'adminMenu' | 'levelManagement' = 'menu';
 
+// Hover state trackers for various panels
+let hoverUsersBtnKind: UsersHotspot['kind'] | null = null;
+let hoverUsersListIndex: number | null = null;
+let hoverUsersSearch = false;
+let hoverAdminKind: AdminMenuHotspot['kind'] | null = null;
+let hoverLevelMgmtRowIndex: number | null = null;
+let hoverLevelMgmtDeleteIndex: number | null = null;
+let hoverCourseAction: string | null = null;
+let hoverUserLevelsRowIndex: number | null = null;
+
 // Changelog screen state and helpers
 let changelogText: string | null = (typeof CHANGELOG_RAW === 'string' && CHANGELOG_RAW.trim().length > 0) ? CHANGELOG_RAW : null;
 let changelogLines: string[] = [];
@@ -2922,7 +2947,7 @@ canvas.addEventListener('mousedown', (e) => {
     }
   }
   // Handle Course Select interactions
-  if (gameState === 'course') {
+  if ((gameState as any) === 'course') {
     // Check for course item clicks
     for (const hs of courseSelectHotspots) {
       if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
@@ -3625,10 +3650,12 @@ canvas.addEventListener('mousemove', (e) => {
     // Inspect current hotspots to drive hover feedback (buttons, list, filters, search)
     let overAny = false;
     let overBtn: string | null = null;
+    hoverUserLevelsRowIndex = null;
     for (const hs of userLevelsHotspots) {
       if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
         overAny = true;
         if (hs.kind === 'btn' && hs.action) overBtn = hs.action;
+        if (hs.kind === 'levelItem' && typeof hs.index === 'number') hoverUserLevelsRowIndex = hs.index as any;
         break;
       }
     }
@@ -3663,10 +3690,17 @@ canvas.addEventListener('mousemove', (e) => {
     return;
   }
   if (gameState === 'users') {
-    // Pointer feedback based on hotspots
+    // Pointer feedback based on hotspots with hover state tracking
     let over = false;
+    hoverUsersBtnKind = null; hoverUsersListIndex = null; hoverUsersSearch = false;
     for (const hs of usersUiHotspots) {
-      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) { over = true; break; }
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
+        over = true;
+        if (hs.kind === 'listItem' && typeof hs.index === 'number') hoverUsersListIndex = hs.index;
+        if (hs.kind === 'search') hoverUsersSearch = true;
+        if (hs.kind === 'promote' || hs.kind === 'demote' || hs.kind === 'enable' || hs.kind === 'disable' || hs.kind === 'remove') hoverUsersBtnKind = hs.kind;
+        break;
+      }
     }
     canvas.style.cursor = over ? 'pointer' : 'default';
     return;
@@ -3674,9 +3708,9 @@ canvas.addEventListener('mousemove', (e) => {
   
   // Admin Menu hover feedback
   if (gameState === 'adminMenu') {
-    let over = false;
+    let over = false; hoverAdminKind = null;
     for (const hs of adminMenuHotspots) {
-      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) { over = true; break; }
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) { over = true; hoverAdminKind = hs.kind; break; }
     }
     canvas.style.cursor = over ? 'pointer' : 'default';
     return;
@@ -3692,9 +3726,29 @@ canvas.addEventListener('mousemove', (e) => {
   
   // Level Management hover feedback
   if (gameState === 'levelManagement') {
-    let over = false;
+    let over = false; hoverLevelMgmtRowIndex = null; hoverLevelMgmtDeleteIndex = null;
     for (const hs of levelManagementHotspots) {
-      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) { over = true; break; }
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
+        over = true;
+        if (hs.kind === 'levelItem' && hs.levelId) {
+          const idx = levelManagementState.levels.findIndex(l => l.id === hs.levelId);
+          if (idx >= 0) hoverLevelMgmtRowIndex = idx;
+        } else if (hs.kind === 'delete' && hs.levelId) {
+          const idx = levelManagementState.levels.findIndex(l => l.id === hs.levelId);
+          if (idx >= 0) hoverLevelMgmtDeleteIndex = idx;
+        }
+        break;
+      }
+    }
+    canvas.style.cursor = over ? 'pointer' : 'default';
+    return;
+  }
+
+  // Course Select hover feedback
+  if ((gameState as any) === 'course') {
+    let over = false; hoverCourseAction = null;
+    for (const hs of courseSelectHotspots) {
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) { over = true; hoverCourseAction = hs.action || null; break; }
     }
     canvas.style.cursor = over ? 'pointer' : 'default';
     return;
@@ -5105,7 +5159,7 @@ function draw() {
     // List background
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
     ctx.fillRect(listX, listY, listW, listH);
-    ctx.strokeStyle = '#666';
+    ctx.strokeStyle = '#cfd2cf';
     ctx.lineWidth = 1;
     ctx.strokeRect(listX, listY, listW, listH);
     
@@ -5115,9 +5169,9 @@ function draw() {
       const level = levelManagementState.levels[levelIndex];
       const itemY = listY + i * (itemH + itemGap);
       const isSelected = levelIndex === levelManagementState.selectedLevelIndex;
-      
+      const isHoverRow = hoverLevelMgmtRowIndex === levelIndex;
       // Item background
-      ctx.fillStyle = isSelected ? 'rgba(100,150,255,0.3)' : 'rgba(255,255,255,0.05)';
+      ctx.fillStyle = isSelected ? 'rgba(100,150,255,0.3)' : (isHoverRow ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.05)');
       ctx.fillRect(listX + 2, itemY, listW - 4, itemH);
       
       // Level info
@@ -5134,9 +5188,10 @@ function draw() {
       // Delete button
       const delBtnW = 60, delBtnH = 24;
       const delBtnX = listX + listW - delBtnW - 10, delBtnY = itemY + 13;
-      ctx.fillStyle = 'rgba(255,100,100,0.8)';
+      const delHover = hoverLevelMgmtDeleteIndex === levelIndex;
+      ctx.fillStyle = delHover ? 'rgba(255,100,100,0.95)' : 'rgba(255,100,100,0.8)';
       ctx.fillRect(delBtnX, delBtnY, delBtnW, delBtnH);
-      ctx.strokeStyle = '#ff6666';
+      ctx.strokeStyle = delHover ? '#ff8080' : '#ff6666';
       ctx.lineWidth = 1;
       ctx.strokeRect(delBtnX, delBtnY, delBtnW, delBtnH);
       ctx.fillStyle = '#ffffff';
@@ -5223,7 +5278,7 @@ function draw() {
     const searchX = px + panelW - pad - searchW;
     const searchY = py + pad;
     ctx.lineWidth = 1.5;
-    ctx.strokeStyle = '#cfd2cf';
+    ctx.strokeStyle = hoverUsersSearch ? '#ffffff' : '#cfd2cf';
     ctx.fillStyle = 'rgba(0,0,0,0.15)';
     ctx.fillRect(searchX, searchY, searchW, searchH);
     ctx.strokeRect(searchX, searchY, searchW, searchH);
@@ -5271,7 +5326,8 @@ function draw() {
       const u = filtered[i];
       const y = listY + (i - start) * rowH;
       const isSel = i === usersState.selectedIndex;
-      ctx.fillStyle = isSel ? 'rgba(100,150,200,0.30)' : 'rgba(255,255,255,0.04)';
+      const isHover = (hoverUsersListIndex === i);
+      ctx.fillStyle = isSel ? 'rgba(100,150,200,0.30)' : (isHover ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.04)');
       ctx.fillRect(listX + 1, y + 1, listW - 2, rowH - 2);
       // name
       ctx.fillStyle = '#ffffff';
@@ -5335,7 +5391,8 @@ function draw() {
         const col = i % cols;
         const x = rightX + innerPad + col * (aW + gap);
         const y = aY + row * (aH + gap);
-        ctx.fillStyle = 'rgba(255,255,255,0.10)';
+        const isHover = hoverUsersBtnKind === b.kind;
+        ctx.fillStyle = isHover ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.10)';
         ctx.fillRect(x, y, aW, aH);
         ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(x, y, aW, aH);
         ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = font;
@@ -5501,7 +5558,8 @@ function draw() {
       }
       // Action button: Play Course
       const btnW = 140, btnH = 36; const btnY = rightY + rightH - btnH - 12; const btnX = rightX + 12;
-      ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(btnX, btnY, btnW, btnH);
+      const hoverPlayCourse = hoverCourseAction === 'playSelectedCourse';
+      ctx.fillStyle = hoverPlayCourse ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.10)'; ctx.fillRect(btnX, btnY, btnW, btnH);
       ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(btnX, btnY, btnW, btnH);
       ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '16px system-ui, sans-serif';
       ctx.fillText('Play Course', btnX + btnW/2, btnY + btnH/2 + 0.5);
@@ -5518,10 +5576,10 @@ function draw() {
     // User Made Levels button (bottom right)
     const userLevelsBtnW = 140;
     const userLevelsX = px + panelW - pad - userLevelsBtnW;
-    
-    ctx.fillStyle = 'rgba(33, 150, 243, 0.3)';
+    const hoverUL = hoverCourseAction === 'userLevels';
+    ctx.fillStyle = hoverUL ? 'rgba(33, 150, 243, 0.40)' : 'rgba(33, 150, 243, 0.30)';
     ctx.fillRect(userLevelsX, buttonY, userLevelsBtnW, buttonH);
-    ctx.strokeStyle = '#2196f3';
+    ctx.strokeStyle = hoverUL ? '#4aa3f5' : '#2196f3';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(userLevelsX + 0.5, buttonY + 0.5, userLevelsBtnW - 1, buttonH - 1);
     ctx.fillStyle = '#ffffff';
@@ -5537,9 +5595,10 @@ function draw() {
       const creatorBtnW = 120;
       const creatorX = backX - creatorBtnW;
       
-      ctx.fillStyle = 'rgba(255, 152, 0, 0.3)';
+      const hoverCC = hoverCourseAction === 'courseCreator';
+      ctx.fillStyle = hoverCC ? 'rgba(255, 152, 0, 0.40)' : 'rgba(255, 152, 0, 0.30)';
       ctx.fillRect(creatorX, buttonY, creatorBtnW, buttonH);
-      ctx.strokeStyle = '#ff9800';
+      ctx.strokeStyle = hoverCC ? '#ffac26' : '#ff9800';
       ctx.lineWidth = 1.5;
       ctx.strokeRect(creatorX + 0.5, buttonY + 0.5, creatorBtnW - 1, buttonH - 1);
       ctx.fillStyle = '#ffffff';
@@ -5553,9 +5612,10 @@ function draw() {
     const backBtnW = 80;
     backX -= backBtnW;
     
-    ctx.fillStyle = 'rgba(128,128,128,0.3)';
+    const hoverBack = hoverCourseAction === 'back';
+    ctx.fillStyle = hoverBack ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.10)';
     ctx.fillRect(backX, buttonY, backBtnW, buttonH);
-    ctx.strokeStyle = '#808080';
+    ctx.strokeStyle = hoverBack ? '#ffffff' : '#cfd2cf';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(backX + 0.5, buttonY + 0.5, backBtnW - 1, buttonH - 1);
     ctx.fillStyle = '#ffffff';
@@ -5707,13 +5767,14 @@ function draw() {
         const level = filteredUserLevelsList[i];
         const itemY = listY + (i - startIndex) * itemH;
         const isSelected = i === selectedUserLevelIndex;
+        const isHover = hoverUserLevelsRowIndex === i;
         
         // Item background
-        ctx.fillStyle = isSelected ? 'rgba(100, 150, 200, 0.3)' : 'rgba(255, 255, 255, 0.05)';
+        ctx.fillStyle = isSelected ? 'rgba(100, 150, 200, 0.3)' : (isHover ? 'rgba(255,255,255,0.10)' : 'rgba(255, 255, 255, 0.05)');
         ctx.fillRect(panelX + 20, itemY, rowW, itemH - 2);
         
         // Item border
-        ctx.strokeStyle = isSelected ? 'rgba(100, 150, 200, 0.8)' : 'rgba(255, 255, 255, 0.1)';
+        ctx.strokeStyle = isSelected ? 'rgba(100, 150, 200, 0.8)' : (isHover ? 'rgba(255,255,255,0.2)' : 'rgba(255, 255, 255, 0.1)');
         ctx.lineWidth = 1;
         ctx.strokeRect(panelX + 20, itemY, rowW, itemH - 2);
         
@@ -6762,12 +6823,16 @@ function renderGlobalOverlays(): void {
       const by = py + panelH - pad - bh;
       const okx = px + panelW - pad - bw * 2 - gap;
       const cx = px + panelW - pad - bw;
+      // Danger styling for destructive confirms (Delete/Remove)
+      const danger = /delete|remove|permanent/i.test(String(uiOverlay.title || '')) || /delete|remove|permanent/i.test(String(uiOverlay.message || ''));
+      const okLabel = danger ? 'Delete' : 'OK';
       // OK
-      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillStyle = danger ? 'rgba(255,0,0,0.20)' : 'rgba(255,255,255,0.10)';
       ctx.fillRect(okx, by, bw, bh);
-      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(okx, by, bw, bh);
+      ctx.strokeStyle = danger ? '#ff5555' : '#cfd2cf';
+      ctx.lineWidth = 1.5; ctx.strokeRect(okx, by, bw, bh);
       ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '15px system-ui, sans-serif';
-      ctx.fillText('OK', okx + bw / 2, by + bh / 2 + 0.5);
+      ctx.fillText(okLabel, okx + bw / 2, by + bh / 2 + 0.5);
       overlayHotspots.push({ kind: 'btn', index: 0, x: okx, y: by, w: bw, h: bh });
       // Cancel
       ctx.fillStyle = 'rgba(255,255,255,0.10)';
@@ -6798,7 +6863,8 @@ function renderGlobalOverlays(): void {
       ctx.fillRect(okx, by, bw, bh);
       ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(okx, by, bw, bh);
       ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '15px system-ui, sans-serif';
-      ctx.fillText('OK', okx + bw / 2, by + bh / 2 + 0.5);
+      const okLabel = (uiOverlay as any).okLabel || ((uiOverlay.title === 'Save' || uiOverlay.title === 'Save As' || uiOverlay.title === 'Metadata') ? 'Save' : 'OK');
+      ctx.fillText(okLabel, okx + bw / 2, by + bh / 2 + 0.5);
       overlayHotspots.push({ kind: 'btn', index: 0, x: okx, y: by, w: bw, h: bh });
       ctx.fillStyle = 'rgba(255,255,255,0.10)';
       ctx.fillRect(cx, by, bw, bh);
@@ -6954,21 +7020,53 @@ function renderGlobalOverlays(): void {
       const fH = 28;
       for (const f of filters) {
         const fw = 100;
-        ctx.fillStyle = (active === f.id) ? 'rgba(100,150,200,0.8)' : 'rgba(255,255,255,0.1)';
+        const isActive = (active === f.id);
+        const isHover = (uiOverlay.hoverFilter === f.id);
+        ctx.fillStyle = isActive ? 'rgba(100,150,200,0.8)' : (isHover ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.1)');
         ctx.fillRect(fx, fy, fw, fH);
-        ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(fx + 0.5, fy + 0.5, fw - 1, fH - 1);
+        ctx.strokeStyle = isActive ? 'rgba(100,150,200,0.8)' : '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(fx + 0.5, fy + 0.5, fw - 1, fH - 1);
         ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '14px system-ui, sans-serif';
         ctx.fillText(f.label, fx + fw/2, fy + fH/2 + 0.5);
         overlayHotspots.push({ kind: 'btn', action: `filter_${f.id}`, x: fx, y: fy, w: fw, h: fH });
         fx += fw + padSm;
       }
+      // Search box on the right side of the filters row
+      const searchW = 240;
+      const searchX = px + panelW - pad - searchW;
+      const searchY = fy;
+      const searchH = fH;
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(searchX, searchY, searchW, searchH);
+      const searchFocused = !!uiOverlay.loadSearchFocus;
+      const searchHover = !!uiOverlay.hoverSearch;
+      ctx.strokeStyle = searchFocused ? '#ffffff' : (searchHover ? '#cfd2cf' : '#888888');
+      ctx.lineWidth = 1.2; ctx.strokeRect(searchX + 0.5, searchY + 0.5, searchW - 1, searchH - 1);
+      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.font = '14px system-ui, sans-serif';
+      const q = (uiOverlay.loadSearch || '').toString();
+      const placeholder = 'Search title or author…';
+      const textToShow = q.length ? q : placeholder;
+      ctx.globalAlpha = q.length ? 1.0 : 0.6;
+      ctx.fillText(textToShow, searchX + 8, searchY + searchH/2 + 0.5);
+      ctx.globalAlpha = 1.0;
+      overlayHotspots.push({ kind: 'input', id: 'loadSearch', x: searchX, y: searchY, w: searchW, h: searchH });
+      // Inline hint
+      ctx.fillStyle = '#aaaaaa';
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.fillText('Type to search • Enter to load • Esc to cancel', px + pad, fy + fH + 10);
       cy += fH + 12;
 
       // Filter items
-      const filtered = all.filter((it) => {
+      const filteredBySource = all.filter((it) => {
         if (active === 'all') return true;
         return it.source === active;
       });
+      const query = (uiOverlay.loadSearch || '').toLowerCase().trim();
+      const filtered = query ? filteredBySource.filter((it) => {
+        const t = (it.title || '').toLowerCase();
+        const a = (it.author || '').toLowerCase();
+        return t.includes(query) || a.includes(query);
+      }) : filteredBySource;
 
       // Layout: list on left, details on right
       const listW = Math.floor(panelW * 0.58);
@@ -6980,14 +7078,20 @@ function renderGlobalOverlays(): void {
       const maxRows = Math.max(1, Math.floor(listH / rowH));
       const scroll = Math.max(0, Math.min(Math.max(0, filtered.length - maxRows), uiOverlay.scrollOffset ?? 0));
       ctx.font = '16px system-ui, sans-serif';
+      // Clamp selection to available items
+      if ((uiOverlay.selectedLevelIndex ?? 0) > Math.max(0, filtered.length - 1)) {
+        uiOverlay.selectedLevelIndex = Math.max(0, filtered.length - 1);
+      }
+      const selIdx = Math.max(0, Math.min(filtered.length - 1, uiOverlay.selectedLevelIndex ?? 0));
       for (let vi = 0; vi < Math.min(filtered.length - scroll, maxRows); vi++) {
         const i = scroll + vi;
         const item = filtered[i];
         const iy = listY + vi * rowH;
-        const selected = (uiOverlay.selectedLevelIndex ?? 0) === i;
-        ctx.fillStyle = selected ? 'rgba(100,150,200,0.30)' : 'rgba(255,255,255,0.05)';
+        const selected = selIdx === i;
+        const isHoverRow = (uiOverlay.hoverLevelIndex === i);
+        ctx.fillStyle = selected ? 'rgba(100,150,200,0.30)' : (isHoverRow ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.05)');
         ctx.fillRect(listX, iy, listW, rowH - 2);
-        ctx.strokeStyle = selected ? 'rgba(100,150,200,0.8)' : 'rgba(255,255,255,0.1)';
+        ctx.strokeStyle = selected ? 'rgba(100,150,200,0.8)' : (isHoverRow ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.1)');
         ctx.lineWidth = 1;
         ctx.strokeRect(listX + 0.5, iy + 0.5, listW - 1, rowH - 2 - 1);
         ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
@@ -7019,14 +7123,16 @@ function renderGlobalOverlays(): void {
       const loadX = px + panelW - pad - bw * 2 - gap;
       const cancelX = px + panelW - pad - bw;
       const canLoad = filtered.length > 0;
-      ctx.fillStyle = canLoad ? 'rgba(100,150,200,0.80)' : 'rgba(100,100,100,0.20)';
+      const loadHover = uiOverlay.hoverBtn === 'load';
+      ctx.fillStyle = canLoad ? (loadHover ? 'rgba(120,170,220,0.95)' : 'rgba(100,150,200,0.80)') : 'rgba(100,100,100,0.20)';
       ctx.fillRect(loadX, by, bw, bh);
-      ctx.strokeStyle = canLoad ? 'rgba(100,150,200,0.80)' : '#666666'; ctx.lineWidth = 1.5; ctx.strokeRect(loadX, by, bw, bh);
+      ctx.strokeStyle = canLoad ? (loadHover ? 'rgba(120,170,220,0.95)' : 'rgba(100,150,200,0.80)') : '#666666'; ctx.lineWidth = 1.5; ctx.strokeRect(loadX, by, bw, bh);
       ctx.fillStyle = canLoad ? '#ffffff' : '#999999'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '14px system-ui, sans-serif';
       ctx.fillText('Load', loadX + bw/2, by + bh/2 + 0.5);
       if (canLoad) overlayHotspots.push({ kind: 'btn', action: 'load', x: loadX, y: by, w: bw, h: bh });
 
-      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      const cancelHover = uiOverlay.hoverBtn === 'cancel';
+      ctx.fillStyle = cancelHover ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.10)';
       ctx.fillRect(cancelX, by, bw, bh);
       ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(cancelX, by, bw, bh);
       ctx.fillStyle = '#ffffff'; ctx.font = '14px system-ui, sans-serif'; ctx.fillText('Cancel', cancelX + bw/2, by + bh/2 + 0.5);

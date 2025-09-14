@@ -3282,9 +3282,13 @@ class LevelEditorImpl implements LevelEditor {
     level.meta.modified = new Date().toISOString();
     (level.meta as any).lastModified = Date.now();
 
+    // Ask for a title and validate it
     const suggested = (level.course?.title || level.meta?.title || 'Untitled').toString().trim();
-    const title = await env.showPrompt('Level Title:', suggested, 'Save');
-    if (title === null) return;
+    const rawTitle = await env.showPrompt('Level Title:', suggested, 'Save');
+    if (rawTitle === null) return;
+    const title = String(rawTitle).trim();
+    if (!title) { env.showToast('Please enter a level title.'); return; }
+    if (title.length > 120) { env.showToast('Title too long (max 120 characters).'); return; }
 
     // Persist title in both course and meta for compatibility
     level.course = level.course || { index: 1, total: 1 };
@@ -3292,7 +3296,7 @@ class LevelEditorImpl implements LevelEditor {
     level.meta = level.meta || {};
     level.meta.title = title || 'Untitled';
 
-    // Validation before attempting to save
+    // Final validation before save
     {
       const validation = validateLevelData(level);
       if (!validation.valid) {
@@ -3552,6 +3556,8 @@ class LevelEditorImpl implements LevelEditor {
     if (description === null) return;
     const tagsInput = await env.showPrompt('Tags (comma-separated, optional):', currentTags, 'Metadata');
     if (tagsInput === null) return;
+    const tTitle = String(title).trim();
+    if (!tTitle) { env.showToast('Title cannot be empty.'); return; }
     let par = parseInt((parInput || '').trim(), 10);
     if (!Number.isFinite(par)) par = 3;
     par = Math.max(1, Math.min(20, par));

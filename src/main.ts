@@ -3768,6 +3768,10 @@ canvas.addEventListener('mousemove', (e) => {
 });
 
 canvas.addEventListener('mouseup', (e) => {
+  // Always clear options slider drag on mouse up so it doesn't stick
+  if (gameState === 'options') {
+    isOptionsVolumeDragging = false;
+  }
   if (gameState === 'changelog') {
     isChangelogDragging = false;
     return;
@@ -6853,6 +6857,17 @@ function renderGlobalOverlays(): void {
       ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.font = '14px system-ui, sans-serif';
       const txt = uiOverlay.inputText ?? '';
       ctx.fillText(txt, ix + 8, iy + ih / 2 + 0.5);
+      // Blinking caret at end of text
+      {
+        const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+        if (Math.floor(now / 500) % 2 === 0) {
+          const caretX = ix + 8 + ctx.measureText(String(txt)).width + 2;
+          const caretTop = iy + 6;
+          const caretBottom = iy + ih - 6;
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(caretX, caretTop); ctx.lineTo(caretX, caretBottom); ctx.stroke();
+        }
+      }
       overlayHotspots.push({ kind: 'input', x: ix, y: iy, w: iw, h: ih });
       // Buttons
       const bw = 110, bh = 30, gap = 12;
@@ -6984,6 +6999,17 @@ function renderGlobalOverlays(): void {
         ctx.fillText(text, ix + 8, ty + 0.5);
         overlayHotspots.push({ kind: 'input', index: i, x: ix, y: iy, w: iw, h: ih });
         if (multi) { cy += 32; }
+        // Blinking caret for focused single-line fields
+        if (!multi && uiOverlay.metaFocus === ['title','author','par','description','tags'][i]) {
+          const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+          if (Math.floor(now / 500) % 2 === 0) {
+            const caretX = ix + 8 + ctx.measureText(String(text)).width + 2;
+            const caretTop = iy + 6;
+            const caretBottom = iy + ih - 6;
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(caretX, caretTop); ctx.lineTo(caretX, caretBottom); ctx.stroke();
+          }
+        }
       }
       cy += rows * 4;
       // Buttons: Save (index 0) and Cancel (index 1)
@@ -7049,6 +7075,17 @@ function renderGlobalOverlays(): void {
       ctx.fillText(textToShow, searchX + 8, searchY + searchH/2 + 0.5);
       ctx.globalAlpha = 1.0;
       overlayHotspots.push({ kind: 'input', id: 'loadSearch', x: searchX, y: searchY, w: searchW, h: searchH });
+      // Blinking caret when search is focused
+      if (searchFocused) {
+        const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+        if (Math.floor(now / 500) % 2 === 0) {
+          const caretX = searchX + 8 + ctx.measureText(q).width + 2;
+          const caretTop = searchY + 6;
+          const caretBottom = searchY + searchH - 6;
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(caretX, caretTop); ctx.lineTo(caretX, caretBottom); ctx.stroke();
+        }
+      }
       // Inline hint
       ctx.fillStyle = '#aaaaaa';
       ctx.font = '12px system-ui, sans-serif';

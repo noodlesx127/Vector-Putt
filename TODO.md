@@ -171,11 +171,29 @@ Notes:
  - [x] Main Menu: add "Level Editor" entry to launch editor mode
   - [x] Course Select: add "User Made Levels" category; list by Level Title — Author; load+play selected
 
+  - **Diagonal Geometry Tools (from reference screenshots in `level_screenshots/`)**
+    - [ ] 45°-constrained polygon drawing mode
+      - Usable for Walls, Sand, and Water; vertices snap to grid; segments constrained to multiples of 45°; Enter to close, Esc to cancel
+      - Produces `wallsPoly` / `sandPoly` / `waterPoly` with correct outlines, fills, and physics
+    - [ ] Chamfer/Bevel rectangle action
+      - Convert selected axis-aligned rectangles (wall/water/sand) into octagonal or beveled polygons; adjustable bevel amount
+    - [ ] Angled Corridor stamp
+      - Generate two parallel 45° boundaries at a given lane width; supports inside/outside fill for sand/water variants
+    - [ ] Snapping & UX polish
+      - Shift = lock to 45°, Ctrl = free angle, Alt = miter vs bevel join toggle; snap-to-vertex/edge with guide visuals
+    - [ ] Rendering/Collision parity
+      - Ensure preview and runtime collision use the same polygon edge set; align wall outline thickness to references
+    - [ ] Menu/Shortcut wiring
+      - Objects: add `Walls45`, `Water45`, `Sand45`; Tools: `Chamfer Bevel…`, `Angled Corridor…`
+    - [ ] Tests
+      - Polygon winding/closure, 45° segment enforcement, and collision against diagonal edges; snapshot tests for render
+
 {{ ... }}
   - [x] Create/select active user; store display name and role (admin/user)
 {{ ... }}
   - [x] Admin (Super User): edit/delete any level; manage users
   - [x] Normal user: edit/delete own levels; duplicate existing levels to create user-owned copies
+{{ ... }}
  - [x] Level ownership
   - [x] Persist `meta.authorId` and `meta.authorName` in level JSON
   - [x] Show Title — Author in lists (Course Select "User Made Levels")

@@ -104,6 +104,24 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
     - Fixed `Grid Toggle` action to call `env.setShowGrid(!env.getShowGrid())` and sync local `showGrid`. Removed `Grid -` and `Grid +` menu items and their keyboard shortcuts. (`src/editor/levelEditor.ts`)
   - [x] Hill Direction Picker: support diagonals NE/NW/SE/SW in addition to N/S/E/W; clickable markers and rendering updated. (`src/editor/levelEditor.ts`)
 
+  - **Diagonal Geometry Tools — Plan (from reference screenshots in `level_screenshots/`):**
+    - [ ] Add a 45°-constrained polygon drawing mode usable for Walls, Sand, and Water
+      - Tool places vertices that snap to grid and constrain segments to multiples of 45°; Enter closes the shape; Escape cancels
+      - Creates the corresponding `wallsPoly` / `sandPoly` / `waterPoly` entries with proper outlines and physics
+    - [ ] Bevel/Chamfer action for selected rectangles (walls/water/sand)
+      - One-click convert axis-aligned rectangles into octagonal/chamfered shapes with 45° corners; adjustable bevel amount via prompt/slider
+    - [ ] Angled Corridor stamp
+      - Stamp generates two parallel 45° edges at a given width to form diagonal lanes seen in originals; supports inside/outside fill for sand/water variants
+    - [ ] Snapping/UX
+      - Shift locks to 45° increments, Ctrl enables free angle, Alt toggles miter vs bevel joins
+      - Snap to existing vertices/edges when near, with visual guides
+    - [ ] Rendering/Collision parity
+      - Ensure editor preview and runtime collision use the same polygon edge set; update outline thickness to match reference
+    - [ ] Menu wiring and shortcuts
+      - Objects menu: add `Walls45`, `Water45`, `Sand45`; Tools menu: `Chamfer Bevel…`, `Angled Corridor…`
+    - [ ] Tests
+      - Unit tests for polygon winding, closure, and collision against 45° edges; snapshot tests for render
+
 ## Next Up (Short Horizon)
 - Seeded from `TODO.md` backlog:
 

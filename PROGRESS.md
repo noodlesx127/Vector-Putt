@@ -137,11 +137,11 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
       - Implemented Tools → “Chamfer Bevel…”: converts selected rect-like walls/water/sand to beveled octagonal polygons, respecting rotation; prompts for bevel amount (px), snaps to grid when enabled, inserts into `wallsPoly`/`waterPoly`/`sandPoly` and removes originals; selection updates to new polys. (`src/editor/levelEditor.ts`)
     - [x] Angled Corridor stamp
       - Implemented Tools → “Angled Corridor…”: prompts for direction (NE/NW/SE/SW), corridor width, length, and wall thickness; creates two parallel 45° wall polygons centered at the cursor, snapped to grid and clamped to the fairway; adds to `wallsPoly` and selects the new polys. (`src/editor/levelEditor.ts` → `placeAngledCorridorStamp()`)
-    - [ ] Snapping/UX
-      - Shift locks to 45° increments, Ctrl enables free angle, Alt toggles miter vs bevel joins
-      - Snap to existing vertices/edges when near, with visual guides
-    - [ ] Rendering/Collision parity
-      - Ensure editor preview and runtime collision use the same polygon edge set; update outline thickness to match reference
+    - [x] Snapping/UX
+      - Implemented: Shift locks to 45° increments on normal polys; Ctrl enables free angle on 45° tools; Alt toggles preview lineJoin (miter/bevel) while drawing; snap-to-vertex and snap-to-edge across existing polygons with on-canvas guide visuals and preview segment. (`src/editor/levelEditor.ts`: `computePolygonSnap()`, `findNearestPolySnap()`, polygon preview render)
+    - [x] Rendering/Collision parity
+      - Runtime now renders polygon water/sand with the same outline thickness as their rect counterparts (1.5px) and continues using the same fill/stroke colors. Polygon walls render with beveled rim matching rect walls.
+      - Collision already treated each `wallsPoly` edge as a segment; water OOB and sand friction checks include polygon variants. Verified parity and adjusted only visuals for outline thickness. (`src/main.ts`)
     - [ ] Menu wiring and shortcuts
       - [x] Objects menu: add `Walls45`, `Water45`, `Sand45`
       - [x] Tools menu: `Chamfer Bevel…` and `Angled Corridor…` wired

@@ -6193,7 +6193,7 @@ function draw() {
       for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
       ctx.closePath();
       ctx.fill();
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1.5;
       ctx.strokeStyle = COLORS.waterStroke;
       ctx.stroke();
     }
@@ -6240,7 +6240,7 @@ function draw() {
       for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
       ctx.closePath();
       ctx.fill();
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1.5;
       ctx.strokeStyle = COLORS.sandStroke;
       ctx.stroke();
     }

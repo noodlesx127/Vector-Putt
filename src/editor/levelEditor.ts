@@ -234,6 +234,10 @@ class LevelEditorImpl implements LevelEditor {
 
   // Polygon creation state
   private polygonInProgress: { tool: EditorTool; points: number[] } | null = null;
+  // Polygon preview line join toggle (Alt toggles)
+  private polygonJoinBevel: boolean = false;
+  // Track last modifier keys for preview constraints
+  private lastModifiers: { shift: boolean; ctrl: boolean; alt: boolean } = { shift: false, ctrl: false, alt: false };
   
   // Polygon vertex dragging state
   private isVertexDragging: boolean = false;
@@ -283,7 +287,73 @@ class LevelEditorImpl implements LevelEditor {
     const sy = dy < 0 ? -1 : 1;
     return { x: prevX + sx * len, y: prevY + sy * len };
   }
-  
+
+  // Helper: find nearest snap to existing polygon vertices or edges
+  private findNearestPolySnap(px: number, py: number, env: EditorEnv, exclude?: { x: number; y: number } | null): { x: number; y: number; kind: 'vertex' | 'edge'; x1?: number; y1?: number; x2?: number; y2?: number } | null {
+    const gs = env.getGlobalState();
+    const threshold = 10; // px
+    let best: any = null;
+    let bestDist = Infinity;
+
+    const testPoly = (points: number[]) => {
+      for (let i = 0; i + 1 < points.length; i += 2) {
+        const vx = points[i], vy = points[i + 1];
+        if (exclude && Math.abs(vx - exclude.x) < 1e-6 && Math.abs(vy - exclude.y) < 1e-6) continue;
+        const dvx = vx - px, dvy = vy - py;
+        const dv = Math.hypot(dvx, dvy);
+        if (dv < bestDist && dv <= threshold) { bestDist = dv; best = { x: vx, y: vy, kind: 'vertex' as const }; }
+      }
+      // edges
+      for (let i = 0; i + 3 < points.length; i += 2) {
+        const x1 = points[i], y1 = points[i + 1];
+        const x2 = points[i + 2], y2 = points[i + 3];
+        const dx = x2 - x1, dy = y2 - y1;
+        const len2 = dx * dx + dy * dy;
+        if (len2 < 1e-6) continue;
+        let t = ((px - x1) * dx + (py - y1) * dy) / len2;
+        t = Math.max(0, Math.min(1, t));
+        const sx = x1 + t * dx, sy = y1 + t * dy;
+        const dist = Math.hypot(px - sx, py - sy);
+        if (dist < bestDist && dist <= threshold) { bestDist = dist; best = { x: sx, y: sy, kind: 'edge' as const, x1, y1, x2, y2 }; }
+      }
+    };
+
+    const polys: any[] = [];
+    try { if (Array.isArray((gs as any).polyWalls)) polys.push(...(gs as any).polyWalls); } catch {}
+    try { if (Array.isArray((gs as any).watersPoly)) polys.push(...(gs as any).watersPoly); } catch {}
+    try { if (Array.isArray((gs as any).sandsPoly)) polys.push(...(gs as any).sandsPoly); } catch {}
+    for (const poly of polys) {
+      if (Array.isArray(poly?.points)) testPoly(poly.points);
+    }
+    return best;
+  }
+
+  // Helper: compute constrained and snapped point for polygon tools
+  private computePolygonSnap(prev: { x: number; y: number } | null, desired: { x: number; y: number }, tool: EditorTool, modifiers: { ctrl: boolean; shift: boolean }, env: EditorEnv): { x: number; y: number; guide?: { kind: 'vertex'|'edge'; x: number; y: number; x1?: number; y1?: number; x2?: number; y2?: number } } {
+    const gridOn = (() => { try { return this.showGrid && env.getShowGrid(); } catch { return false; } })();
+    const gridSize = (() => { try { return env.getGridSize(); } catch { return this.gridSize; } })();
+    const snapGrid = (n: number) => (gridOn ? Math.round(n / gridSize) * gridSize : n);
+    let nx = snapGrid(desired.x);
+    let ny = snapGrid(desired.y);
+    if (prev) {
+      const use45 = (
+        ((tool === 'walls45' || tool === 'water45' || tool === 'sand45') && !modifiers.ctrl) ||
+        ((tool === 'wallsPoly' || tool === 'waterPoly' || tool === 'sandPoly') && modifiers.shift)
+      );
+      if (use45) {
+        const c = this.constrainTo45(prev.x, prev.y, nx, ny, gridOn, gridSize);
+        nx = c.x; ny = c.y;
+      }
+    }
+    // Snap to existing poly vertices/edges
+    const snap = this.findNearestPolySnap(nx, ny, env, prev);
+    if (snap) {
+      nx = snap.x; ny = snap.y;
+      return { x: nx, y: ny, guide: snap };
+    }
+    return { x: nx, y: ny };
+  }
+
   // Helper: snap a coordinate to nearest grid line offset by radius (for posts)
   private snapCoordEdgeAligned(n: number, grid: number, radius: number): number {
     // Generate candidates at +/- radius from surrounding grid lines and pick the nearest
@@ -1763,6 +1833,7 @@ class LevelEditorImpl implements LevelEditor {
       
       // Draw polygon outline
       ctx.beginPath();
+      ctx.lineJoin = this.polygonJoinBevel ? 'bevel' : 'miter';
       ctx.moveTo(pts[0], pts[1]);
       for (let i = 2; i < pts.length; i += 2) {
         ctx.lineTo(pts[i], pts[i + 1]);
@@ -1808,6 +1879,41 @@ class LevelEditorImpl implements LevelEditor {
         ctx.lineWidth = 1;
         ctx.stroke();
       }
+
+      // Draw preview segment from last vertex to snapped mouse point with guide visuals
+      try {
+        const lastX = pts[pts.length - 2];
+        const lastY = pts[pts.length - 1];
+        const desired = { x: this.lastMousePosition.x, y: this.lastMousePosition.y };
+        const res = this.computePolygonSnap({ x: lastX, y: lastY }, desired, tool,
+          { ctrl: this.lastModifiers.ctrl, shift: this.lastModifiers.shift }, env);
+        ctx.setLineDash([4, 3]);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#ffff66';
+        ctx.beginPath();
+        ctx.moveTo(lastX, lastY);
+        ctx.lineTo(res.x, res.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // Guide indicator
+        if (res.guide) {
+          if (res.guide.kind === 'vertex') {
+            ctx.fillStyle = '#ffff66';
+            ctx.beginPath();
+            ctx.arc(res.x, res.y, 5, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (res.guide.kind === 'edge' && res.guide.x1 !== undefined) {
+            ctx.strokeStyle = 'rgba(255,255,102,0.8)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([2, 2]);
+            ctx.beginPath();
+            ctx.moveTo(res.guide.x1!, res.guide.y1!);
+            ctx.lineTo(res.guide.x2!, res.guide.y2!);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+        }
+      } catch {}
       
       ctx.restore();
     }
@@ -2377,27 +2483,14 @@ class LevelEditorImpl implements LevelEditor {
             // Close polygon by clicking near start
             this.finishPolygon(env);
             return;
-          } else {
-            // Add vertex to current polygon
-            // For 45° tools, constrain the new segment unless Ctrl is held (free-angle)
-            let nx = px, ny = py;
-            if ((this.selectedTool === 'walls45' || this.selectedTool === 'water45' || this.selectedTool === 'sand45') && !e.ctrlKey) {
-              const lastLen = this.polygonInProgress.points.length;
-              const prevX = this.polygonInProgress.points[lastLen - 2];
-              const prevY = this.polygonInProgress.points[lastLen - 1];
-              const c = this.constrainTo45(prevX, prevY, px, py, gridOn, gridSize);
-              nx = c.x; ny = c.y;
-            } else if ((this.selectedTool === 'wallsPoly' || this.selectedTool === 'waterPoly' || this.selectedTool === 'sandPoly') && e.shiftKey) {
-              // Optional: Shift to constrain normal polys to 45°
-              const lastLen = this.polygonInProgress.points.length;
-              const prevX = this.polygonInProgress.points[lastLen - 2];
-              const prevY = this.polygonInProgress.points[lastLen - 1];
-              const c = this.constrainTo45(prevX, prevY, px, py, gridOn, gridSize);
-              nx = c.x; ny = c.y;
-            }
-            this.polygonInProgress.points.push(nx, ny);
-            return;
           }
+          // Otherwise add a new point using snapping + 45° constraint logic
+          const lastLen = this.polygonInProgress.points.length;
+          const prev = { x: this.polygonInProgress.points[lastLen - 2], y: this.polygonInProgress.points[lastLen - 1] };
+          const res = this.computePolygonSnap(prev, { x: px, y: py }, this.selectedTool,
+            { ctrl: !!e.ctrlKey, shift: !!e.shiftKey }, env);
+          this.polygonInProgress.points.push(res.x, res.y);
+          return;
         }
       }
       
@@ -2584,6 +2677,9 @@ class LevelEditorImpl implements LevelEditor {
     
     // Track mouse position for clipboard paste
     this.lastMousePosition = { x: p.x, y: p.y };
+    // Track modifier keys and preview join style
+    this.lastModifiers = { shift: !!e.shiftKey, ctrl: !!e.ctrlKey, alt: !!e.altKey };
+    if (this.polygonInProgress) this.polygonJoinBevel = !!e.altKey;
     
     const { x: fairX, y: fairY, w: fairW, h: fairH } = env.fairwayRect();
     const gridOn = (() => { try { return this.showGrid && env.getShowGrid(); } catch { return false; } })();

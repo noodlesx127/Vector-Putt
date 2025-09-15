@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Level Editor • Menus: Tools dropdown now reflects disabled state for Copy/Cut/Paste/Duplicate and Undo/Redo based on current selection/history/clipboard. (`src/editor/levelEditor.ts`)
 - Level Editor • Objects menu: added `Walls45`, `Water45`, and `Sand45` entries. (`src/editor/levelEditor.ts`)
  - Level Editor • Tools menu: added “Chamfer Bevel…” action under Editor Tools. (`src/editor/levelEditor.ts`)
+ - Level Editor • Diagonal Geometry UX: while drawing polygons, Shift locks to 45° increments on normal poly tools; Ctrl enables free-angle for the 45° tools; Alt toggles preview lineJoin (miter/bevel). Added snap-to-vertex and snap-to-edge across existing polygons with on-canvas guide visuals and a preview segment from the last vertex to the snapped point. (`src/editor/levelEditor.ts`)
 
 ## v0.3.28 — 2025-09-06
 

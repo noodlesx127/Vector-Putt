@@ -62,7 +62,7 @@ type SelectableObject =
   | { type: 'hill'; object: Slope; index: number };
 
 export type EditorTool =
-  | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'sand' | 'sandPoly' | 'hill' | 'decoration';
+  | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'walls45' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'water45' | 'sand' | 'sandPoly' | 'sand45' | 'hill' | 'decoration';
 
 export type EditorAction =
   | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'courseCreator';
@@ -256,6 +256,33 @@ class LevelEditorImpl implements LevelEditor {
   private groupRotationStartAngle: number = 0;
   private resizeHandleIndex: number | null = null;
   private dragMoveStart: { x: number; y: number } | null = null;
+  
+  // Helper: constrain a segment to 0/45/90-degree increments relative to last vertex
+  private constrainTo45(prevX: number, prevY: number, px: number, py: number, gridOn: boolean, gridSize: number): { x: number; y: number } {
+    // Start with optional grid snap
+    const snap = (n: number) => (gridOn ? Math.round(n / gridSize) * gridSize : n);
+    let x = snap(px);
+    let y = snap(py);
+    const dx = x - prevX;
+    const dy = y - prevY;
+    if (dx === 0 || Math.abs(dx) < 1e-6) return { x: prevX, y };
+    if (dy === 0 || Math.abs(dy) < 1e-6) return { x, y: prevY };
+    const adx = Math.abs(dx);
+    const ady = Math.abs(dy);
+    // Decide axis vs diagonal with a simple threshold; otherwise snap to perfect diagonal
+    const axisBias = 1.5; // if one component is 1.5x larger, prefer axis
+    if (adx > ady * axisBias) {
+      return { x, y: prevY };
+    }
+    if (ady > adx * axisBias) {
+      return { x: prevX, y };
+    }
+    // Diagonal: make |dx| == |dy| preserving signs and using the larger magnitude
+    const len = Math.max(adx, ady);
+    const sx = dx < 0 ? -1 : 1;
+    const sy = dy < 0 ? -1 : 1;
+    return { x: prevX + sx * len, y: prevY + sy * len };
+  }
   
   // Helper: snap a coordinate to nearest grid line offset by radius (for posts)
   private snapCoordEdgeAligned(n: number, grid: number, radius: number): number {
@@ -933,13 +960,13 @@ class LevelEditorImpl implements LevelEditor {
     const poly = { points: [...this.polygonInProgress.points] };
     const gs = env.getGlobalState();
 
-    if (this.polygonInProgress.tool === 'wallsPoly') {
+    if (this.polygonInProgress.tool === 'wallsPoly' || this.polygonInProgress.tool === 'walls45') {
       gs.polyWalls.push(poly);
       if (this.editorLevelData) this.editorLevelData.wallsPoly.push(poly);
-    } else if (this.polygonInProgress.tool === 'waterPoly') {
+    } else if (this.polygonInProgress.tool === 'waterPoly' || this.polygonInProgress.tool === 'water45') {
       gs.watersPoly.push(poly);
       if (this.editorLevelData) this.editorLevelData.waterPoly.push(poly);
-    } else if (this.polygonInProgress.tool === 'sandPoly') {
+    } else if (this.polygonInProgress.tool === 'sandPoly' || this.polygonInProgress.tool === 'sand45') {
       gs.sandsPoly.push(poly);
       if (this.editorLevelData) this.editorLevelData.sandPoly.push(poly);
     }
@@ -975,11 +1002,14 @@ class LevelEditorImpl implements LevelEditor {
         { label: 'Post', item: { kind: 'tool', tool: 'post' }, separator: true },
         { label: 'Wall', item: { kind: 'tool', tool: 'wall' } },
         { label: 'WallsPoly', item: { kind: 'tool', tool: 'wallsPoly' } },
+        { label: 'Walls45', item: { kind: 'tool', tool: 'walls45' } },
         { label: 'Bridge', item: { kind: 'tool', tool: 'bridge' }, separator: true },
         { label: 'Water', item: { kind: 'tool', tool: 'water' } },
         { label: 'WaterPoly', item: { kind: 'tool', tool: 'waterPoly' } },
+        { label: 'Water45', item: { kind: 'tool', tool: 'water45' } },
         { label: 'Sand', item: { kind: 'tool', tool: 'sand' } },
         { label: 'SandPoly', item: { kind: 'tool', tool: 'sandPoly' } },
+        { label: 'Sand45', item: { kind: 'tool', tool: 'sand45' } },
         { label: 'Hill', item: { kind: 'tool', tool: 'hill' } }
       ]
     },
@@ -1547,20 +1577,20 @@ class LevelEditorImpl implements LevelEditor {
         ctx.closePath();
       }
       
-      // Fill based on tool type
-      if (tool === 'waterPoly') {
+      // Fill based on tool type (treat 45° variants as their base types)
+      if (tool === 'waterPoly' || tool === 'water45') {
         ctx.globalAlpha = 0.35;
         ctx.fillStyle = COLORS.waterFill;
         ctx.fill();
         ctx.globalAlpha = 1;
         ctx.strokeStyle = COLORS.waterStroke;
-      } else if (tool === 'sandPoly') {
+      } else if (tool === 'sandPoly' || tool === 'sand45') {
         ctx.globalAlpha = 0.35;
         ctx.fillStyle = COLORS.sandFill;
         ctx.fill();
         ctx.globalAlpha = 1;
         ctx.strokeStyle = COLORS.sandStroke;
-      } else if (tool === 'wallsPoly') {
+      } else if (tool === 'wallsPoly' || tool === 'walls45') {
         ctx.globalAlpha = 0.35;
         ctx.fillStyle = COLORS.wallFill;
         ctx.fill();
@@ -1841,6 +1871,10 @@ class LevelEditorImpl implements LevelEditor {
               displayLabel = this.clipboard.length > 0 ? 'Paste (Ctrl+V)' : 'Paste';
               isDisabled = this.clipboard.length === 0;
               break;
+            case 'duplicate':
+              displayLabel = this.selectedObjects.length > 0 ? 'Duplicate (Ctrl+D)' : 'Duplicate';
+              isDisabled = this.selectedObjects.length === 0;
+              break;
             case 'gridToggle':
               displayLabel = this.showGrid ? 'Grid On' : 'Grid Off';
               break;
@@ -2079,6 +2113,8 @@ class LevelEditorImpl implements LevelEditor {
               if (this.selectedObjects.length > 0) this.cutSelectedObjects();
             } else if (item.action === 'paste') {
               if (this.clipboard.length > 0) this.pasteObjects(this.lastMousePosition.x, this.lastMousePosition.y);
+            } else if (item.action === 'duplicate') {
+              if (this.selectedObjects.length > 0) this.duplicateSelectedObjects();
             } else if (item.action === 'back') {
               (async () => {
                 const ok = await env.showConfirm('Exit Level Editor and return to Main Menu? Unsaved changes will be lost.', 'Exit Editor');
@@ -2111,6 +2147,8 @@ class LevelEditorImpl implements LevelEditor {
     // Snapped absolute position used for placements/vertices
     let px = snap(rx);
     let py = snap(ry);
+    const gridOn = (() => { try { return this.showGrid && env.getShowGrid(); } catch { return false; } })();
+    const gridSize = (() => { try { return env.getGridSize(); } catch { return this.gridSize; } })();
 
     if (this.selectedTool !== 'select') {
       // Start rectangle placement for rect tools
@@ -2121,8 +2159,11 @@ class LevelEditorImpl implements LevelEditor {
         this.editorDragCurrent = { x: px, y: py };
         return;
       }
-      // Poly tools: click to start polygon, subsequent clicks add vertices, double-click or Enter to finish
-      if (this.selectedTool === 'wallsPoly' || this.selectedTool === 'waterPoly' || this.selectedTool === 'sandPoly') {
+      // Poly tools: click to start polygon, subsequent clicks add vertices, click-near-start or Enter to finish
+      if (
+        this.selectedTool === 'wallsPoly' || this.selectedTool === 'waterPoly' || this.selectedTool === 'sandPoly' ||
+        this.selectedTool === 'walls45'  || this.selectedTool === 'water45'  || this.selectedTool === 'sand45'
+      ) {
         if (!this.polygonInProgress) {
           // Start new polygon
           this.polygonInProgress = { tool: this.selectedTool, points: [px, py] };
@@ -2139,7 +2180,23 @@ class LevelEditorImpl implements LevelEditor {
             return;
           } else {
             // Add vertex to current polygon
-            this.polygonInProgress.points.push(px, py);
+            // For 45° tools, constrain the new segment unless Ctrl is held (free-angle)
+            let nx = px, ny = py;
+            if ((this.selectedTool === 'walls45' || this.selectedTool === 'water45' || this.selectedTool === 'sand45') && !e.ctrlKey) {
+              const lastLen = this.polygonInProgress.points.length;
+              const prevX = this.polygonInProgress.points[lastLen - 2];
+              const prevY = this.polygonInProgress.points[lastLen - 1];
+              const c = this.constrainTo45(prevX, prevY, px, py, gridOn, gridSize);
+              nx = c.x; ny = c.y;
+            } else if ((this.selectedTool === 'wallsPoly' || this.selectedTool === 'waterPoly' || this.selectedTool === 'sandPoly') && e.shiftKey) {
+              // Optional: Shift to constrain normal polys to 45°
+              const lastLen = this.polygonInProgress.points.length;
+              const prevX = this.polygonInProgress.points[lastLen - 2];
+              const prevY = this.polygonInProgress.points[lastLen - 1];
+              const c = this.constrainTo45(prevX, prevY, px, py, gridOn, gridSize);
+              nx = c.x; ny = c.y;
+            }
+            this.polygonInProgress.points.push(nx, ny);
             return;
           }
         }

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+- Level Editor • Tools: Duplicate action in Tools menu with dynamic enable/disable and label, plus keyboard shortcut `Ctrl+D`. Duplicates selected objects and pastes at cursor position with grid snapping and fairway clamping. (`src/editor/levelEditor.ts`)
+- Level Editor • Polygons: Vertex editing in Select Tool. Selected `wallsPoly`/`waterPoly`/`sandPoly` display vertex handles; dragging a vertex snaps to grid and clamps to fairway bounds. (`src/editor/levelEditor.ts`)
+- Level Editor • Diagonal Geometry: 45°-constrained polygon drawing tools `Walls45`, `Water45`, `Sand45`. Segments snap to 0/45/90°; Enter closes, Esc cancels; Ctrl temporarily disables constraint (free angle). Normal poly tools accept Shift to temporarily constrain to 45°. Persist to existing `wallsPoly`/`waterPoly`/`sandPoly` arrays. (`src/editor/levelEditor.ts`)
+
+### Changed
+- Level Editor • Menus: Tools dropdown now reflects disabled state for Copy/Cut/Paste/Duplicate and Undo/Redo based on current selection/history/clipboard. (`src/editor/levelEditor.ts`)
+- Level Editor • Objects menu: added `Walls45`, `Water45`, and `Sand45` entries. (`src/editor/levelEditor.ts`)
+
 ## v0.3.28 — 2025-09-06
 
 ### Added

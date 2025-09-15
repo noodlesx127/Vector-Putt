@@ -156,10 +156,10 @@ Notes:
   - [x] Standardize level schema: keep both rectangular and polygon variants (walls/water/sand). Ensure Editor supports full selection/move/delete on both; no migration of existing levels.
   - [x] Undo/Redo in Level Editor: toolbar buttons and shortcuts (Ctrl+Z/Ctrl+Y); snapshot editor state on placements and actions (Save/Load/New/Delete)
   - [x] Tool palette: Tee, Cup, Walls, WallsPoly, Posts, Bridges, Water, WaterPoly, Sand, SandPoly, Hill, decorations
- - [ ] Selection tools: select/move/duplicate/delete; vertex edit for polygons; rotate/scale where applicable
+ - [x] Selection tools: select/move/duplicate/delete; vertex edit for polygons; rotate/scale where applicable
   - Done: select, multi-select, move, delete; scale (resize) for rect items with grid snap and bounds clamp; rotate for rect items including multi-select group rotation (Shift = 15° snap)
-  - Pending: duplicate; polygon vertex edit
-  - Done (polygons, minimum viable): selection + move + delete for wallsPoly/waterPoly/sandPoly
+  - Done: duplicate (Ctrl+D and Tools → Duplicate) pastes at cursor with snapping/clamping
+  - Done (polygons, minimum viable): selection + move + delete + vertex edit (grid-snapped vertex drag; polygons remain translate-only; rotate/resize disabled with handles hidden)
     - Implemented: included poly variants in `findObjectAtPoint()` and `getObjectBounds()`; `moveSelectedObjects()` translates polygon `points`; Delete key removes from poly arrays and `editorLevelData`; removed duplicate/incorrect implementations in `src/main.ts`.
     - Defer: precise point-in-polygon/edge proximity hit-test; rotate/resize for polys (polygons are translate-only for now); vertex edit mode
  - [x] Select Tool: move, resize, and rotate items (MS Paint/Photoshop-style); multi-select with bounding outline
@@ -172,9 +172,9 @@ Notes:
   - [x] Course Select: add "User Made Levels" category; list by Level Title — Author; load+play selected
 
   - **Diagonal Geometry Tools (from reference screenshots in `level_screenshots/`)**
-    - [ ] 45°-constrained polygon drawing mode
-      - Usable for Walls, Sand, and Water; vertices snap to grid; segments constrained to multiples of 45°; Enter to close, Esc to cancel
-      - Produces `wallsPoly` / `sandPoly` / `waterPoly` with correct outlines, fills, and physics
+    - [x] 45°-constrained polygon drawing mode
+      - Implemented `Walls45`, `Water45`, and `Sand45` tools. Segments constrained to 0/45/90°; Enter closes; Esc cancels; Ctrl toggles free angle; Shift constrains normal poly tools to 45° when needed.
+      - Produces `wallsPoly` / `sandPoly` / `waterPoly` with correct outlines and preview styling; persisted to existing arrays.
     - [ ] Chamfer/Bevel rectangle action
       - Convert selected axis-aligned rectangles (wall/water/sand) into octagonal or beveled polygons; adjustable bevel amount
     - [ ] Angled Corridor stamp
@@ -184,7 +184,8 @@ Notes:
     - [ ] Rendering/Collision parity
       - Ensure preview and runtime collision use the same polygon edge set; align wall outline thickness to references
     - [ ] Menu/Shortcut wiring
-      - Objects: add `Walls45`, `Water45`, `Sand45`; Tools: `Chamfer Bevel…`, `Angled Corridor…`
+      - [x] Objects: add `Walls45`, `Water45`, `Sand45`
+      - [ ] Tools: `Chamfer Bevel…`, `Angled Corridor…`
     - [ ] Tests
       - Polygon winding/closure, 45° segment enforcement, and collision against diagonal edges; snapshot tests for render
 

@@ -120,7 +120,10 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
     - Add tests to ensure suggested par increases with obstacle density/path length and that removal of blockers lowers par accordingly.
 
 - **Level Editor & Browser**
-  - [ ] Selection tools: duplicate; polygon vertex edit (polygons are translate-only currently)
+  - [x] Selection tools: select/move/duplicate/delete; vertex edit for polygons; rotate/scale where applicable
+  - Done: select, multi-select, move, delete; scale (resize) for rect items with grid snap and bounds clamp; rotate for rect items including multi-select group rotation (Shift = 15° snap)
+  - Done: duplicate (Ctrl+D and Tools → Duplicate) pastes at cursor with snapping/clamping
+  - Done (polygons, minimum viable): selection + move + delete + vertex edit (grid-snapped drag of individual vertices; rotation/resize disabled and handles hidden for polys)
   - [x] Posts: Snapping Does not work the same as the rest of the editor. IE doesnt work the same as walls, ect.
     - Implemented radius-aware edge-aligned snapping so post edges line up with grid lines like wall edges. Applied on initial placement, on drag-move finalize, and when changing radius in the picker. Keeps clamping to fairway bounds. (`src/editor/levelEditor.ts`)
   - [x] Grid toggle in Tools menu not working; removed grid size +/- controls
@@ -128,9 +131,8 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
   - [x] Hill Direction Picker: support diagonals NE/NW/SE/SW in addition to N/S/E/W; clickable markers and rendering updated. (`src/editor/levelEditor.ts`)
 
   - **Diagonal Geometry Tools — Plan (from reference screenshots in `level_screenshots/`):**
-    - [ ] Add a 45°-constrained polygon drawing mode usable for Walls, Sand, and Water
-      - Tool places vertices that snap to grid and constrain segments to multiples of 45°; Enter closes the shape; Escape cancels
-      - Creates the corresponding `wallsPoly` / `sandPoly` / `waterPoly` entries with proper outlines and physics
+    - [x] Add a 45°-constrained polygon drawing mode usable for Walls, Sand, and Water
+      - Implemented `Walls45`, `Water45`, `Sand45` tools. Segments are constrained to 0/45/90°; Enter closes; Escape cancels. Ctrl temporarily disables constraint (free angle). Shift constrains normal poly tools to 45° when desired. Creates `wallsPoly`/`sandPoly`/`waterPoly` arrays. (`src/editor/levelEditor.ts`)
     - [ ] Bevel/Chamfer action for selected rectangles (walls/water/sand)
       - One-click convert axis-aligned rectangles into octagonal/chamfered shapes with 45° corners; adjustable bevel amount via prompt/slider
     - [ ] Angled Corridor stamp
@@ -141,7 +143,8 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
     - [ ] Rendering/Collision parity
       - Ensure editor preview and runtime collision use the same polygon edge set; update outline thickness to match reference
     - [ ] Menu wiring and shortcuts
-      - Objects menu: add `Walls45`, `Water45`, `Sand45`; Tools menu: `Chamfer Bevel…`, `Angled Corridor…`
+      - [x] Objects menu: add `Walls45`, `Water45`, `Sand45`
+      - [ ] Tools menu: `Chamfer Bevel…`, `Angled Corridor…`
     - [ ] Tests
       - Unit tests for polygon winding, closure, and collision against 45° edges; snapshot tests for render
 

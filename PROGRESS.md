@@ -133,10 +133,10 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
   - **Diagonal Geometry Tools — Plan (from reference screenshots in `level_screenshots/`):**
     - [x] Add a 45°-constrained polygon drawing mode usable for Walls, Sand, and Water
       - Implemented `Walls45`, `Water45`, `Sand45` tools. Segments are constrained to 0/45/90°; Enter closes; Escape cancels. Ctrl temporarily disables constraint (free angle). Shift constrains normal poly tools to 45° when desired. Creates `wallsPoly`/`sandPoly`/`waterPoly` arrays. (`src/editor/levelEditor.ts`)
-    - [ ] Bevel/Chamfer action for selected rectangles (walls/water/sand)
-      - One-click convert axis-aligned rectangles into octagonal/chamfered shapes with 45° corners; adjustable bevel amount via prompt/slider
-    - [ ] Angled Corridor stamp
-      - Stamp generates two parallel 45° edges at a given width to form diagonal lanes seen in originals; supports inside/outside fill for sand/water variants
+    - [x] Bevel/Chamfer action for selected rectangles (walls/water/sand)
+      - Implemented Tools → “Chamfer Bevel…”: converts selected rect-like walls/water/sand to beveled octagonal polygons, respecting rotation; prompts for bevel amount (px), snaps to grid when enabled, inserts into `wallsPoly`/`waterPoly`/`sandPoly` and removes originals; selection updates to new polys. (`src/editor/levelEditor.ts`)
+    - [x] Angled Corridor stamp
+      - Implemented Tools → “Angled Corridor…”: prompts for direction (NE/NW/SE/SW), corridor width, length, and wall thickness; creates two parallel 45° wall polygons centered at the cursor, snapped to grid and clamped to the fairway; adds to `wallsPoly` and selects the new polys. (`src/editor/levelEditor.ts` → `placeAngledCorridorStamp()`)
     - [ ] Snapping/UX
       - Shift locks to 45° increments, Ctrl enables free angle, Alt toggles miter vs bevel joins
       - Snap to existing vertices/edges when near, with visual guides
@@ -144,7 +144,7 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
       - Ensure editor preview and runtime collision use the same polygon edge set; update outline thickness to match reference
     - [ ] Menu wiring and shortcuts
       - [x] Objects menu: add `Walls45`, `Water45`, `Sand45`
-      - [ ] Tools menu: `Chamfer Bevel…`, `Angled Corridor…`
+      - [x] Tools menu: `Chamfer Bevel…` and `Angled Corridor…` wired
     - [ ] Tests
       - Unit tests for polygon winding, closure, and collision against 45° edges; snapshot tests for render
 

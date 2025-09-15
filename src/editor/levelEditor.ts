@@ -65,7 +65,7 @@ export type EditorTool =
   | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'walls45' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'water45' | 'sand' | 'sandPoly' | 'sand45' | 'hill' | 'decoration';
 
 export type EditorAction =
-  | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'courseCreator';
+  | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'chamfer' | 'angledCorridor' | 'courseCreator';
 
 export type EditorMenuId = 'file' | 'objects' | 'decorations' | 'tools';
 
@@ -717,6 +717,199 @@ class LevelEditorImpl implements LevelEditor {
     this.pasteObjects(this.lastMousePosition.x, this.lastMousePosition.y);
   }
 
+  // Convert selected rect-like objects (wall/water/sand) into beveled polygons (octagons) respecting rotation
+  private async chamferBevelSelected(): Promise<void> {
+    if (!this.env) return;
+    const env = this.env;
+    if (this.selectedObjects.length === 0) { env.showToast('No selection'); return; }
+
+    // Filter eligible rect-like objects
+    const eligible = this.selectedObjects.filter(o => (o.type === 'wall' || o.type === 'water' || o.type === 'sand')) as Array<SelectableObject & { index: number }>;
+    if (eligible.length === 0) { env.showToast('Select wall/water/sand rectangles to chamfer'); return; }
+
+    // Prompt for bevel amount in pixels
+    const defPx = 10;
+    let bevelPx = defPx;
+    try {
+      const s = await env.showPrompt('Bevel amount (pixels):', String(defPx), 'Chamfer/Bevel');
+      if (s === null) return;
+      const v = Math.max(1, Math.floor(Number(s)));
+      if (Number.isFinite(v)) bevelPx = v;
+    } catch {}
+
+    this.pushUndoSnapshot(`Chamfer ${eligible.length} rectangle(s)`);
+
+    const gs = env.getGlobalState();
+    const createdPolys: SelectableObject[] = [];
+
+    // Helper to rotate a point about center
+    const rotP = (x: number, y: number, cx: number, cy: number, rot: number) => {
+      if (!rot) return { x, y };
+      const s = Math.sin(rot), c = Math.cos(rot);
+      const dx = x - cx, dy = y - cy;
+      return { x: cx + dx * c - dy * s, y: cy + dx * s + dy * c };
+    };
+
+    // Build conversions first
+    type Removal = { type: 'wall'|'water'|'sand'; index: number };
+    const removals: Removal[] = [];
+
+    for (const sel of eligible) {
+      const o: any = sel.object as any;
+      const rx = o?.x ?? 0, ry = o?.y ?? 0, rw = o?.w ?? 0, rh = o?.h ?? 0;
+      if (rw <= 0 || rh <= 0) continue;
+      const rot = typeof o?.rot === 'number' ? o.rot : 0;
+      const cx = rx + rw / 2, cy = ry + rh / 2;
+
+      const maxBevel = Math.floor(Math.max(1, Math.min(rw, rh) / 2 - 1));
+      const b = Math.max(1, Math.min(bevelPx, maxBevel));
+
+      // Axis-aligned octagon points before rotation
+      const ptsAx = [
+        { x: rx + b,      y: ry },           // top edge inset from left
+        { x: rx + rw - b, y: ry },           // top edge inset from right
+        { x: rx + rw,     y: ry + b },       // right edge inset from top
+        { x: rx + rw,     y: ry + rh - b },  // right edge inset from bottom
+        { x: rx + rw - b, y: ry + rh },      // bottom edge inset from right
+        { x: rx + b,      y: ry + rh },      // bottom edge inset from left
+        { x: rx,          y: ry + rh - b },  // left edge inset from bottom
+        { x: rx,          y: ry + b }        // left edge inset from top
+      ];
+
+      // Apply rotation
+      const pts = ptsAx.map(p => rotP(p.x, p.y, cx, cy, rot));
+
+      // Optional grid snapping for nicer alignment
+      let gridOn = false, g = 20;
+      try { gridOn = this.showGrid && env.getShowGrid(); g = env.getGridSize(); } catch {}
+      const snap = (n: number) => gridOn ? Math.round(n / g) * g : Math.round(n); // at least whole-pixel snap
+
+      const flat: number[] = [];
+      for (const p of pts) { flat.push(snap(p.x), snap(p.y)); }
+
+      if (sel.type === 'wall') {
+        (gs.polyWalls as any[]).push({ points: flat });
+        createdPolys.push({ type: 'wallsPoly', object: (gs.polyWalls as any[])[(gs.polyWalls as any[]).length - 1], index: (gs.polyWalls as any[]).length - 1 } as any);
+        removals.push({ type: 'wall', index: sel.index });
+      } else if (sel.type === 'water') {
+        (gs.watersPoly as any[]).push({ points: flat });
+        createdPolys.push({ type: 'waterPoly', object: (gs.watersPoly as any[])[(gs.watersPoly as any[]).length - 1], index: (gs.watersPoly as any[]).length - 1 } as any);
+        removals.push({ type: 'water', index: sel.index });
+      } else if (sel.type === 'sand') {
+        (gs.sandsPoly as any[]).push({ points: flat });
+        createdPolys.push({ type: 'sandPoly', object: (gs.sandsPoly as any[])[(gs.sandsPoly as any[]).length - 1], index: (gs.sandsPoly as any[]).length - 1 } as any);
+        removals.push({ type: 'sand', index: sel.index });
+      }
+    }
+
+    // Apply removals (descending indices within each type)
+    const byType: Record<string, number[]> = { wall: [], water: [], sand: [] } as any;
+    for (const r of removals) byType[r.type].push(r.index);
+    for (const key of Object.keys(byType)) {
+      const arr = byType[key];
+      arr.sort((a, b) => b - a);
+      for (const idx of arr) {
+        if (key === 'wall') { if (idx >= 0 && idx < (gs.walls as any[]).length) (gs.walls as any[]).splice(idx, 1); }
+        if (key === 'water') { if (idx >= 0 && idx < (gs.waters as any[]).length) (gs.waters as any[]).splice(idx, 1); }
+        if (key === 'sand')  { if (idx >= 0 && idx < (gs.sands as any[]).length)  (gs.sands as any[]).splice(idx, 1); }
+      }
+    }
+
+    env.setGlobalState(gs);
+    this.syncEditorDataFromGlobals(env);
+    if (createdPolys.length > 0) {
+      this.selectedObjects = createdPolys;
+      env.showToast(`Chamfered ${createdPolys.length} polygon(s)`);
+    } else {
+      env.showToast('Nothing to chamfer');
+    }
+  }
+
+  // Angled Corridor stamp: creates two parallel 45° wall polygons centered at the cursor
+  private async placeAngledCorridorStamp(): Promise<void> {
+    if (!this.env) return;
+    const env = this.env;
+    const centerX = this.lastMousePosition.x;
+    const centerY = this.lastMousePosition.y;
+
+    // Prompts
+    let dir: 'NE' | 'NW' | 'SE' | 'SW' = 'NE';
+    try {
+      const s = await env.showPrompt('Direction (NE/NW/SE/SW):', 'NE', 'Angled Corridor');
+      if (s === null) return;
+      const up = (s || 'NE').toUpperCase();
+      if (up === 'NE' || up === 'NW' || up === 'SE' || up === 'SW') dir = up as any;
+    } catch {}
+
+    const askNumber = async (label: string, defVal: number) => {
+      try {
+        const r = await env.showPrompt(label, String(defVal), 'Angled Corridor');
+        if (r === null) return null as number | null;
+        const v = Math.max(1, Math.floor(Number(r)));
+        return Number.isFinite(v) ? v : defVal;
+      } catch { return defVal; }
+    };
+
+    const width = await askNumber('Corridor width (px):', 60);
+    if (width === null) return;
+    const length = await askNumber('Corridor length (px):', 200);
+    if (length === null) return;
+    const thickness = await askNumber('Wall thickness (px):', 8);
+    if (thickness === null) return;
+
+    this.pushUndoSnapshot('Place Angled Corridor');
+
+    const angleMap: Record<typeof dir, number> = { NE: Math.PI / 4, NW: 3 * Math.PI / 4, SE: -Math.PI / 4, SW: -3 * Math.PI / 4 };
+    const ang = angleMap[dir];
+    const ux = Math.cos(ang), uy = Math.sin(ang); // along corridor
+    const nx = -uy, ny = ux; // normal to corridor (left side)
+
+    // Clamp/snap center to fairway for better placement
+    const { x: fx, y: fy, w: fw, h: fh } = env.fairwayRect();
+    const clampX = (x: number) => Math.max(fx, Math.min(fx + fw, x));
+    const clampY = (y: number) => Math.max(fy, Math.min(fy + fh, y));
+    const snapped = (() => {
+      let gridOn = false, g = 20;
+      try { gridOn = this.showGrid && env.getShowGrid(); g = env.getGridSize(); } catch {}
+      const snap = (n: number) => gridOn ? Math.round(n / g) * g : Math.round(n);
+      return { x: snap(clampX(centerX)), y: snap(clampY(centerY)), snap, g };
+    })();
+
+    const halfLen = length / 2;
+    const halfTh = thickness / 2;
+    const halfW = width / 2;
+
+    // Two centerlines offset by +/- halfW along normal
+    const c1 = { x: snapped.x + nx * halfW, y: snapped.y + ny * halfW };
+    const c2 = { x: snapped.x - nx * halfW, y: snapped.y - ny * halfW };
+
+    const rectPolyPoints = (cx: number, cy: number) => {
+      // four corners: (±u*halfLen ± n*halfTh)
+      const p1 = { x: cx + ux * (-halfLen) + nx * (-halfTh), y: cy + uy * (-halfLen) + ny * (-halfTh) };
+      const p2 = { x: cx + ux * ( halfLen) + nx * (-halfTh), y: cy + uy * ( halfLen) + ny * (-halfTh) };
+      const p3 = { x: cx + ux * ( halfLen) + nx * ( halfTh), y: cy + uy * ( halfLen) + ny * ( halfTh) };
+      const p4 = { x: cx + ux * (-halfLen) + nx * ( halfTh), y: cy + uy * (-halfLen) + ny * ( halfTh) };
+      const pts = [p1, p2, p3, p4];
+      const flat: number[] = [];
+      for (const p of pts) flat.push(snapped.snap(clampX(p.x)), snapped.snap(clampY(p.y)));
+      return flat;
+    };
+
+    const gs = env.getGlobalState();
+    const poly1 = { points: rectPolyPoints(c1.x, c1.y) };
+    const poly2 = { points: rectPolyPoints(c2.x, c2.y) };
+    (gs.polyWalls as any[]).push(poly1);
+    (gs.polyWalls as any[]).push(poly2);
+
+    env.setGlobalState(gs);
+    this.syncEditorDataFromGlobals(env);
+    this.selectedObjects = [
+      { type: 'wallsPoly', object: (gs.polyWalls as any[])[(gs.polyWalls as any[]).length - 2], index: (gs.polyWalls as any[]).length - 2 } as any,
+      { type: 'wallsPoly', object: (gs.polyWalls as any[])[(gs.polyWalls as any[]).length - 1], index: (gs.polyWalls as any[]).length - 1 } as any
+    ];
+    env.showToast('Angled Corridor placed');
+  }
+
   private deleteSelectedObjects(): void {
     if (this.selectedObjects.length === 0 || !this.env) return;
     
@@ -1032,6 +1225,8 @@ class LevelEditorImpl implements LevelEditor {
         { label: 'Cut (Ctrl+X)', item: { kind: 'action', action: 'cut' } },
         { label: 'Paste (Ctrl+V)', item: { kind: 'action', action: 'paste' } },
         { label: 'Duplicate (Ctrl+D)', item: { kind: 'action', action: 'duplicate' } },
+        { label: 'Chamfer Bevel…', item: { kind: 'action', action: 'chamfer' } },
+        { label: 'Angled Corridor…', item: { kind: 'action', action: 'angledCorridor' } },
         { label: 'Grid Toggle', item: { kind: 'action', action: 'gridToggle' }, separator: true },
         // Admin-only tool entry (conditionally rendered at runtime)
         { label: 'Course Creator', item: { kind: 'action', action: 'courseCreator' }, separator: true }
@@ -2115,6 +2310,10 @@ class LevelEditorImpl implements LevelEditor {
               if (this.clipboard.length > 0) this.pasteObjects(this.lastMousePosition.x, this.lastMousePosition.y);
             } else if (item.action === 'duplicate') {
               if (this.selectedObjects.length > 0) this.duplicateSelectedObjects();
+            } else if (item.action === 'chamfer') {
+              void this.chamferBevelSelected();
+            } else if (item.action === 'angledCorridor') {
+              void this.placeAngledCorridorStamp();
             } else if (item.action === 'back') {
               (async () => {
                 const ok = await env.showConfirm('Exit Level Editor and return to Main Menu? Unsaved changes will be lost.', 'Exit Editor');

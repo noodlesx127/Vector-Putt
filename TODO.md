@@ -185,7 +185,8 @@ Notes:
       - Ensure preview and runtime collision use the same polygon edge set; align wall outline thickness to references
     - [ ] Menu/Shortcut wiring
       - [x] Objects: add `Walls45`, `Water45`, `Sand45`
-      - [ ] Tools: `Chamfer Bevel…`, `Angled Corridor…`
+      - [x] Tools: `Chamfer Bevel…`
+      - [ ] Tools: `Angled Corridor…`
     - [ ] Tests
       - Polygon winding/closure, 45° segment enforcement, and collision against diagonal edges; snapshot tests for render
 

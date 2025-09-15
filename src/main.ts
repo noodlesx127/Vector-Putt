@@ -1281,13 +1281,17 @@ type AdminMenuHotspot = {
 let adminMenuHotspots: AdminMenuHotspot[] = [];
 
 // Admin Game Settings state
-type GameSettingsField = 'slope' | 'friction' | 'sand';
+type GameSettingsField = 'slope' | 'friction' | 'sand' | 'baseline' | 'turnPenalty' | 'hillBump' | 'bankWeight';
 type GameSettingsHotspot = { kind: 'minus' | 'plus' | 'slider' | 'save' | 'cancel' | 'back'; field?: GameSettingsField; x: number; y: number; w: number; h: number };
 let gameSettingsHotspots: GameSettingsHotspot[] = [];
-let gameSettingsState: { slopeAccel: number; frictionK: number; sandMultiplier: number } = {
+let gameSettingsState: { slopeAccel: number; frictionK: number; sandMultiplier: number; baselineShotPx: number; turnPenaltyPerTurn: number; hillBump: number; bankWeight: number } = {
   slopeAccel: 720,
   frictionK: 1.2,
-  sandMultiplier: 6.0
+  sandMultiplier: 6.0,
+  baselineShotPx: 320,
+  turnPenaltyPerTurn: 0.08,
+  hillBump: 0.2,
+  bankWeight: 0.12
 };
 
 // Level Management state and hotspots
@@ -1386,6 +1390,10 @@ const restitution = 0.9; // wall bounce energy retention
 // Runtime-tunable physics (admin)
 let physicsFrictionK = 1.2;           // base exponential damping
 let physicsSandMultiplier = 6.0;      // multiplier applied when in sand
+// Velocity-based sand skimming: when speed is high, sand slows less
+let sandSkimEnabled = true;
+const sandSkimStart = 280; // px/s where skimming begins to reduce sand effect
+const sandSkimFull = 460;  // px/s where sand effect is minimal (≈1x)
 const stopSpeed = 5; // px/s threshold to consider stopped (tunable)
 
 // Visual palette (retro mini-golf style)
@@ -1522,6 +1530,11 @@ let firebaseReady = false;
         physicsSlopeAccel = typeof gs.slopeAccel === 'number' ? gs.slopeAccel : physicsSlopeAccel;
         physicsFrictionK = typeof gs.frictionK === 'number' ? gs.frictionK : physicsFrictionK;
         physicsSandMultiplier = typeof gs.sandMultiplier === 'number' ? gs.sandMultiplier : physicsSandMultiplier;
+        // Seed local UI state for heuristics
+        gameSettingsState.baselineShotPx = typeof gs.baselineShotPx === 'number' ? gs.baselineShotPx : gameSettingsState.baselineShotPx;
+        gameSettingsState.turnPenaltyPerTurn = typeof gs.turnPenaltyPerTurn === 'number' ? gs.turnPenaltyPerTurn : gameSettingsState.turnPenaltyPerTurn;
+        gameSettingsState.hillBump = typeof gs.hillBump === 'number' ? gs.hillBump : gameSettingsState.hillBump;
+        gameSettingsState.bankWeight = typeof gs.bankWeight === 'number' ? gs.bankWeight : gameSettingsState.bankWeight;
       }
     } catch (e) {
       console.warn('Failed to load global game settings; using defaults', e);
@@ -1622,6 +1635,7 @@ let bounces: BounceFx[] = [];
 // Offscreen layer for hill arrows (masked composite)
 let arrowsLayer: HTMLCanvasElement | null = null;
 let arrowsCtx: CanvasRenderingContext2D | null = null;
+let showSlopeArrows = true;
 
 // Users admin state (panelized)
 let usersState: { selectedIndex: number; scrollOffset: number; search: string } = {
@@ -1787,6 +1801,7 @@ let hoverOptionsBack = false;
 let hoverOptionsVolMinus = false;
 let hoverOptionsVolPlus = false;
 let hoverOptionsMute = false;
+let hoverOptionsSlopeToggle = false;
 let hoverPauseOptions = false;
 let hoverOptionsVolSlider = false;
 let hoverOptionsUsers = false; // admin-only users button
@@ -2763,6 +2778,12 @@ function getOptionsVolSliderRect() {
   const y = 344;
   return { x, y, w, h };
 }
+function getOptionsSlopeToggleRect() {
+  const w = 80, h = 28;
+  const x = WIDTH / 2 - 180 + 200;
+  const y = 404; // positioned below volume label
+  return { x, y, w, h };
+}
 
 function worldFromEvent(e: MouseEvent) {
   const rect = canvas.getBoundingClientRect();
@@ -3168,6 +3189,9 @@ canvas.addEventListener('mousedown', (e) => {
       AudioSfx.setVolume(t);
       return;
     }
+    // Slope arrows toggle
+    const tog = getOptionsSlopeToggleRect();
+    if (p.x >= tog.x && p.x <= tog.x + tog.w && p.y >= tog.y && p.y <= tog.y + tog.h) { showSlopeArrows = !showSlopeArrows; return; }
     // Users button removed from Options (access via Shift+F after Start)
   }
   
@@ -3219,10 +3243,15 @@ canvas.addEventListener('mousedown', (e) => {
                   gameSettingsState.slopeAccel = typeof gs.slopeAccel === 'number' ? gs.slopeAccel : physicsSlopeAccel;
                   gameSettingsState.frictionK = typeof gs.frictionK === 'number' ? gs.frictionK : physicsFrictionK;
                   gameSettingsState.sandMultiplier = typeof gs.sandMultiplier === 'number' ? gs.sandMultiplier : physicsSandMultiplier;
+                  gameSettingsState.baselineShotPx = typeof gs.baselineShotPx === 'number' ? gs.baselineShotPx : gameSettingsState.baselineShotPx;
+                  gameSettingsState.turnPenaltyPerTurn = typeof gs.turnPenaltyPerTurn === 'number' ? gs.turnPenaltyPerTurn : gameSettingsState.turnPenaltyPerTurn;
+                  gameSettingsState.hillBump = typeof gs.hillBump === 'number' ? gs.hillBump : gameSettingsState.hillBump;
+                  gameSettingsState.bankWeight = typeof gs.bankWeight === 'number' ? gs.bankWeight : gameSettingsState.bankWeight;
                 } else {
                   gameSettingsState.slopeAccel = physicsSlopeAccel;
                   gameSettingsState.frictionK = physicsFrictionK;
                   gameSettingsState.sandMultiplier = physicsSandMultiplier;
+                  // keep defaults for heuristic coefficients
                 }
               } else {
                 gameSettingsState.slopeAccel = physicsSlopeAccel;
@@ -3256,17 +3285,29 @@ canvas.addEventListener('mousedown', (e) => {
           if (field === 'slope') gameSettingsState.slopeAccel = Math.round(200 + t * (2000 - 200));
           if (field === 'friction') gameSettingsState.frictionK = +(0.2 + t * (2.0 - 0.2)).toFixed(2);
           if (field === 'sand') gameSettingsState.sandMultiplier = +(1 + t * (10 - 1)).toFixed(2);
+          if (field === 'baseline') gameSettingsState.baselineShotPx = Math.round(200 + t * (500 - 200));
+          if (field === 'turnPenalty') gameSettingsState.turnPenaltyPerTurn = +(0.00 + t * (0.30 - 0.00)).toFixed(3);
+          if (field === 'hillBump') gameSettingsState.hillBump = +(0.00 + t * (1.00 - 0.00)).toFixed(2);
+          if (field === 'bankWeight') gameSettingsState.bankWeight = +(0.00 + t * (0.50 - 0.00)).toFixed(2);
         };
         if (hs.kind === 'minus' && hs.field) {
           if (hs.field === 'slope') gameSettingsState.slopeAccel = clamp(gameSettingsState.slopeAccel - 20, 200, 2000);
           if (hs.field === 'friction') gameSettingsState.frictionK = clamp(+((gameSettingsState.frictionK - 0.05).toFixed(2)), 0.2, 2.0);
           if (hs.field === 'sand') gameSettingsState.sandMultiplier = clamp(+((gameSettingsState.sandMultiplier - 0.2).toFixed(2)), 1.0, 10.0);
+          if (hs.field === 'baseline') gameSettingsState.baselineShotPx = clamp(gameSettingsState.baselineShotPx - 5, 200, 500);
+          if (hs.field === 'turnPenalty') gameSettingsState.turnPenaltyPerTurn = clamp(+((gameSettingsState.turnPenaltyPerTurn - 0.01).toFixed(3)), 0.00, 0.30);
+          if (hs.field === 'hillBump') gameSettingsState.hillBump = clamp(+((gameSettingsState.hillBump - 0.02).toFixed(2)), 0.00, 1.00);
+          if (hs.field === 'bankWeight') gameSettingsState.bankWeight = clamp(+((gameSettingsState.bankWeight - 0.01).toFixed(2)), 0.00, 0.50);
           return;
         }
         if (hs.kind === 'plus' && hs.field) {
           if (hs.field === 'slope') gameSettingsState.slopeAccel = clamp(gameSettingsState.slopeAccel + 20, 200, 2000);
           if (hs.field === 'friction') gameSettingsState.frictionK = clamp(+((gameSettingsState.frictionK + 0.05).toFixed(2)), 0.2, 2.0);
           if (hs.field === 'sand') gameSettingsState.sandMultiplier = clamp(+((gameSettingsState.sandMultiplier + 0.2).toFixed(2)), 1.0, 10.0);
+          if (hs.field === 'baseline') gameSettingsState.baselineShotPx = clamp(gameSettingsState.baselineShotPx + 5, 200, 500);
+          if (hs.field === 'turnPenalty') gameSettingsState.turnPenaltyPerTurn = clamp(+((gameSettingsState.turnPenaltyPerTurn + 0.01).toFixed(3)), 0.00, 0.30);
+          if (hs.field === 'hillBump') gameSettingsState.hillBump = clamp(+((gameSettingsState.hillBump + 0.02).toFixed(2)), 0.00, 1.00);
+          if (hs.field === 'bankWeight') gameSettingsState.bankWeight = clamp(+((gameSettingsState.bankWeight + 0.01).toFixed(2)), 0.00, 0.50);
           return;
         }
         if (hs.kind === 'slider' && hs.field) {
@@ -3281,7 +3322,11 @@ canvas.addEventListener('mousedown', (e) => {
               await FirebaseDatabase.updateGameSettings({
                 slopeAccel: gameSettingsState.slopeAccel,
                 frictionK: gameSettingsState.frictionK,
-                sandMultiplier: gameSettingsState.sandMultiplier
+                sandMultiplier: gameSettingsState.sandMultiplier,
+                baselineShotPx: gameSettingsState.baselineShotPx,
+                turnPenaltyPerTurn: gameSettingsState.turnPenaltyPerTurn,
+                hillBump: gameSettingsState.hillBump,
+                bankWeight: gameSettingsState.bankWeight
               });
               // Apply runtime
               physicsSlopeAccel = gameSettingsState.slopeAccel;
@@ -3574,6 +3619,13 @@ canvas.addEventListener('mousemove', (e) => {
       showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
       showPrompt: (msg: string, def?: string, title?: string) => showUiPrompt(msg, def, title),
       showList: (title: string, items: Array<{label: string; value: any}>, startIndex?: number) => showUiList(title, items, startIndex),
+      showDnDList: async (title: string, items: Array<{label: string; value: any}>) => {
+        const res = await showUiDnDList(title, items as any);
+        return res ? res.map(it => ({ label: it.label, value: (it as any).value })) : null;
+      },
+      showLoadLevels: (levels: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>) => showUiLoadLevels(levels),
+      showCourseEditor: (courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] }) => showUiCourseEditor(courseData),
+      showUiCourseCreator: (courseList: Array<{ id: string; title: string; levelIds: string[]; levelTitles: string[] }>) => showUiCourseCreator(courseList),
       getGlobalState: () => ({
         WIDTH,
         HEIGHT,
@@ -3591,7 +3643,14 @@ canvas.addEventListener('mousemove', (e) => {
         bridges,
         posts,
         polyWalls,
-        userProfile
+        userProfile,
+        // expose heuristic coefficients for editor
+        baselineShotPx: gameSettingsState.baselineShotPx,
+        turnPenaltyPerTurn: gameSettingsState.turnPenaltyPerTurn,
+        hillBump: gameSettingsState.hillBump,
+        bankWeight: gameSettingsState.bankWeight,
+        sandSkimEnabled: sandSkimEnabled,
+        showSlopeArrows: showSlopeArrows
       }),
       setGlobalState: (state: any) => {
         if (state.levelCanvas) levelCanvas = state.levelCanvas;
@@ -3676,17 +3735,17 @@ canvas.addEventListener('mousemove', (e) => {
     const vp = getOptionsVolPlusRect();
     const mu = getOptionsMuteRect();
     const vs = getOptionsVolSliderRect();
+    const tog = getOptionsSlopeToggleRect();
     hoverOptionsVolMinus = p.x >= vm.x && p.x <= vm.x + vm.w && p.y >= vm.y && p.y <= vm.y + vm.h;
     hoverOptionsVolPlus = p.x >= vp.x && p.x <= vp.x + vp.w && p.y >= vp.y && p.y <= vp.y + vp.h;
     hoverOptionsMute = p.x >= mu.x && p.x <= mu.x + mu.w && p.y >= mu.y && p.y <= mu.y + mu.h;
     hoverOptionsVolSlider = p.x >= vs.x && p.x <= vs.x + vs.w && p.y >= vs.y - 6 && p.y <= vs.y + vs.h + 6;
-    // Users button removed from Options; no hover
-    hoverOptionsUsers = false;
+    hoverOptionsSlopeToggle = p.x >= tog.x && p.x <= tog.x + tog.w && p.y >= tog.y && p.y <= tog.y + tog.h;
     if (isOptionsVolumeDragging) {
       const t = Math.max(0, Math.min(1, (p.x - vs.x) / vs.w));
       AudioSfx.setVolume(t);
     }
-    canvas.style.cursor = (hoverOptionsBack || hoverOptionsVolMinus || hoverOptionsVolPlus || hoverOptionsMute || hoverOptionsVolSlider || hoverOptionsUsers) ? 'pointer' : 'default';
+    canvas.style.cursor = (hoverOptionsBack || hoverOptionsVolMinus || hoverOptionsVolPlus || hoverOptionsMute || hoverOptionsVolSlider || hoverOptionsSlopeToggle || hoverOptionsUsers) ? 'pointer' : 'default';
     return;
   }
   if (gameState === 'users') {
@@ -3803,6 +3862,13 @@ canvas.addEventListener('mouseup', (e) => {
       showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
       showPrompt: (msg: string, def?: string, title?: string) => showUiPrompt(msg, def, title),
       showList: (title: string, items: Array<{label: string; value: any}>, startIndex?: number) => showUiList(title, items, startIndex),
+      showDnDList: async (title: string, items: Array<{label: string; value: any}>) => {
+        const res = await showUiDnDList(title, items as any);
+        return res ? res.map(it => ({ label: it.label, value: (it as any).value })) : null;
+      },
+      showLoadLevels: (levels: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>) => showUiLoadLevels(levels),
+      showCourseEditor: (courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] }) => showUiCourseEditor(courseData),
+      showUiCourseCreator: (courseList: Array<{ id: string; title: string; levelIds: string[]; levelTitles: string[] }>) => showUiCourseCreator(courseList),
       getGlobalState: () => ({
         WIDTH,
         HEIGHT,
@@ -3820,7 +3886,12 @@ canvas.addEventListener('mouseup', (e) => {
         bridges,
         posts,
         polyWalls,
-        userProfile
+        userProfile,
+        // expose heuristic coefficients for editor
+        baselineShotPx: gameSettingsState.baselineShotPx,
+        turnPenaltyPerTurn: gameSettingsState.turnPenaltyPerTurn,
+        hillBump: gameSettingsState.hillBump,
+        bankWeight: gameSettingsState.bankWeight
       }),
       setGlobalState: (state: any) => {
         if (state.levelCanvas) levelCanvas = state.levelCanvas;
@@ -4031,7 +4102,12 @@ function handleLevelEditorKeys(e: KeyboardEvent) {
       bridges,
       posts,
       polyWalls,
-      userProfile
+      userProfile,
+      // expose heuristic coefficients for editor
+      baselineShotPx: gameSettingsState.baselineShotPx,
+      turnPenaltyPerTurn: gameSettingsState.turnPenaltyPerTurn,
+      hillBump: gameSettingsState.hillBump,
+      bankWeight: gameSettingsState.bankWeight
     }),
     setGlobalState: (state: any) => {
       if (state.levelCanvas) levelCanvas = state.levelCanvas;
@@ -4253,7 +4329,19 @@ function update(dt: number) {
         for (const sp of sandsPoly) { if (pointInPolygon(ball.x, ball.y, sp.points)) { inSand = true; break; } }
       }
     }
-    const k = physicsFrictionK * ((inSand && !onBridge) ? physicsSandMultiplier : 1.0);
+    // Velocity-dependent sand skimming: reduce sand effect at high speeds
+    let mul = 1.0;
+    if (inSand && !onBridge) {
+      let sandMul = physicsSandMultiplier;
+      const speedNow = Math.hypot(ball.vx, ball.vy);
+      if (sandSkimEnabled && speedNow > sandSkimStart) {
+        const t = Math.max(0, Math.min(1, (speedNow - sandSkimStart) / Math.max(1, (sandSkimFull - sandSkimStart))));
+        // Interpolate from full sand multiplier at low speed to ~1x at high speed
+        sandMul = 1.0 + (physicsSandMultiplier - 1.0) * (1 - t);
+      }
+      mul = sandMul;
+    }
+    const k = physicsFrictionK * mul;
     const friction = Math.exp(-k * dt);
     ball.vx *= friction;
     ball.vy *= friction;
@@ -4595,6 +4683,16 @@ function drawDebugPreview() {
   let t = 0;
   let bouncesCount = 0;
 
+  // Local-only debug variables for collision preview (do not affect gameplay state)
+  let lastCollisionNx = 0, lastCollisionNy = 0;
+  let collidedThisFrame = false;
+  // Disable slope effects in the debug preview; keep names defined to avoid TS errors
+  const inSlopeZone = false;
+  let slopeAx = 0, slopeAy = 0;
+  let hillJamFrames = 0, hillJamPosFrames = 0;
+  let jamLastX = px, jamLastY = py;
+  const stopSpeed = 8;
+
   // Collect polyline points (thinned)
   const pts: number[] = [px, py];
   let stepCounter = 0;
@@ -4606,24 +4704,33 @@ function drawDebugPreview() {
     for (const w of walls) {
       const hit = circleRectResolve(px, py, r, w);
       if (hit) {
+        collided = true;
+        lastCollisionNx = hit.nx; lastCollisionNy = hit.ny;
+        // push out along normal
         px += hit.nx * hit.depth;
         py += hit.ny * hit.depth;
-        const vn = vx * hit.nx + vy * hit.ny;
+        // reflect velocity on the normal axis
+        const vn = vx * hit.nx + vy * hit.ny; // component along normal
         vx -= (1 + restitution) * vn * hit.nx;
         vy -= (1 + restitution) * vn * hit.ny;
-        collided = true;
+        const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        if (now - lastBounceSfxMs > 80 && Math.abs(vn) > 50) {
+          lastBounceSfxMs = now;
+          AudioSfx.playBounce(Math.min(1, Math.abs(vn) / 400));
+        }
       }
     }
     // Round posts
     for (const p of posts) {
       const hit = circleCircleResolve(px, py, r, p.x, p.y, p.r);
       if (hit) {
+        collided = true;
+        lastCollisionNx = hit.nx; lastCollisionNy = hit.ny;
         px += hit.nx * hit.depth;
         py += hit.ny * hit.depth;
         const vn = vx * hit.nx + vy * hit.ny;
         vx -= (1 + restitution) * vn * hit.nx;
         vy -= (1 + restitution) * vn * hit.ny;
-        collided = true;
       }
     }
     // Polygon walls (each edge as segment)
@@ -4638,60 +4745,135 @@ function drawDebugPreview() {
         const y2 = pts[j + 1];
         const hit = circleSegmentResolve(px, py, r, x1, y1, x2, y2);
         if (hit) {
+          collided = true;
+          lastCollisionNx = hit.nx; lastCollisionNy = hit.ny;
           px += hit.nx * hit.depth;
           py += hit.ny * hit.depth;
           const vn = vx * hit.nx + vy * hit.ny;
           vx -= (1 + restitution) * vn * hit.nx;
           vy -= (1 + restitution) * vn * hit.ny;
-          collided = true;
+          const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+          if (now - lastBounceSfxMs > 80 && Math.abs(vn) > 50) {
+            lastBounceSfxMs = now;
+            AudioSfx.playBounce(Math.min(1, Math.abs(vn) / 400));
+          }
         }
       }
     }
-    // Canvas bounds fallback
-    if (px - r < 0) { px = r; vx *= -restitution; collided = true; }
-    if (px + r > WIDTH) { px = WIDTH - r; vx *= -restitution; collided = true; }
-    if (py - r < 0) { py = r; vy *= -restitution; collided = true; }
-    if (py + r > HEIGHT) { py = HEIGHT - r; vy *= -restitution; collided = true; }
-    return collided;
+
+    // Fallback canvas bounds (if no outer walls present)
+    if (px - r < 0) { px = r; vx *= -restitution; }
+    if (px + r > WIDTH) { px = WIDTH - r; vx *= -restitution; }
+    if (py - r < 0) { py = r; vy *= -restitution; }
+    if (py + r > HEIGHT) { py = HEIGHT - r; vy *= -restitution; }
+
+    // Note: no extra global damping here; handled above (with sand boost)
+
+    const speed = Math.hypot(vx, vy);
+    const disp = Math.hypot(vx * dt, vy * dt);
+    // Only allow stop when BOTH are small. Normally disallow stopping on hills,
+    // but permit it if we collided this frame (corner jam near walls/posts).
+    const hasSlopeAccel = inSlopeZone && (Math.hypot(slopeAx, slopeAy) > 1e-3);
+    const allowStopDueToCorner = collidedThisFrame; // unblock endless jitter in concave corners
+    // Detect jam case: slope acceleration pushing into the obstacle normal repeatedly
+    const slopeMag = Math.hypot(slopeAx, slopeAy);
+    // Jam when hill acceleration is pushing INTO the obstacle (opposes the surface normal)
+    const pushingIntoObstacle = hasSlopeAccel && collidedThisFrame && ((slopeAx * lastCollisionNx + slopeAy * lastCollisionNy) < 0);
+    
+    // Debug logging for jam detection
+    if (hasSlopeAccel && collidedThisFrame && speed > 10) {
+      const dotProduct = slopeAx * lastCollisionNx + slopeAy * lastCollisionNy;
+      console.log(`Hill collision: speed=${speed.toFixed(1)}, slopeMag=${slopeMag.toFixed(1)}, dot=${dotProduct.toFixed(2)}, jamFrames=${hillJamFrames}`);
+    }
+    
+    // Position-based jam detection: colliding on a slope without making positional progress
+    const moveDist = Math.hypot(px - jamLastX, py - jamLastY);
+    if (inSlopeZone && collidedThisFrame) {
+      if (moveDist < 1.2) {
+        hillJamPosFrames = Math.min(60, hillJamPosFrames + 1);
+      } else {
+        hillJamPosFrames = 0;
+      }
+      jamLastX = px; jamLastY = py;
+    } else {
+      hillJamPosFrames = 0;
+      jamLastX = px; jamLastY = py;
+    }
+    if (hillJamPosFrames >= 6) {
+      // Nudge out of obstacle and heavily damp to break the bounce loop
+      px += lastCollisionNx * 2;
+      py += lastCollisionNy * 2;
+      const vnJam = vx * lastCollisionNx + vy * lastCollisionNy;
+      vx -= vnJam * lastCollisionNx;
+      vy -= vnJam * lastCollisionNy;
+      vx *= 0.2;
+      vy *= 0.2;
+      console.log(`Pos-jam resolved: frames=${hillJamPosFrames}, move=${moveDist.toFixed(2)}`);
+      if (Math.hypot(vx, vy) < stopSpeed * 6) {
+        vx = 0; vy = 0; ball.moving = false;
+        hillJamPosFrames = 0; hillJamFrames = 0;
+        return;
+      } else {
+        hillJamPosFrames = 0;
+      }
+    }
+    
+    if (pushingIntoObstacle) {
+      hillJamFrames = Math.min(60, hillJamFrames + 1);
+      // Much more aggressive damping while jammed
+      if (speed < stopSpeed * 5) {
+        vx *= 0.3;
+        vy *= 0.3;
+      }
+      // Remove any residual velocity into the obstacle normal at higher speeds
+      if (speed < stopSpeed * 6) {
+        const vn = vx * lastCollisionNx + vy * lastCollisionNy;
+        if (vn > 0) { 
+          vx -= vn * lastCollisionNx; 
+          vy -= vn * lastCollisionNy; 
+        }
+      }
+      // Emergency stop for persistent jams
+      if (hillJamFrames >= 3 && speed < stopSpeed * 8) {
+        console.log(`Emergency stop: jamFrames=${hillJamFrames}, speed=${speed.toFixed(1)}`);
+        vx = 0; vy = 0; ball.moving = false;
+        hillJamFrames = 0;
+        return;
+      }
+    } else {
+      hillJamFrames = Math.max(0, hillJamFrames - 1); // decay slowly instead of instant reset
+    }
+
+    // After resolving collisions, apply slope acceleration but do not push into the obstacle
+    if (inSlopeZone) {
+      let ax = slopeAx, ay = slopeAy;
+      if (collidedThisFrame) {
+        const dotInto = ax * lastCollisionNx + ay * lastCollisionNy;
+        if (dotInto < 0) {
+          // Remove the inward normal component so we only keep tangential/outward accel
+          ax -= dotInto * lastCollisionNx;
+          ay -= dotInto * lastCollisionNy;
+        }
+      }
+      vx += ax * dt;
+      vy += ay * dt;
+    }
+    // Add a touch of extra damping when colliding at very low speeds to kill jitter
+    if (collidedThisFrame && speed < stopSpeed * 1.2) {
+      vx *= 0.6;
+      vy *= 0.6;
+    }
+    if (
+      ((!hasSlopeAccel || allowStopDueToCorner) && (speed < stopSpeed && disp < 0.25)) ||
+      // Anti-jam: if hill keeps pushing into obstacle briefly and speed is moderate, stop
+      (pushingIntoObstacle && hillJamFrames >= 2 && speed < stopSpeed * 6)
+    ) {
+      vx = 0; vy = 0; ball.moving = false;
+      hillJamFrames = 0;
+    }
   }
 
-  while (t < maxTime && bouncesCount <= maxBounces) {
-    px += vx * dt;
-    py += vy * dt;
-    const collided = resolveCollisions();
-    if (collided) {
-      bouncesCount++;
-      pts.push(px, py);
-    } else if ((stepCounter++ & 7) === 0) {
-      // thin sampling to keep path light
-      pts.push(px, py);
-    }
-    // Stop if we reach cup
-    const dxh = px - hole.x;
-    const dyh = py - hole.y;
-    const dist = Math.hypot(dxh, dyh);
-    if (dist < hole.r - r * 0.25) {
-      pts.push(hole.x, hole.y);
-      break;
-    }
-    t += dt;
-  }
-
-  // Render polyline
-  if (pts.length >= 4) {
-    ctx.save();
-    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([6, 6]);
-    ctx.beginPath();
-    ctx.moveTo(pts[0], pts[1]);
-    for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.restore();
-    // dev aid: mark that we rendered this frame (console can be chatty; keep light)
-    try { if ((typeof performance !== 'undefined') && Math.floor(performance.now() / 500) % 2 === 0) console.debug('[DEV] Preview render tick'); } catch {}
-  }
+  // No water OOB or hole capture logic in debug preview; this is a visual guide only.
 }
 
 function draw() {
@@ -4948,7 +5130,12 @@ function draw() {
         bridges,
         posts,
         polyWalls,
-        userProfile
+        userProfile,
+        // expose heuristic coefficients for editor
+        baselineShotPx: gameSettingsState.baselineShotPx,
+        turnPenaltyPerTurn: gameSettingsState.turnPenaltyPerTurn,
+        hillBump: gameSettingsState.hillBump,
+        bankWeight: gameSettingsState.bankWeight
       }),
       setGlobalState: (state: any) => {
         if (state.levelCanvas) levelCanvas = state.levelCanvas;
@@ -5064,7 +5251,12 @@ function draw() {
       ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       ctx.font = '16px system-ui, sans-serif';
       ctx.fillStyle = '#ffffff';
-      const val = field === 'slope' ? gameSettingsState.slopeAccel : (field === 'friction' ? gameSettingsState.frictionK : gameSettingsState.sandMultiplier);
+      const val = field === 'slope' ? gameSettingsState.slopeAccel
+        : (field === 'friction' ? gameSettingsState.frictionK
+        : (field === 'sand' ? gameSettingsState.sandMultiplier
+        : (field === 'baseline' ? gameSettingsState.baselineShotPx
+        : (field === 'turnPenalty' ? gameSettingsState.turnPenaltyPerTurn
+        : (field === 'hillBump' ? gameSettingsState.hillBump : gameSettingsState.bankWeight)))));
       ctx.fillText(`${label}: ${valueFmt(val)}`, labelX, y);
       
       const rowY = y + 24;
@@ -5085,7 +5277,12 @@ function draw() {
       ctx.strokeStyle = 'rgba(255,255,255,0.30)'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(sliderX, rowY + h/2); ctx.lineTo(sliderX + sliderW, rowY + h/2); ctx.stroke();
       // thumb position
-      const v = field === 'slope' ? gameSettingsState.slopeAccel : (field === 'friction' ? gameSettingsState.frictionK : gameSettingsState.sandMultiplier);
+      const v = field === 'slope' ? gameSettingsState.slopeAccel
+        : (field === 'friction' ? gameSettingsState.frictionK
+        : (field === 'sand' ? gameSettingsState.sandMultiplier
+        : (field === 'baseline' ? gameSettingsState.baselineShotPx
+        : (field === 'turnPenalty' ? gameSettingsState.turnPenaltyPerTurn
+        : (field === 'hillBump' ? gameSettingsState.hillBump : gameSettingsState.bankWeight)))));
       const t = Math.max(0, Math.min(1, (v - min) / (max - min)));
       const thumbX = sliderX + t * sliderW;
       ctx.fillStyle = 'rgba(100,150,200,0.9)';
@@ -5102,8 +5299,9 @@ function draw() {
     
     const baseY = panelY + 100;
     drawSetting('Hill Acceleration (px/s²)', 'slope', baseY, 200, 2000, 20, v => `${Math.round(v)}`);
-    drawSetting('Ball Friction (K)', 'friction', baseY + 90, 0.2, 2.0, 0.05, v => v.toFixed(2));
-    drawSetting('Sand Multiplier (×K)', 'sand', baseY + 180, 1.0, 10.0, 0.2, v => v.toFixed(2));
+    drawSetting('Hill Bump', 'hillBump', baseY + 70, 0.00, 1.00, 0.02, (v)=>v.toFixed(2));
+    drawSetting('Bank Weight', 'bankWeight', baseY + 140, 0.00, 0.50, 0.01, (v)=>v.toFixed(2));
+    drawSetting('Sand Multiplier (×K)', 'sand', baseY + 210, 1.0, 10.0, 0.2, v => v.toFixed(2));
     
     // Buttons
     const btnW = 120, btnH = 36;
@@ -6018,7 +6216,18 @@ function draw() {
     ctx.font = '14px system-ui, sans-serif';
     const volPct = Math.round(AudioSfx.volume * 100);
     ctx.fillText(`SFX Volume: ${AudioSfx.muted ? 'Muted' : volPct + '%'}`, panelX + 40, oy);
-    oy += 100; // create clear space before buttons
+    oy += 64;
+    // Slope arrows toggle
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.font = '16px system-ui, sans-serif'; ctx.fillStyle = '#ffffff';
+    ctx.fillText('Slope Arrows:', panelX + 40, oy);
+    const tog = getOptionsSlopeToggleRect();
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
+    ctx.fillRect(tog.x, tog.y, tog.w, tog.h);
+    ctx.lineWidth = 1.5; ctx.strokeStyle = hoverOptionsSlopeToggle ? '#ffffff' : '#cfd2cf';
+    ctx.strokeRect(tog.x, tog.y, tog.w, tog.h);
+    ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.font = '14px system-ui, sans-serif';
+    ctx.fillText(showSlopeArrows ? 'On' : 'Off', tog.x + tog.w/2, tog.y + tog.h/2 + 0.5);
+    oy += 60; // spacing before buttons
     // Buttons
     const vm = getOptionsVolMinusRect();
     const vp = getOptionsVolPlusRect();
@@ -6354,7 +6563,7 @@ function draw() {
   }
 
   // Hill direction arrows overlay (high-visibility, masked): draw above geometry
-  if (hills.length > 0) {
+  if (showSlopeArrows && hills.length > 0) {
     // Ensure offscreen layer exists and matches canvas size (play coords after translate)
     if (!arrowsLayer) {
       arrowsLayer = document.createElement('canvas');
@@ -6390,14 +6599,16 @@ function draw() {
             const xx = h.x + inset + c * cellW + cellW * 0.5;
             if (xx <= h.x + inset || xx >= h.x + h.w - inset) continue;
             // Outline
-            ac.strokeStyle = 'rgba(0,0,0,0.55)';
+            // Understroke for contrast
+            ac.strokeStyle = 'rgba(0,30,0,0.55)';
             ac.lineWidth = 3;
-            drawSlopeIndicator(ac as any, xx, yy, dirX, dirY, 9);
-            // White arrow
-            const alpha = Math.max(0.30, Math.min(0.65, 0.30 + (s - 1) * 0.22));
-            ac.strokeStyle = `rgba(255,255,255,${alpha})`;
+            const sizeAdj = 9 * (1 + Math.max(0, Math.min(1, (h.falloff ?? 1)))) * 0.15 + 9; // subtle size scale with falloff
+            drawSlopeIndicator(ac as any, xx, yy, dirX, dirY, sizeAdj);
+            // Tinted green arrow with strength-based alpha
+            const alpha = Math.max(0.28, Math.min(0.65, 0.30 + (s - 1) * 0.22));
+            ac.strokeStyle = `rgba(180,255,180,${alpha})`;
             ac.lineWidth = 1.8;
-            drawSlopeIndicator(ac as any, xx, yy, dirX, dirY, 9);
+            drawSlopeIndicator(ac as any, xx, yy, dirX, dirY, sizeAdj);
           }
         }
       }

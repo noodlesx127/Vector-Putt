@@ -52,6 +52,7 @@ Notes:
   - [x] Sand (high friction; hard to exit)
   - [x] Water (OOB): +1 stroke, reset to pre-shot position
 - [ ] Velocity affects terrain (e.g., hard shot may skim sand)
+- [x] Velocity affects terrain (e.g., hard shot may skim sand)
 - [ ] Ramps/Hills (slope affects speed/direction; phase 2)
   - [x] Hills (prototype): directional acceleration zones with visual gradient
 - [ ] Moving obstacles (timed collisions; phase 2)
@@ -253,6 +254,7 @@ Notes:
   - [x] Main Menu (Start, Options placeholder) → Course Select (Dev Levels)
 - [ ] Options: audio volumes (SFX/Music), accessibility toggles
   - [x] SFX volume and mute controls in Options/Pause
+  - [x] Slope arrows visibility toggle (show/hide hill arrows during play)
 - [x] Pause menu overlay with info/shortcuts/version (P/Escape)
   - [x] Buttons: Replay, Close, Back to Main Menu
   - [x] Add Options to Pause menu (open in-game Options; Back/Esc returns to Pause/Game)

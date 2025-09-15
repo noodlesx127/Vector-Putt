@@ -68,6 +68,11 @@ export interface FirebaseGameSettings {
   slopeAccel: number;      // px/s^2 base acceleration for hills
   frictionK: number;       // base exponential damping (global)
   sandMultiplier: number;  // multiplier applied to frictionK when in sand
+  // Par/heuristic tuning (optional)
+  baselineShotPx?: number;       // D baseline in px per stroke (default 320)
+  turnPenaltyPerTurn?: number;   // default 0.08
+  hillBump?: number;             // default 0.2
+  bankWeight?: number;           // default 0.12
   lastModified: number;    // Unix timestamp
 }
 

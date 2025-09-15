@@ -2227,14 +2227,26 @@ class LevelEditorImpl implements LevelEditor {
               env.showToast(warnings[0]);
               if (warnings[1]) env.showToast(warnings[1]);
             }
+            // Pull gameplay + heuristic tuning from global state for consistency with Suggest Par
+            const gsAll = env.getGlobalState?.() || {};
+            const frictionK = typeof gsAll.frictionK === 'number' ? gsAll.frictionK
+              : (typeof gsAll.physicsFrictionK === 'number' ? gsAll.physicsFrictionK : 1.2);
+            const sandMult = typeof gsAll.sandMultiplier === 'number' ? gsAll.sandMultiplier
+              : (typeof gsAll.physicsSandMultiplier === 'number' ? gsAll.physicsSandMultiplier : 6.0);
+            const baselineShotPx = typeof gsAll.baselineShotPx === 'number' ? gsAll.baselineShotPx : 320;
+            const turnPenaltyPerTurn = typeof gsAll.turnPenaltyPerTurn === 'number' ? gsAll.turnPenaltyPerTurn : 0.08;
+            const hillBump = typeof gsAll.hillBump === 'number' ? gsAll.hillBump : 0.2;
             const parInfo = estimatePar(this.editorLevelData, fair, cellSize, {
-              baselineShotPx: 320,
+              baselineShotPx,
               sandPenaltyPerCell: 0.01,
-              turnPenaltyPerTurn: 0.08,
+              turnPenaltyPerTurn,
               turnPenaltyMax: 1.5,
-              hillBump: 0.2,
+              hillBump,
               bankWeight: 0.12,
-              bankPenaltyMax: 1.0
+              bankPenaltyMax: 1.0,
+              frictionK,
+              referenceFrictionK: 1.2,
+              sandFrictionMultiplier: sandMult
             });
             void env.showConfirm(`Suggested par is ${parInfo.suggestedPar}. Apply now?`, 'Suggest Par')
               .then((apply) => {
@@ -3940,19 +3952,22 @@ class LevelEditorImpl implements LevelEditor {
     let cellSize = 20;
     try { const g = env.getGridSize(); if (typeof g === 'number' && g > 0) cellSize = Math.max(10, Math.min(40, g)); } catch {}
 
-    // Pull gameplay friction settings from global state when available
+    // Pull gameplay friction + heuristic tuning from global state when available
     const gsAll = env.getGlobalState?.() || {};
     const frictionK = typeof gsAll.frictionK === 'number' ? gsAll.frictionK
       : (typeof gsAll.physicsFrictionK === 'number' ? gsAll.physicsFrictionK : 1.2);
     const sandMult = typeof gsAll.sandMultiplier === 'number' ? gsAll.sandMultiplier
       : (typeof gsAll.physicsSandMultiplier === 'number' ? gsAll.physicsSandMultiplier : 6.0);
+    const baselineShotPx = typeof gsAll.baselineShotPx === 'number' ? gsAll.baselineShotPx : 320;
+    const turnPenaltyPerTurn = typeof gsAll.turnPenaltyPerTurn === 'number' ? gsAll.turnPenaltyPerTurn : 0.08;
+    const hillBump = typeof gsAll.hillBump === 'number' ? gsAll.hillBump : 0.2;
 
     const { reachable, suggestedPar, pathLengthPx, notes } = estimatePar(this.editorLevelData, fair, cellSize, {
-      baselineShotPx: 320,
+      baselineShotPx,
       sandPenaltyPerCell: 0.01,
-      turnPenaltyPerTurn: 0.08,
+      turnPenaltyPerTurn,
       turnPenaltyMax: 1.5,
-      hillBump: 0.2,
+      hillBump,
       bankWeight: 0.12,
       bankPenaltyMax: 1.0,
       // Physics-aware scaling so D (px per stroke) adjusts with friction

@@ -11,7 +11,8 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
 As of 2025-09-03, focus these open items migrated from `TODO.md`:
 
 - **Physics & Interactions**
-  - [ ] Velocity affects terrain (e.g., hard shot may skim sand)
+  - [x] Velocity affects terrain (e.g., hard shot may skim sand)
+    - Implemented velocity-based sand skimming: at higher ball speeds the effective sand friction multiplier eases toward 1.0 (config: `sandSkimEnabled`, `sandSkimStart`, `sandSkimFull`). Keeps bridges exempt. (`src/main.ts`)
   - [x] Tuning: Sand slows more and hills push harder — increased sand friction multiplier from 4.2× to 6.0× of `frictionK`, and increased hill base acceleration `SLOPE_ACCEL` from 520 to 720 px/s². (`src/main.ts`)
   - [x] Admin Game Settings (runtime): Added admin-only Game Settings panel under Admin Menu to tune global physics (Hill Accel, Ball Friction K, Sand Multiplier) on the fly; values persist in Firebase `/gameSettings`. Applied at startup and on Save. (`src/main.ts`, `src/firebase/database.ts`)
   - [x] Better hill direction visibility (add clear visual indicators of slope direction/strength in play and editor)
@@ -19,9 +20,12 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
   - [x] Change hitting the ball mechanic from pulling back to pulling forward
     - Updated shot input so dragging forward shoots forward (was pull-back to shoot). Updated aim arrow and dev debug preview to match. (`src/main.ts`)
   - Optional polish — Hills/Shot UX:
-    - [ ] Add an Options toggle (or Admin Game Settings) to show/hide slope arrows during play
-    - [ ] Colorize slope arrows subtly to match palette (e.g., faint green per `UI_Design.md`)
-    - [ ] Scale arrow size or edge emphasis using hill `falloff` to better convey flow intensity
+    - [x] Add an Options toggle (or Admin Game Settings) to show/hide slope arrows during play
+      - Added Options panel toggle `showSlopeArrows` with hover/click and standard button visuals; arrows render only when enabled. (`src/main.ts`)
+    - [x] Colorize slope arrows subtly to match palette (e.g., faint green per `UI_Design.md`)
+      - Tinted arrows toward green with a darker under-stroke for contrast. (`src/main.ts`)
+    - [x] Scale arrow size or edge emphasis using hill `falloff` to better convey flow intensity
+      - Arrow size subtly scales with hill `falloff`; alpha still scales with `strength`. (`src/main.ts`)
  
  - **Course Creator — Follow-ups**
    - [x] Unit tests for `src/firebase/FirebaseCourseStore.ts`
@@ -112,10 +116,10 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
   Recommended next steps
   - [x] Visual Path Preview overlay
     - Implemented an editor overlay that renders the A* path as a polyline with per-node markers (sand = sand color, hill = white), and X marks at turns. Automatically computed after File → Suggest Par; press `P` to toggle visibility. (`src/editor/levelHeuristics.ts::computePathDebug()`, `src/editor/levelEditor.ts`)
-  - [ ] Coefficient tuning via Admin/Game Settings
-    - Expose D baseline (px per stroke), sand multiplier, turn penalty, and hill bump as adjustable settings to calibrate par estimates on sample levels.
-  - [ ] Cup position suggestions integration
-    - Wire `suggestCupPositions()` from `src/editor/levelHeuristics.ts` to propose 3–5 non-destructive candidate cup pins, enforce constraints, and rank by difficulty.
+  - [x] Coefficient tuning via Admin/Game Settings
+    - Implemented new sliders under Admin → Game Settings for Baseline Shot (px), Turn Penalty, Hill Bump, and Bank Weight (alongside existing Slope Accel, Friction K, Sand Multiplier). Values persist to Firebase via `FirebaseDatabase.getGameSettings()/updateGameSettings()`. Editor `Suggest Par` consumes these coefficients from `env.getGlobalState()` when calling `estimatePar()`. (`src/main.ts`, `src/firebase/database.ts` `FirebaseGameSettings`, `src/editor/levelEditor.ts`)
+  - [x] Cup position suggestions integration
+    - Wired `suggestCupPositions()` (File → "Suggest Cup Positions") to propose 3–5 ranked candidate cup pins. Clicking a marker clamps and applies the cup, runs `lintCupPath()` for quick warnings, then computes a Par suggestion using the admin-tuned coefficients (Baseline Shot, Turn Penalty, Hill Bump, Bank Weight, Friction K, Sand Multiplier) and offers to apply it. Markers clear on apply/cancel. (`src/editor/levelHeuristics.ts`, `src/editor/levelEditor.ts`)
   - [ ] Unit tests for heuristic sanity
     - Add tests to ensure suggested par increases with obstacle density/path length and that removal of blockers lowers par accordingly.
 

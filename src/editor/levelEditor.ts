@@ -65,9 +65,9 @@ export type EditorTool =
   | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'walls45' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'water45' | 'sand' | 'sandPoly' | 'sand45' | 'hill' | 'decoration';
 
 export type EditorAction =
-  | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'chamfer' | 'angledCorridor' | 'courseCreator';
+  | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'previewFillOnClose' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'chamfer' | 'angledCorridor' | 'courseCreator';
 
-export type EditorMenuId = 'file' | 'objects' | 'decorations' | 'tools';
+export type EditorMenuId = 'file' | 'edit' | 'view' | 'objects' | 'decorations' | 'tools';
 
 export type EditorMenuItem =
   | { kind: 'tool'; tool: EditorTool }
@@ -236,6 +236,8 @@ class LevelEditorImpl implements LevelEditor {
   private polygonInProgress: { tool: EditorTool; points: number[] } | null = null;
   // Polygon preview line join toggle (Alt toggles)
   private polygonJoinBevel: boolean = false;
+  // View option: when true, in-progress polygon preview only fills on close
+  private previewFillOnClose: boolean = false;
   // Track last modifier keys for preview constraints
   private lastModifiers: { shift: boolean; ctrl: boolean; alt: boolean } = { shift: false, ctrl: false, alt: false };
   
@@ -1249,12 +1251,26 @@ class LevelEditorImpl implements LevelEditor {
         { label: 'Level Load', item: { kind: 'action', action: 'load' } },
         { label: 'Import', item: { kind: 'action', action: 'import' } },
         { label: 'Export', item: { kind: 'action', action: 'export' } },
-        { label: 'Metadata', item: { kind: 'action', action: 'metadata' } },
-        { label: 'Suggest Par', item: { kind: 'action', action: 'suggestPar' } },
-        { label: 'Suggest Cup Positions', item: { kind: 'action', action: 'suggestCup' } },
-        { label: 'Test Level', item: { kind: 'action', action: 'test' }, separator: true },
         { label: 'Delete', item: { kind: 'action', action: 'delete' } },
         { label: 'Back/Exit', item: { kind: 'action', action: 'back' }, separator: true }
+      ]
+    },
+    edit: {
+      title: 'Edit',
+      items: [
+        { label: 'Undo (Ctrl+Z)', item: { kind: 'action', action: 'undo' } },
+        { label: 'Redo (Ctrl+Y)', item: { kind: 'action', action: 'redo' }, separator: true },
+        { label: 'Copy (Ctrl+C)', item: { kind: 'action', action: 'copy' } },
+        { label: 'Cut (Ctrl+X)', item: { kind: 'action', action: 'cut' } },
+        { label: 'Paste (Ctrl+V)', item: { kind: 'action', action: 'paste' } },
+        { label: 'Duplicate (Ctrl+D)', item: { kind: 'action', action: 'duplicate' } }
+      ]
+    },
+    view: {
+      title: 'View',
+      items: [
+        { label: 'Grid Toggle', item: { kind: 'action', action: 'gridToggle' } },
+        { label: 'Preview Fill Only On Close', item: { kind: 'action', action: 'previewFillOnClose' } }
       ]
     },
     objects: {
@@ -1289,15 +1305,12 @@ class LevelEditorImpl implements LevelEditor {
       title: 'Editor Tools',
       items: [
         { label: 'Select Tool', item: { kind: 'tool', tool: 'select' } },
-        { label: 'Undo (Ctrl+Z)', item: { kind: 'action', action: 'undo' }, separator: true },
-        { label: 'Redo (Ctrl+Y)', item: { kind: 'action', action: 'redo' } },
-        { label: 'Copy (Ctrl+C)', item: { kind: 'action', action: 'copy' }, separator: true },
-        { label: 'Cut (Ctrl+X)', item: { kind: 'action', action: 'cut' } },
-        { label: 'Paste (Ctrl+V)', item: { kind: 'action', action: 'paste' } },
-        { label: 'Duplicate (Ctrl+D)', item: { kind: 'action', action: 'duplicate' } },
+        { label: 'Metadata', item: { kind: 'action', action: 'metadata' } },
+        { label: 'Suggest Par', item: { kind: 'action', action: 'suggestPar' } },
+        { label: 'Suggest Cup Positions', item: { kind: 'action', action: 'suggestCup' } },
+        { label: 'Test Level', item: { kind: 'action', action: 'test' }, separator: true },
         { label: 'Chamfer Bevel…', item: { kind: 'action', action: 'chamfer' } },
         { label: 'Angled Corridor…', item: { kind: 'action', action: 'angledCorridor' } },
-        { label: 'Grid Toggle', item: { kind: 'action', action: 'gridToggle' }, separator: true },
         // Admin-only tool entry (conditionally rendered at runtime)
         { label: 'Course Creator', item: { kind: 'action', action: 'courseCreator' }, separator: true }
       ]
@@ -1845,8 +1858,8 @@ class LevelEditorImpl implements LevelEditor {
       
       // Fill based on tool type (treat 45° variants as their base types)
       if (tool === 'waterPoly' || tool === 'water45') {
-        // Delay fill until at least 4 points to avoid early triangular fill
-        if (pts.length >= 8) {
+        // Respect View toggle: only fill on close
+        if (!this.previewFillOnClose && pts.length >= 8) {
           ctx.globalAlpha = 0.35;
           ctx.fillStyle = COLORS.waterFill;
           ctx.fill();
@@ -1854,8 +1867,7 @@ class LevelEditorImpl implements LevelEditor {
         }
         ctx.strokeStyle = COLORS.waterStroke;
       } else if (tool === 'sandPoly' || tool === 'sand45') {
-        // Delay fill until at least 4 points to avoid early triangular fill
-        if (pts.length >= 8) {
+        if (!this.previewFillOnClose && pts.length >= 8) {
           ctx.globalAlpha = 0.35;
           ctx.fillStyle = COLORS.sandFill;
           ctx.fill();
@@ -1863,9 +1875,8 @@ class LevelEditorImpl implements LevelEditor {
         }
         ctx.strokeStyle = COLORS.sandStroke;
       } else if (tool === 'wallsPoly' || tool === 'walls45') {
-        // Do not fill early for walls: wait until at least 4 points to avoid
-        // confusing triangular fill when placing the 3rd vertex.
-        if (pts.length >= 8) { // 4 points * 2 coords
+        // Do not fill early for walls: wait until at least 4 points (unless View toggle forces no preview fill at all)
+        if (!this.previewFillOnClose && pts.length >= 8) { // 4 points * 2 coords
           ctx.globalAlpha = 0.35;
           ctx.fillStyle = COLORS.wallFill;
           ctx.fill();
@@ -2083,7 +2094,7 @@ class LevelEditorImpl implements LevelEditor {
     ctx.font = '14px system-ui, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    const menuIds: EditorMenuId[] = ['file', 'objects', 'decorations', 'tools'];
+    const menuIds: EditorMenuId[] = ['file', 'edit', 'view', 'objects', 'decorations', 'tools'];
     let mx = 8; const my = menubarH / 2;
     for (const menuId of menuIds) {
       const menu = this.EDITOR_MENUS[menuId];
@@ -2189,12 +2200,16 @@ class LevelEditorImpl implements LevelEditor {
             case 'gridToggle':
               displayLabel = this.showGrid ? 'Grid On' : 'Grid Off';
               break;
+            case 'previewFillOnClose':
+              displayLabel = `Preview Fill Only On Close: ${this.previewFillOnClose ? 'On' : 'Off'}`;
+              break;
             case 'suggestCup':
-              displayLabel = 'Suggest Cup Positions';
+              // keep default label
+              break;
+            default:
               break;
           }
         }
-        
         ctx.fillStyle = isDisabled ? 'rgba(255,255,255,0.5)' : '#ffffff';
         ctx.fillText(displayLabel, dropdownX + 8, itemY + itemH / 2);
         this.uiHotspots.push({ kind: 'menuItem', menu: this.openEditorMenu, item: menuItem.item, x: dropdownX, y: itemY, w: dropdownW, h: itemH });
@@ -2392,6 +2407,9 @@ class LevelEditorImpl implements LevelEditor {
                 env.setShowGrid?.(newShow);
                 this.showGrid = newShow; // keep local state in sync in case env doesn't repaint immediately
               } catch {}
+            } else if (item.action === 'previewFillOnClose') {
+              this.previewFillOnClose = !this.previewFillOnClose;
+              try { env.showToast(`Preview Fill Only On Close ${this.previewFillOnClose ? 'ON' : 'OFF'}`); } catch {}
             } else if (item.action === 'suggestCup') {
               void this.suggestCup();
             } else if (item.action === 'courseCreator') {

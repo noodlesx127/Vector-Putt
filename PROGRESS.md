@@ -171,8 +171,8 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
       - Edit → Align Left/Right/Top/Bottom/Center (H/V); Distribute spacing (H/V) using `getSelectionBounds()`.
     - [ ] Numeric readout on drafting
       - Show segment length and angle next to the yellow next-segment guide during polygon drafting.
-    - [ ] Ruler guide lines
-      - Drag-out guides from rulers; objects snap to these; double-click ruler clears guides.
+    - [x] Ruler guide lines
+      - Implemented: drag out guides from rulers (top/left). Guides persist and render; snapping includes these guides; double-click the ruler band clears guides for that axis.
 
 ## Next Up (Short Horizon)
 - Seeded from `TODO.md` backlog:

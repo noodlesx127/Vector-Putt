@@ -1,4 +1,4 @@
-/*
+    /*
   Level Editor module
   -------------------
   This module encapsulates Level Editor state, input handling, rendering, and persistence helpers.
@@ -246,6 +246,14 @@ class LevelEditorImpl implements LevelEditor {
   private showRulers: boolean = false;
   // Transient live guides computed during interactions
   private liveGuides: Array<{ kind: 'x' | 'y'; pos: number }> = [];
+  // Persistent ruler-dragged guides
+  private persistentGuides: Array<{ kind: 'x' | 'y'; pos: number }> = [];
+  // Ruler-drag interaction state
+  private isRulerDragging: boolean = false;
+  private rulerDragKind: 'x' | 'y' | null = null;
+  private rulerDragPos: number | null = null;
+  private lastRulerClickMs: number = 0;
+  private lastRulerBand: 'x' | 'y' | null = null;
   // Transient guide bubbles (small labels shown near guides)
   private liveGuideBubbles: Array<{ x: number; y: number; text: string }> = [];
   // Measure tool state
@@ -315,6 +323,10 @@ class LevelEditorImpl implements LevelEditor {
     const { x: fairX, y: fairY, w: fairW, h: fairH } = env.fairwayRect();
     const candX: number[] = [fairX, fairX + Math.floor(fairW / 2), fairX + fairW];
     const candY: number[] = [fairY, fairY + Math.floor(fairH / 2), fairY + fairH];
+    // Include persistent ruler guides
+    for (const g of this.persistentGuides) {
+      if (g.kind === 'x') candX.push(g.pos); else candY.push(g.pos);
+    }
     const pushB = (b: { x: number; y: number; w: number; h: number }) => {
       candX.push(b.x, b.x + Math.floor(b.w / 2), b.x + b.w);
       candY.push(b.y, b.y + Math.floor(b.h / 2), b.y + b.h);
@@ -2037,6 +2049,31 @@ class LevelEditorImpl implements LevelEditor {
           ctx.fillStyle = 'rgba(255,255,255,0.9)';
           ctx.fillText(hint, hx + pad, hy + pad);
         } catch {}
+        // Numeric readout for preview (length and angle)
+        try {
+          const dx = res.x - lastX;
+          const dy = res.y - lastY;
+          const len = Math.hypot(dx, dy);
+          const ang = Math.atan2(dy, dx) * 180 / Math.PI;
+          const readout = `L=${len.toFixed(1)} px  θ=${ang.toFixed(1)}°`;
+          ctx.font = '11px system-ui, sans-serif';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
+          const pad2 = 4;
+          const tw2 = Math.ceil(ctx.measureText(readout).width);
+          const th2 = 14;
+          const midx = (lastX + res.x) / 2;
+          const midy = (lastY + res.y) / 2;
+          const bx = Math.min(Math.max(midx + 8, fairX + 2), fairX + fairW - tw2 - pad2 * 2 - 2);
+          const by = Math.min(Math.max(midy + 8, fairY + 2), fairY + fairH - th2 - pad2 * 2 - 2);
+          ctx.fillStyle = 'rgba(0,0,0,0.65)';
+          ctx.fillRect(bx, by, tw2 + pad2 * 2, th2 + pad2 * 2);
+          ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(bx, by, tw2 + pad2 * 2, th2 + pad2 * 2);
+          ctx.fillStyle = 'rgba(255,255,255,0.9)';
+          ctx.fillText(readout, bx + pad2, by + pad2);
+        } catch {}
         // Guide indicator
         if (res.guide) {
           if (res.guide.kind === 'vertex') {
@@ -2199,6 +2236,29 @@ class LevelEditorImpl implements LevelEditor {
         const boxH = Math.abs(this.dragMoveOffset.y);
         ctx.globalAlpha = 0.1; ctx.fillStyle = '#00aaff'; ctx.fillRect(boxX, boxY, boxW, boxH); ctx.globalAlpha = 1;
         ctx.setLineDash([2, 2]); ctx.lineWidth = 1; ctx.strokeStyle = '#00aaff'; ctx.strokeRect(boxX, boxY, boxW, boxH);
+      }
+      ctx.restore();
+    }
+
+    // Persistent ruler guides
+    if (this.persistentGuides && this.persistentGuides.length > 0) {
+      const { x: fx, y: fy, w: fw, h: fh } = env.fairwayRect();
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0,224,255,0.8)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 2]);
+      for (const g of this.persistentGuides) {
+        ctx.beginPath();
+        if (g.kind === 'x') {
+          const gx = Math.max(fx, Math.min(fx + fw, g.pos));
+          ctx.moveTo(gx, fy);
+          ctx.lineTo(gx, fy + fh);
+        } else {
+          const gy = Math.max(fy, Math.min(fy + fh, g.pos));
+          ctx.moveTo(fx, gy);
+          ctx.lineTo(fx + fw, gy);
+        }
+        ctx.stroke();
       }
       ctx.restore();
     }
@@ -2478,6 +2538,35 @@ class LevelEditorImpl implements LevelEditor {
   handleMouseDown(e: MouseEvent, env: EditorEnv): void {
     if (env.isOverlayActive?.()) return;
     const p = env.worldFromEvent(e);
+
+    // Ruler-drag guides: start drag when clicking on ruler bands, support double-click to clear
+    if (this.showRulers) {
+      const { x: fx, y: fy, w: fw, h: fh } = env.fairwayRect();
+      const topH = 18, leftW = 18;
+      const inTop = (p.x >= fx && p.x <= fx + fw && p.y >= fy && p.y <= fy + topH);
+      const inLeft = (p.x >= fx && p.x <= fx + leftW && p.y >= fy && p.y <= fy + fh);
+      const now = Date.now();
+      if (inTop || inLeft) {
+        const band: 'x' | 'y' = inTop ? 'x' : 'y';
+        // Double-click on same band clears persistent guides for that axis
+        if (this.lastRulerBand === band && (now - this.lastRulerClickMs) < 300) {
+          this.persistentGuides = this.persistentGuides.filter(g => g.kind !== band);
+          try { env.showToast(`Cleared ${band.toUpperCase()} ruler guides`); } catch {}
+          this.lastRulerClickMs = 0; this.lastRulerBand = null;
+          return;
+        }
+        this.lastRulerClickMs = now; this.lastRulerBand = band;
+        this.isRulerDragging = true;
+        this.rulerDragKind = band;
+        const clampX = (x: number) => Math.max(fx, Math.min(fx + fw, x));
+        const clampY = (y: number) => Math.max(fy, Math.min(fy + fh, y));
+        this.rulerDragPos = band === 'x' ? clampX(p.x) : clampY(p.y);
+        // Initialize preview
+        this.liveGuides = [{ kind: band, pos: this.rulerDragPos! }];
+        this.liveGuideBubbles = [{ x: p.x + 10, y: p.y + 10, text: `${band}=${Math.round(this.rulerDragPos!)}` }];
+        return;
+      }
+    }
 
     // Measure Tool begin
     if (this.selectedTool === 'measure') {
@@ -3236,8 +3325,12 @@ class LevelEditorImpl implements LevelEditor {
         this.liveGuides = [];
         this.liveGuideBubbles = [];
       }
-      const rawDx = ax - this.dragMoveStart.x;
-      const rawDy = ay - this.dragMoveStart.y;
+      let rawDx = ax - this.dragMoveStart.x;
+      let rawDy = ay - this.dragMoveStart.y;
+      // Axis lock with Shift: constrain to dominant axis
+      if (e.shiftKey) {
+        if (Math.abs(rawDx) >= Math.abs(rawDy)) { rawDy = 0; } else { rawDx = 0; }
+      }
       const selectionIsAllCircles = this.selectedObjects.length > 0 && this.selectedObjects.every(o => (o.type === 'post' || o.type === 'tee' || o.type === 'cup'));
       const dx = selectionIsAllCircles ? rawDx : (gridOn ? Math.round(rawDx / gridSize) * gridSize : rawDx);
       const dy = selectionIsAllCircles ? rawDy : (gridOn ? Math.round(rawDy / gridSize) * gridSize : rawDy);

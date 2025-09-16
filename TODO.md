@@ -90,6 +90,14 @@ Notes:
 - [ ] Level Editor & Browser (authoring and discovery)
   - [x] In-app (or web) level editor to place walls/terrain/hills/decorations
   - [ ] Grid snapping, keyboard nudges, and alignment helpers
+    - [ ] Smart Alignment Guides during drag-move/resize/vertex drag/polygon drafting
+      - Snap to nearby object edges/centers (left/center/right, top/middle/bottom) within ~6px; show cyan guide lines and spacing labels; Alt disables guides; Ctrl forces grid-only snap
+    - [ ] Rulers (top/left) with tick marks and live cursor indicator; View toggle “Rulers”
+    - [ ] Measure Tool (Tools → Measure): click-drag to measure distance/angle (Δx/Δy); snaps to grid/vertices/edges; ESC cancels; Enter pins; double-click clears
+    - [ ] Axis lock for drag-move (Shift constrains to dominant axis)
+    - [ ] Align/Distribute commands for multi-select (Align Left/Right/Top/Bottom/Center H/V; Distribute H/V spacing)
+    - [ ] Numeric readout on polygon drafting (length + angle near the next-segment guide)
+    - [ ] Ruler guide lines (drag out from rulers; double-click ruler to clear)
   - [x] Load/Save `levels/*.json` with schema-aware validation
   - [ ] Dev/Admin-only Course Creator (Editor → Editor Tools → "Course Creator")
     - [ ] Dedicated UI listing all levels with thumbnail and metadata (name, author, par)

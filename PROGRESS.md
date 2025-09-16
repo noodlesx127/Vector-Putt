@@ -153,6 +153,25 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
     - [ ] Tests
       - Unit tests for polygon winding, closure, and collision against 45° edges; snapshot tests for render
 
+  - **Alignment Aids — Plan**
+    - [ ] Smart Alignment Guides (drag-move/resize/vertex drag/polygon drafting)
+      - Snap to nearby object edges and centers (left/center/right, top/middle/bottom) within ~6px; show cyan guide lines and spacing labels; Alt disables guides; Ctrl forces grid-only snap. Implement in `handleMouseMove()` and render in `renderLevelEditor()` using transient `liveGuides`.
+      - [in progress] Drag-move snapping to edges/centers implemented; renders guide lines. To do: spacing labels, apply to resize and vertex-drag.
+    - [ ] Rulers (top/left) with tick marks and cursor indicators
+      - View toggle “Rulers”. Draw after background and before content overlays; major ticks every 50px, minor ticks 10px; live cursor line.
+      - [in progress] Initial ruler strips and ticks rendering added; refine tick density and typography to match UI_Design.md.
+    - [ ] Measure Tool
+      - Tools → “Measure Tool”: click-drag to measure length/angle (Δx/Δy); snaps to grid/vertices/edges; ESC cancels; Enter pins; double-click clears.
+      - [in progress] Measure overlay (line + label) implemented with grid snap; add Enter/double-click behaviors next.
+    - [ ] Axis lock for drag-move
+      - Shift while dragging constrains movement to dominant axis; mirrors polygon tool modifiers.
+    - [ ] Align/Distribute commands (multi-select)
+      - Edit → Align Left/Right/Top/Bottom/Center (H/V); Distribute spacing (H/V) using `getSelectionBounds()`.
+    - [ ] Numeric readout on drafting
+      - Show segment length and angle next to the yellow next-segment guide during polygon drafting.
+    - [ ] Ruler guide lines
+      - Drag-out guides from rulers; objects snap to these; double-click ruler clears guides.
+
 ## Next Up (Short Horizon)
 - Seeded from `TODO.md` backlog:
 

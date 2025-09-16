@@ -62,10 +62,10 @@ type SelectableObject =
   | { type: 'hill'; object: Slope; index: number };
 
 export type EditorTool =
-  | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'walls45' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'water45' | 'sand' | 'sandPoly' | 'sand45' | 'hill' | 'decoration';
+  | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'walls45' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'water45' | 'sand' | 'sandPoly' | 'sand45' | 'hill' | 'decoration' | 'measure';
 
 export type EditorAction =
-  | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'previewFillOnClose' | 'previewDashedNext' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'chamfer' | 'angledCorridor' | 'courseCreator';
+  | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'previewFillOnClose' | 'previewDashedNext' | 'alignmentGuides' | 'rulersToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'chamfer' | 'angledCorridor' | 'courseCreator';
 
 export type EditorMenuId = 'file' | 'edit' | 'view' | 'objects' | 'decorations' | 'tools';
 
@@ -240,6 +240,15 @@ class LevelEditorImpl implements LevelEditor {
   private previewFillOnClose: boolean = false;
   // View option: when true, show next-segment preview as dashed; otherwise solid
   private previewDashedNextSegment: boolean = true;
+  // View option: enable alignment guides (snap + guide lines)
+  private showAlignmentGuides: boolean = true;
+  // View option: show rulers (top/left)
+  private showRulers: boolean = false;
+  // Transient live guides computed during interactions
+  private liveGuides: Array<{ kind: 'x' | 'y'; pos: number }> = [];
+  // Measure tool state
+  private measureStart: { x: number; y: number } | null = null;
+  private measureEnd: { x: number; y: number } | null = null;
   // Track last modifier keys for preview constraints
   private lastModifiers: { shift: boolean; ctrl: boolean; alt: boolean } = { shift: false, ctrl: false, alt: false };
   
@@ -290,6 +299,59 @@ class LevelEditorImpl implements LevelEditor {
     const sx = dx < 0 ? -1 : 1;
     const sy = dy < 0 ? -1 : 1;
     return { x: prevX + sx * len, y: prevY + sy * len };
+  }
+
+  // Compute alignment snapping for current mouse position against nearby object edges/centers and fairway edges
+  private computeAlignmentSnap(px: number, py: number, env: EditorEnv): { x: number; y: number; guides: Array<{ kind: 'x' | 'y'; pos: number }> } {
+    const guides: Array<{ kind: 'x' | 'y'; pos: number }> = [];
+    if (!this.showAlignmentGuides) return { x: px, y: py, guides };
+    const threshold = 6;
+    const gs = env.getGlobalState();
+    const { x: fairX, y: fairY, w: fairW, h: fairH } = env.fairwayRect();
+    const candX: number[] = [fairX, fairX + Math.floor(fairW / 2), fairX + fairW];
+    const candY: number[] = [fairY, fairY + Math.floor(fairH / 2), fairY + fairH];
+    const pushB = (b: { x: number; y: number; w: number; h: number }) => {
+      candX.push(b.x, b.x + Math.floor(b.w / 2), b.x + b.w);
+      candY.push(b.y, b.y + Math.floor(b.h / 2), b.y + b.h);
+    };
+    const arrays: Array<{ arr: any[]; type: SelectableObject['type'] }> = [
+      { arr: gs.walls || [], type: 'wall' as any },
+      { arr: gs.polyWalls || [], type: 'wallsPoly' as any },
+      { arr: gs.waters || [], type: 'water' as any },
+      { arr: gs.watersPoly || [], type: 'waterPoly' as any },
+      { arr: gs.sands || [], type: 'sand' as any },
+      { arr: gs.sandsPoly || [], type: 'sandPoly' as any },
+      { arr: gs.bridges || [], type: 'bridge' as any },
+      { arr: gs.hills || [], type: 'hill' as any },
+      { arr: gs.posts || [], type: 'post' as any },
+      { arr: gs.decorations || [], type: 'decoration' as any },
+    ];
+    for (const { arr, type } of arrays) {
+      const a = arr as any[];
+      for (let i = 0; i < a.length; i++) {
+        const obj: SelectableObject = { type: type, object: a[i], index: i } as any;
+        // Skip objects currently selected to avoid self-snapping
+        if (this.selectedObjects.some(o => o.type === obj.type && (o as any).index === (obj as any).index)) continue;
+        const b = this.getObjectBounds(obj);
+        if (b.w > 0 && b.h > 0) pushB(b);
+      }
+    }
+    let sx = px, sy = py;
+    // Snap X
+    let bestDx = Number.POSITIVE_INFINITY; let bestX: number | null = null;
+    for (const cx of candX) {
+      const d = Math.abs(px - cx);
+      if (d < bestDx) { bestDx = d; bestX = cx; }
+    }
+    if (bestX !== null && bestDx <= threshold) { sx = bestX; guides.push({ kind: 'x', pos: bestX }); }
+    // Snap Y
+    let bestDy = Number.POSITIVE_INFINITY; let bestY: number | null = null;
+    for (const cy of candY) {
+      const d = Math.abs(py - cy);
+      if (d < bestDy) { bestDy = d; bestY = cy; }
+    }
+    if (bestY !== null && bestDy <= threshold) { sy = bestY; guides.push({ kind: 'y', pos: bestY }); }
+    return { x: sx, y: sy, guides };
   }
 
   // Helper: find nearest snap to existing polygon vertices or edges
@@ -1273,7 +1335,9 @@ class LevelEditorImpl implements LevelEditor {
       items: [
         { label: 'Grid Toggle', item: { kind: 'action', action: 'gridToggle' } },
         { label: 'Preview Fill Only On Close', item: { kind: 'action', action: 'previewFillOnClose' } },
-        { label: 'Dashed Next Segment', item: { kind: 'action', action: 'previewDashedNext' } }
+        { label: 'Dashed Next Segment', item: { kind: 'action', action: 'previewDashedNext' } },
+        { label: 'Alignment Guides', item: { kind: 'action', action: 'alignmentGuides' } },
+        { label: 'Rulers', item: { kind: 'action', action: 'rulersToggle' } }
       ]
     },
     objects: {
@@ -1308,6 +1372,7 @@ class LevelEditorImpl implements LevelEditor {
       title: 'Editor Tools',
       items: [
         { label: 'Select Tool', item: { kind: 'tool', tool: 'select' } },
+        { label: 'Measure Tool', item: { kind: 'tool', tool: 'measure' } },
         { label: 'Metadata', item: { kind: 'action', action: 'metadata' } },
         { label: 'Suggest Par', item: { kind: 'action', action: 'suggestPar' } },
         { label: 'Suggest Cup Positions', item: { kind: 'action', action: 'suggestCup' } },
@@ -2103,6 +2168,106 @@ class LevelEditorImpl implements LevelEditor {
       ctx.restore();
     }
 
+    // Alignment Guides (live)
+    if (this.showAlignmentGuides && this.liveGuides && this.liveGuides.length > 0) {
+      const { x: fx, y: fy, w: fw, h: fh } = env.fairwayRect();
+      ctx.save();
+      ctx.strokeStyle = '#00e0ff';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      for (const g of this.liveGuides) {
+        ctx.beginPath();
+        if (g.kind === 'x') {
+          const gx = Math.max(fx, Math.min(fx + fw, g.pos));
+          ctx.moveTo(gx, fy);
+          ctx.lineTo(gx, fy + fh);
+        } else {
+          const gy = Math.max(fy, Math.min(fy + fh, g.pos));
+          ctx.moveTo(fx, gy);
+          ctx.lineTo(fx + fw, gy);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Measure Tool overlay
+    if (this.selectedTool === 'measure' && this.measureStart && this.measureEnd) {
+      const a = this.measureStart, b = this.measureEnd;
+      ctx.save();
+      ctx.strokeStyle = '#ffff66';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(a.x, a.y, 3.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(b.x, b.y, 3.5, 0, Math.PI * 2); ctx.fill();
+      // Label with length/angle/delta
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len = Math.hypot(dx, dy);
+      const ang = Math.atan2(dy, dx) * 180 / Math.PI;
+      const label = `L=${len.toFixed(1)}px    =${ang.toFixed(1)}°  9=(${dx.toFixed(1)}, ${dy.toFixed(1)})`;
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      const midx = (a.x + b.x) / 2;
+      const midy = (a.y + b.y) / 2;
+      const pad = 4;
+      const tw = Math.ceil(ctx.measureText(label).width);
+      const th = 16;
+      const { x: fx, y: fy, w: fw, h: fh } = env.fairwayRect();
+      const bx = Math.min(Math.max(midx + 8, fx + 2), fx + fw - tw - pad * 2 - 2);
+      const by = Math.min(Math.max(midy + 8, fy + 2), fy + fh - th - pad * 2 - 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.70)';
+      ctx.fillRect(bx, by, tw + pad * 2, th + pad * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1; ctx.strokeRect(bx, by, tw + pad * 2, th + pad * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.fillText(label, bx + pad, by + pad);
+      ctx.restore();
+    }
+
+    // Rulers (top/left) — drawn within fairway bounds
+    if (this.showRulers) {
+      const { x: fx, y: fy, w: fw, h: fh } = env.fairwayRect();
+      const topH = 18, leftW = 18;
+      ctx.save();
+      // Top ruler
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(fx, fy, fw, topH);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(fx, fy, fw, topH);
+      // Left ruler
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(fx, fy, leftW, fh);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(fx, fy, leftW, fh);
+      // Ticks
+      ctx.strokeStyle = '#cfd2cf';
+      ctx.fillStyle = '#cfd2cf';
+      ctx.font = '10px system-ui, sans-serif';
+      // X axis ticks
+      for (let x = 0; x <= fw; x += 10) {
+        const X = fx + x;
+        const isMajor = (x % 50) === 0;
+        const th = isMajor ? 10 : 5;
+        ctx.beginPath(); ctx.moveTo(X, fy + topH); ctx.lineTo(X, fy + topH - th); ctx.stroke();
+        if (isMajor) { ctx.fillText(String(x), X + 2, fy + 2); }
+      }
+      // Y axis ticks
+      for (let y = 0; y <= fh; y += 10) {
+        const Y = fy + y;
+        const isMajor = (y % 50) === 0;
+        const tw = isMajor ? 10 : 5;
+        ctx.beginPath(); ctx.moveTo(fx + leftW, Y); ctx.lineTo(fx + leftW - tw, Y); ctx.stroke();
+        if (isMajor) { ctx.fillText(String(y), fx + 2, Y + 2); }
+      }
+      // Cursor crosshair on rulers
+      const cxr = this.lastMousePosition?.x ?? (fx + fw / 2);
+      const cyr = this.lastMousePosition?.y ?? (fy + fh / 2);
+      if (cxr >= fx && cxr <= fx + fw) { ctx.strokeStyle = 'rgba(255,255,102,0.8)'; ctx.beginPath(); ctx.moveTo(cxr, fy); ctx.lineTo(cxr, fy + topH); ctx.stroke(); }
+      if (cyr >= fy && cyr <= fy + fh) { ctx.strokeStyle = 'rgba(255,255,102,0.8)'; ctx.beginPath(); ctx.moveTo(fx, cyr); ctx.lineTo(fx + leftW, cyr); ctx.stroke(); }
+      ctx.restore();
+    }
+
     // Menubar (drawn last)
     const menubarX = 0, menubarY = 0, menubarW = WIDTH, menubarH = 28;
     // Darker bar to match UI_Design panel aesthetic
@@ -2227,6 +2392,12 @@ class LevelEditorImpl implements LevelEditor {
             case 'previewDashedNext':
               displayLabel = `Dashed Next Segment: ${this.previewDashedNextSegment ? 'On' : 'Off'}`;
               break;
+            case 'alignmentGuides':
+              displayLabel = `Alignment Guides: ${this.showAlignmentGuides ? 'On' : 'Off'}`;
+              break;
+            case 'rulersToggle':
+              displayLabel = `Rulers: ${this.showRulers ? 'On' : 'Off'}`;
+              break;
             case 'suggestCup':
               // keep default label
               break;
@@ -2247,6 +2418,18 @@ class LevelEditorImpl implements LevelEditor {
   handleMouseDown(e: MouseEvent, env: EditorEnv): void {
     if (env.isOverlayActive?.()) return;
     const p = env.worldFromEvent(e);
+
+    // Measure Tool begin
+    if (this.selectedTool === 'measure') {
+      const { x: fairX, y: fairY, w: fairW, h: fairH } = env.fairwayRect();
+      const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+      const snap = (n: number) => { try { if (this.showGrid && env.getShowGrid()) { const g = env.getGridSize(); return Math.round(n / g) * g; } } catch {} return n; };
+      const px = snap(clamp(p.x, fairX, fairX + fairW));
+      const py = snap(clamp(p.y, fairY, fairY + fairH));
+      this.measureStart = { x: px, y: py };
+      this.measureEnd = { x: px, y: py };
+      return;
+    }
 
     // If cup suggestions are visible, allow clicking a marker to apply
     if (this.suggestedCupCandidates && this.suggestedCupCandidates.length > 0) {
@@ -2437,6 +2620,12 @@ class LevelEditorImpl implements LevelEditor {
             } else if (item.action === 'previewDashedNext') {
               this.previewDashedNextSegment = !this.previewDashedNextSegment;
               try { env.showToast(`Dashed Next Segment ${this.previewDashedNextSegment ? 'ON' : 'OFF'}`); } catch {}
+            } else if (item.action === 'alignmentGuides') {
+              this.showAlignmentGuides = !this.showAlignmentGuides;
+              try { env.showToast(`Alignment Guides ${this.showAlignmentGuides ? 'ON' : 'OFF'}`); } catch {}
+            } else if (item.action === 'rulersToggle') {
+              this.showRulers = !this.showRulers;
+              try { env.showToast(`Rulers ${this.showRulers ? 'ON' : 'OFF'}`); } catch {}
             } else if (item.action === 'suggestCup') {
               void this.suggestCup();
             } else if (item.action === 'courseCreator') {
@@ -2759,6 +2948,12 @@ class LevelEditorImpl implements LevelEditor {
     const px = snap(rx);
     const py = snap(ry);
 
+    // Measure Tool update
+    if (this.selectedTool === 'measure' && this.measureStart) {
+      this.measureEnd = { x: px, y: py };
+      return;
+    }
+
     // Update drag placement preview
     if (this.isEditorDragging && this.editorDragTool) {
       this.editorDragCurrent = { x: px, y: py };
@@ -2909,8 +3104,17 @@ class LevelEditorImpl implements LevelEditor {
     }
 
     if (this.isDragMoving && this.dragMoveStart) {
-      const rawDx = rx - this.dragMoveStart.x;
-      const rawDy = ry - this.dragMoveStart.y;
+      // Optional alignment snap using mouse position as anchor
+      let ax = rx, ay = ry;
+      if (this.showAlignmentGuides) {
+        const snapRes = this.computeAlignmentSnap(px, py, env);
+        ax = snapRes.x; ay = snapRes.y;
+        this.liveGuides = snapRes.guides;
+      } else {
+        this.liveGuides = [];
+      }
+      const rawDx = ax - this.dragMoveStart.x;
+      const rawDy = ay - this.dragMoveStart.y;
       const selectionIsAllCircles = this.selectedObjects.length > 0 && this.selectedObjects.every(o => (o.type === 'post' || o.type === 'tee' || o.type === 'cup'));
       const dx = selectionIsAllCircles ? rawDx : (gridOn ? Math.round(rawDx / gridSize) * gridSize : rawDx);
       const dy = selectionIsAllCircles ? rawDy : (gridOn ? Math.round(rawDy / gridSize) * gridSize : rawDy);
@@ -3256,6 +3460,7 @@ class LevelEditorImpl implements LevelEditor {
     if (key === 'Escape') {
       e.preventDefault();
       this.polygonInProgress = null;
+      this.measureStart = null; this.measureEnd = null;
       this.isEditorDragging = false;
       this.isSelectionDragging = false;
       this.isDragMoving = false;

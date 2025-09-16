@@ -1844,17 +1844,14 @@ class LevelEditorImpl implements LevelEditor {
       ctx.rect(fairX, fairY, fairW, fairH);
       ctx.clip();
       
-      // Draw polygon outline
+      // Draw polygon outline (open path only; do NOT close while drafting)
       ctx.beginPath();
       ctx.lineJoin = this.polygonJoinBevel ? 'bevel' : 'miter';
       ctx.moveTo(pts[0], pts[1]);
       for (let i = 2; i < pts.length; i += 2) {
         ctx.lineTo(pts[i], pts[i + 1]);
       }
-      // Close the polygon if we have enough points
-      if (pts.length >= 6) {
-        ctx.closePath();
-      }
+      // Intentionally do not closePath() here to avoid drawing a closing dashed edge during preview.
       
       // Fill based on tool type (treat 45° variants as their base types)
       if (tool === 'waterPoly' || tool === 'water45') {
@@ -1885,10 +1882,10 @@ class LevelEditorImpl implements LevelEditor {
         ctx.strokeStyle = COLORS.wallStroke;
       }
       
-      ctx.setLineDash([6, 4]);
+      // Render placed edges as solid lines; reserve dashed style for the next-segment preview only.
+      ctx.setLineDash([]);
       ctx.lineWidth = 2;
       ctx.stroke();
-      ctx.setLineDash([]);
       
       // Draw vertices as small circles
       ctx.fillStyle = '#ffffff';

@@ -143,6 +143,7 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
       - Implemented Tools → “Angled Corridor…”: prompts for direction (NE/NW/SE/SW), corridor width, length, and wall thickness; creates two parallel 45° wall polygons centered at the cursor, snapped to grid and clamped to the fairway; adds to `wallsPoly` and selects the new polys. (`src/editor/levelEditor.ts` → `placeAngledCorridorStamp()`)
     - [x] Snapping/UX
       - Implemented: Shift locks to 45° increments on normal polys; Ctrl enables free angle on 45° tools; Alt toggles preview lineJoin (miter/bevel) while drawing; snap-to-vertex and snap-to-edge across existing polygons with on-canvas guide visuals and preview segment. (`src/editor/levelEditor.ts`: `computePolygonSnap()`, `findNearestPolySnap()`, polygon preview render)
+      - Preview polish: Placed edges render as solid lines during drafting; the closing edge is not drawn until the polygon is closed; only the next-segment preview to the cursor is shown as a dashed yellow guide. (`src/editor/levelEditor.ts`)
     - [x] Rendering/Collision parity
       - Runtime now renders polygon water/sand with the same outline thickness as their rect counterparts (1.5px) and continues using the same fill/stroke colors. Polygon walls render with beveled rim matching rect walls.
       - Collision already treated each `wallsPoly` edge as a segment; water OOB and sand friction checks include polygon variants. Verified parity and adjusted only visuals for outline thickness. (`src/main.ts`)

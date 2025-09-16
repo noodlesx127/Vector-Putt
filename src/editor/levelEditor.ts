@@ -246,6 +246,8 @@ class LevelEditorImpl implements LevelEditor {
   private showRulers: boolean = false;
   // Transient live guides computed during interactions
   private liveGuides: Array<{ kind: 'x' | 'y'; pos: number }> = [];
+  // Transient guide bubbles (small labels shown near guides)
+  private liveGuideBubbles: Array<{ x: number; y: number; text: string }> = [];
   // Measure tool state
   private measureStart: { x: number; y: number } | null = null;
   private measureEnd: { x: number; y: number } | null = null;
@@ -1991,8 +1993,21 @@ class LevelEditorImpl implements LevelEditor {
         const lastX = pts[pts.length - 2];
         const lastY = pts[pts.length - 1];
         const desired = { x: this.lastMousePosition.x, y: this.lastMousePosition.y };
-        const res = this.computePolygonSnap({ x: lastX, y: lastY }, desired, tool,
+        let res = this.computePolygonSnap({ x: lastX, y: lastY }, desired, tool,
           { ctrl: this.lastModifiers.ctrl, shift: this.lastModifiers.shift }, env);
+        // Also align to global guides if enabled (applies axis alignment in addition to poly snap)
+        if (this.showAlignmentGuides) {
+          const ag = this.computeAlignmentSnap(res.x, res.y, env);
+          if (ag.guides && ag.guides.length) {
+            this.liveGuides = ag.guides;
+            // Bubble for snapped axis value
+            this.liveGuideBubbles = [];
+            const g0 = ag.guides[0];
+            const axisLabel = g0.kind === 'x' ? `x=${Math.round(ag.x)}` : `y=${Math.round(ag.y)}`;
+            this.liveGuideBubbles.push({ x: desired.x + 10, y: desired.y + 10, text: axisLabel });
+          }
+          res = { ...res, x: ag.x, y: ag.y } as any;
+        }
         // Next-segment preview: dashed or solid based on View toggle
         if (this.previewDashedNextSegment) ctx.setLineDash([4, 3]); else ctx.setLineDash([]);
         ctx.lineWidth = 2;
@@ -2211,6 +2226,28 @@ class LevelEditorImpl implements LevelEditor {
       ctx.restore();
     }
 
+    // Guide bubbles (labels)
+    if (this.liveGuideBubbles && this.liveGuideBubbles.length > 0) {
+      const { x: fx, y: fy, w: fw, h: fh } = env.fairwayRect();
+      ctx.save();
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      for (const b of this.liveGuideBubbles) {
+        const pad = 4; const th = 16; const tw = Math.ceil(ctx.measureText(b.text).width);
+        const bx = Math.min(Math.max(b.x, fx + 2), fx + fw - tw - pad * 2 - 2);
+        const by = Math.min(Math.max(b.y, fy + 2), fy + fh - th - pad * 2 - 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.70)';
+        ctx.fillRect(bx, by, tw + pad * 2, th + pad * 2);
+        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(bx, by, tw + pad * 2, th + pad * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.95)';
+        ctx.fillText(b.text, bx + pad, by + pad);
+      }
+      ctx.restore();
+    }
+
     // Measure Tool overlay
     if (this.selectedTool === 'measure' && this.measureStart && this.measureEnd) {
       const a = this.measureStart, b = this.measureEnd;
@@ -2227,7 +2264,7 @@ class LevelEditorImpl implements LevelEditor {
       const dx = b.x - a.x, dy = b.y - a.y;
       const len = Math.hypot(dx, dy);
       const ang = Math.atan2(dy, dx) * 180 / Math.PI;
-      const label = `L=${len.toFixed(1)}px    =${ang.toFixed(1)}°  9=(${dx.toFixed(1)}, ${dy.toFixed(1)})`;
+      const label = `L=${len.toFixed(1)} px  θ=${ang.toFixed(1)}°  Δ=(${dx.toFixed(1)}, ${dy.toFixed(1)})`;
       ctx.font = '12px system-ui, sans-serif';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
@@ -2264,19 +2301,22 @@ class LevelEditorImpl implements LevelEditor {
       ctx.strokeStyle = '#cfd2cf';
       ctx.fillStyle = '#cfd2cf';
       ctx.font = '10px system-ui, sans-serif';
+      const minor = 20, mid = 50, major = 100;
       // X axis ticks
-      for (let x = 0; x <= fw; x += 10) {
+      for (let x = 0; x <= fw; x += minor) {
         const X = fx + x;
-        const isMajor = (x % 50) === 0;
-        const th = isMajor ? 10 : 5;
+        const isMajor = (x % major) === 0;
+        const isMid = !isMajor && (x % mid) === 0;
+        const th = isMajor ? 10 : isMid ? 7 : 4;
         ctx.beginPath(); ctx.moveTo(X, fy + topH); ctx.lineTo(X, fy + topH - th); ctx.stroke();
         if (isMajor) { ctx.fillText(String(x), X + 2, fy + 2); }
       }
       // Y axis ticks
-      for (let y = 0; y <= fh; y += 10) {
+      for (let y = 0; y <= fh; y += minor) {
         const Y = fy + y;
-        const isMajor = (y % 50) === 0;
-        const tw = isMajor ? 10 : 5;
+        const isMajor = (y % major) === 0;
+        const isMid = !isMajor && (y % mid) === 0;
+        const tw = isMajor ? 10 : isMid ? 7 : 4;
         ctx.beginPath(); ctx.moveTo(fx + leftW, Y); ctx.lineTo(fx + leftW - tw, Y); ctx.stroke();
         if (isMajor) { ctx.fillText(String(y), fx + 2, Y + 2); }
       }
@@ -3007,6 +3047,13 @@ class LevelEditorImpl implements LevelEditor {
           }
           poly.points[i] = sx;
           poly.points[i + 1] = sy;
+          // Spacing bubble relative to snapped guide
+          this.liveGuideBubbles = [];
+          if (this.liveGuides && this.liveGuides.length) {
+            const g0 = this.liveGuides[0];
+            const space = Math.round(Math.abs((g0.kind === 'x' ? sx : sy) - g0.pos));
+            this.liveGuideBubbles.push({ x: px + 10, y: py - 24, text: (g0.kind === 'x' ? `↔ ${space} px` : `↕ ${space} px`) });
+          }
         }
       }
       return;
@@ -3076,8 +3123,13 @@ class LevelEditorImpl implements LevelEditor {
       let ax = px, ay = py;
       if (this.showAlignmentGuides) {
         const snapRes = this.computeAlignmentSnap(px, py, env);
-        ax = snapRes.x; ay = snapRes.y; this.liveGuides = snapRes.guides;
-      } else { this.liveGuides = []; }
+        ax = snapRes.x; ay = snapRes.y; this.liveGuides = snapRes.guides; this.liveGuideBubbles = [];
+        if (snapRes.guides.length) {
+          const g = snapRes.guides[0];
+          const label = g.kind === 'x' ? `x=${Math.round(ax)}` : `y=${Math.round(ay)}`;
+          this.liveGuideBubbles.push({ x: px + 10, y: py + 10, text: label });
+        }
+      } else { this.liveGuides = []; this.liveGuideBubbles = []; }
       const dx = ax - this.resizeStartMouse.x;
       const dy = ay - this.resizeStartMouse.y;
       // Start from original bounds
@@ -3100,6 +3152,21 @@ class LevelEditorImpl implements LevelEditor {
       // Apply to rect-like object
       const o: any = obj.object as any;
       o.x = x; o.y = y; if ('w' in o) o.w = w; if ('h' in o) o.h = h;
+      // Spacing bubble relative to snapped guide
+      if (this.liveGuides && this.liveGuides.length) {
+        const g0 = this.liveGuides[0];
+        if (g0.kind === 'x') {
+          const left = x, cx = x + w / 2, right = x + w;
+          const nearest = [left, cx, right].sort((a,b)=> Math.abs(a - g0.pos) - Math.abs(b - g0.pos))[0];
+          const space = Math.round(Math.abs(nearest - g0.pos));
+          this.liveGuideBubbles.push({ x: ax + 10, y: ay - 24, text: `↔ ${space} px` });
+        } else {
+          const top = y, cy = y + h / 2, bottom = y + h;
+          const nearest = [top, cy, bottom].sort((a,b)=> Math.abs(a - g0.pos) - Math.abs(b - g0.pos))[0];
+          const space = Math.round(Math.abs(nearest - g0.pos));
+          this.liveGuideBubbles.push({ x: ax + 10, y: ay - 24, text: `↕ ${space} px` });
+        }
+      }
       return;
     }
 
@@ -3158,8 +3225,16 @@ class LevelEditorImpl implements LevelEditor {
         const snapRes = this.computeAlignmentSnap(px, py, env);
         ax = snapRes.x; ay = snapRes.y;
         this.liveGuides = snapRes.guides;
+        // Build guide bubble label
+        this.liveGuideBubbles = [];
+        if (snapRes.guides.length) {
+          const g = snapRes.guides[0];
+          const label = g.kind === 'x' ? `x=${Math.round(ax)}` : `y=${Math.round(ay)}`;
+          this.liveGuideBubbles.push({ x: px + 10, y: py + 10, text: label });
+        }
       } else {
         this.liveGuides = [];
+        this.liveGuideBubbles = [];
       }
       const rawDx = ax - this.dragMoveStart.x;
       const rawDy = ay - this.dragMoveStart.y;
@@ -3167,6 +3242,25 @@ class LevelEditorImpl implements LevelEditor {
       const dx = selectionIsAllCircles ? rawDx : (gridOn ? Math.round(rawDx / gridSize) * gridSize : rawDx);
       const dy = selectionIsAllCircles ? rawDy : (gridOn ? Math.round(rawDy / gridSize) * gridSize : rawDy);
       this.dragMoveOffset = { x: dx, y: dy };
+      // Add delta bubble
+      this.liveGuideBubbles.push({ x: px + 10, y: py - 24, text: `Δ=(${Math.round(dx)}, ${Math.round(dy)})` });
+      // Spacing bubble relative to snapped guide
+      if (this.liveGuides && this.liveGuides.length) {
+        const g0 = this.liveGuides[0];
+        const sel = this.getSelectionBounds();
+        const disp = { x: sel.x + dx, y: sel.y + dy, w: sel.w, h: sel.h };
+        if (g0.kind === 'x') {
+          const left = disp.x, cx = disp.x + disp.w / 2, right = disp.x + disp.w;
+          const nearest = [left, cx, right].sort((a,b)=> Math.abs(a - g0.pos) - Math.abs(b - g0.pos))[0];
+          const space = Math.round(Math.abs(nearest - g0.pos));
+          this.liveGuideBubbles.push({ x: px + 10, y: py - 42, text: `↔ ${space} px` });
+        } else {
+          const top = disp.y, cy = disp.y + disp.h / 2, bottom = disp.y + disp.h;
+          const nearest = [top, cy, bottom].sort((a,b)=> Math.abs(a - g0.pos) - Math.abs(b - g0.pos))[0];
+          const space = Math.round(Math.abs(nearest - g0.pos));
+          this.liveGuideBubbles.push({ x: px + 10, y: py - 42, text: `↕ ${space} px` });
+        }
+      }
       return;
     }
 

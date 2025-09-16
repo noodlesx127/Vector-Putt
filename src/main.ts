@@ -164,6 +164,9 @@ type UiOverlayState = {
   hoverLevelIndex?: number | null;
   hoverBtn?: 'load' | 'cancel' | null;
   hoverSearch?: boolean;
+  // DnD overlay hovers
+  hoverDnDIndex?: number | null;
+  hoverDnDBtn?: 'save' | 'cancel' | null;
   // Resolution
   resolve?: (value: any) => void;
   reject?: (reason?: any) => void;
@@ -745,6 +748,43 @@ function handleOverlayMouseMove(e: MouseEvent) {
       }
     }
     if (target !== null) uiOverlay.dndTargetIndex = target;
+  }
+  // Overlay hover tracking (loadLevels, dndList)
+  if (uiOverlay.kind === 'loadLevels') {
+    uiOverlay.hoverFilter = undefined;
+    uiOverlay.hoverSearch = false;
+    uiOverlay.hoverLevelIndex = undefined;
+    uiOverlay.hoverBtn = undefined;
+    for (const hs of overlayHotspots) {
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
+        if (hs.kind === 'btn' && (hs.action || '').startsWith('filter_')) {
+          const filt = (hs.action || '').replace('filter_', '') as 'all' | 'built-in' | 'user' | 'local';
+          uiOverlay.hoverFilter = filt;
+        } else if (hs.kind === 'input' && hs.id === 'loadSearch') {
+          uiOverlay.hoverSearch = true;
+        } else if (hs.kind === 'levelItem' && typeof hs.index === 'number') {
+          uiOverlay.hoverLevelIndex = hs.index;
+        } else if (hs.kind === 'btn') {
+          const a = hs.action || '';
+          if (a === 'load' || a === 'cancel') uiOverlay.hoverBtn = a;
+        }
+        break;
+      }
+    }
+  } else if (uiOverlay.kind === 'dndList') {
+    uiOverlay.hoverDnDIndex = undefined;
+    uiOverlay.hoverDnDBtn = undefined;
+    for (const hs of overlayHotspots) {
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
+        if (hs.kind === 'listItem' && typeof hs.index === 'number') {
+          uiOverlay.hoverDnDIndex = hs.index;
+        }
+        if (hs.kind === 'btn' && typeof hs.index === 'number') {
+          uiOverlay.hoverDnDBtn = hs.index === 0 ? 'save' : 'cancel';
+        }
+        break;
+      }
+    }
   }
   // Course Editor drag-and-drop logic
   if (uiOverlay.kind === 'courseEditor' && uiOverlay.dragState) {
@@ -1805,6 +1845,8 @@ let hoverOptionsSlopeToggle = false;
 let hoverPauseOptions = false;
 let hoverOptionsVolSlider = false;
 let hoverOptionsUsers = false; // admin-only users button
+// Users Admin inline search focus state
+let usersSearchActive = false;
 
 // User Levels state
 interface UserLevelEntry {
@@ -2396,6 +2438,8 @@ let hoverLevelMgmtRowIndex: number | null = null;
 let hoverLevelMgmtDeleteIndex: number | null = null;
 let hoverCourseAction: string | null = null;
 let hoverUserLevelsRowIndex: number | null = null;
+let hoverUserLevelsSearch = false;
+let hoverUserLevelsFilterId: string | null = null;
 
 // Changelog screen state and helpers
 let changelogText: string | null = (typeof CHANGELOG_RAW === 'string' && CHANGELOG_RAW.trim().length > 0) ? CHANGELOG_RAW : null;
@@ -3404,12 +3448,14 @@ canvas.addEventListener('mousedown', (e) => {
       }
     }
   }
-  
   // Users admin actions
   if (gameState === 'users') {
+    // Blur search unless search box is clicked
+    usersSearchActive = false;
     for (const hs of usersUiHotspots) {
       if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
         if (!firebaseReady) { showUiToast('Firebase services are not ready yet.'); return; }
+        if (uiOverlay.kind !== 'none') return; // swallow clicks under overlays
         try {
           switch (hs.kind) {
             case 'back':
@@ -3420,66 +3466,10 @@ canvas.addEventListener('mousedown', (e) => {
                 usersState.selectedIndex = hs.index;
               }
               break;
-            case 'search': {
-              (async () => {
-                const q = await showUiPrompt('Search users:', usersState.search, 'Search Users');
-                if (q !== null) {
-                  usersState.search = q;
-                  usersState.scrollOffset = 0;
-                  usersState.selectedIndex = 0;
-                }
-              })();
+            case 'search':
+              usersSearchActive = true;
+              try { (canvas as any).focus({ preventScroll: true }); } catch {}
               break;
-            }
-            case 'addUser': {
-              (async () => {
-                const name = await showUiPrompt('Enter new user name', '', 'Add User');
-                if (name && name.trim()) {
-                  const trimmedName = name.trim();
-                  const existing = firebaseManager.users.getAll().find(u => u.name === trimmedName);
-                  if (existing) {
-                    showUiToast(`User "${trimmedName}" already exists.`);
-                  } else {
-                    await firebaseManager.users.addUser(trimmedName, 'user');
-                    showUiToast(`User "${trimmedName}" created.`);
-                  }
-                }
-              })();
-              break;
-            }
-            case 'addAdmin': {
-              (async () => {
-                const name = await showUiPrompt('Enter new admin name', '', 'Add Admin');
-                if (name && name.trim()) {
-                  const trimmedName = name.trim();
-                  const existing = firebaseManager.users.getAll().find(u => u.name === trimmedName);
-                  if (existing) {
-                    showUiToast(`User "${trimmedName}" already exists.`);
-                  } else {
-                    await firebaseManager.users.addUser(trimmedName, 'admin');
-                    showUiToast(`Admin "${trimmedName}" created.`);
-                  }
-                }
-              })();
-              break;
-            }
-            case 'export': {
-              (async () => {
-                const json = firebaseManager.users.exportToJsonString(true);
-                await showUiPrompt('Users JSON — copy:', json, 'Export Users');
-              })();
-              break;
-            }
-            case 'import': {
-              (async () => {
-                const text = await showUiPrompt('Paste Users JSON to import', '', 'Import Users');
-                if (text && text.trim()) {
-                  try { await firebaseManager.users.importFromJsonString(text.trim()); showUiToast('Users imported.'); }
-                  catch (e) { showUiToast('Failed to import users.'); }
-                }
-              })();
-              break;
-            }
             case 'promote':
             case 'demote':
               if (hs.id) {
@@ -3510,7 +3500,7 @@ canvas.addEventListener('mousedown', (e) => {
               break;
             case 'remove':
               if (hs.id) {
-                const id = hs.id; // capture before async to preserve narrowing
+                const id = hs.id;
                 (async () => {
                   const ok = await showUiConfirm('Remove this user? This cannot be undone.');
                   if (ok) {
@@ -3519,6 +3509,8 @@ canvas.addEventListener('mousedown', (e) => {
                   }
                 })();
               }
+              break;
+            default:
               break;
           }
         } catch (e) {
@@ -3710,16 +3702,25 @@ canvas.addEventListener('mousemove', (e) => {
     let overAny = false;
     let overBtn: string | null = null;
     hoverUserLevelsRowIndex = null;
+    hoverUserLevelsSearch = false;
+    hoverUserLevelsFilterId = null;
     for (const hs of userLevelsHotspots) {
       if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
         overAny = true;
         if (hs.kind === 'btn' && hs.action) overBtn = hs.action;
         if (hs.kind === 'levelItem' && typeof hs.index === 'number') hoverUserLevelsRowIndex = hs.index as any;
+        if (hs.kind === 'search') hoverUserLevelsSearch = true;
+        if (hs.kind === 'filter' && hs.filterId) hoverUserLevelsFilterId = String(hs.filterId);
         break;
       }
     }
     hoverUserLevelsAction = overBtn;
-    canvas.style.cursor = overAny ? 'pointer' : 'default';
+    // Text cursor over search; pointer over actionable; default otherwise
+    if (hoverUserLevelsSearch) {
+      canvas.style.cursor = 'text';
+    } else {
+      canvas.style.cursor = overAny ? 'pointer' : 'default';
+    }
     return;
   }
   if (gameState === 'summary') {
@@ -3761,7 +3762,12 @@ canvas.addEventListener('mousemove', (e) => {
         break;
       }
     }
-    canvas.style.cursor = over ? 'pointer' : 'default';
+    // Text cursor over search box or while active; else pointer over actionable; default otherwise
+    if (hoverUsersSearch || usersSearchActive) {
+      canvas.style.cursor = 'text';
+    } else {
+      canvas.style.cursor = over ? 'pointer' : 'default';
+    }
     return;
   }
   
@@ -4177,6 +4183,43 @@ function handleAdminUsersShortcut(e: KeyboardEvent) {
   try { e.preventDefault(); } catch {}
 }
 window.addEventListener('keydown', handleAdminUsersShortcut);
+
+// Users Admin: inline search typing handler
+function handleUsersSearchKey(e: KeyboardEvent) {
+  if (gameState !== 'users' || !usersSearchActive) return;
+  if (uiOverlay.kind !== 'none') return; // don't type while overlays active
+  const key = (e.key || '');
+  const ctrlLike = e.ctrlKey || e.metaKey || e.altKey;
+  let s = usersState.search || '';
+  if (key === 'Escape') {
+    usersSearchActive = false;
+    try { e.preventDefault(); e.stopPropagation(); } catch {}
+    return;
+  }
+  if (key === 'Enter') {
+    usersSearchActive = false;
+    try { e.preventDefault(); e.stopPropagation(); } catch {}
+    return;
+  }
+  if (key === 'Backspace') {
+    if (s.length > 0) s = s.slice(0, -1);
+    usersState.search = s;
+    usersState.scrollOffset = 0;
+    usersState.selectedIndex = 0;
+    try { e.preventDefault(); e.stopPropagation(); } catch {}
+    return;
+  }
+  if (!ctrlLike && key.length === 1) {
+    // Append printable character
+    s += key;
+    usersState.search = s;
+    usersState.scrollOffset = 0;
+    usersState.selectedIndex = 0;
+    try { e.preventDefault(); e.stopPropagation(); } catch {}
+    return;
+  }
+}
+window.addEventListener('keydown', handleUsersSearchKey);
 
 // Hover handling for Pause overlay buttons
 canvas.addEventListener('mousemove', (e) => {
@@ -5181,7 +5224,7 @@ function draw() {
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.font = 'bold 32px system-ui, sans-serif';
+    ctx.font = 'bold 28px system-ui, sans-serif';
     ctx.fillText('Admin Menu', panelX + panelW/2, panelY + 40);
     
     // Menu buttons
@@ -5190,16 +5233,17 @@ function draw() {
     
     function drawAdminMenuBtn(label: string, kind: AdminMenuHotspot['kind'], y: number) {
       const btnX = panelX + panelW/2 - btnW/2;
-      ctx.fillStyle = 'rgba(255,255,255,0.1)';
+      const isHover = (hoverAdminKind === kind);
+      ctx.fillStyle = isHover ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.10)';
       ctx.fillRect(btnX, y, btnW, btnH);
-      ctx.strokeStyle = '#cfd2cf';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = isHover ? '#ffffff' : '#cfd2cf';
+      ctx.lineWidth = 1.5;
       ctx.strokeRect(btnX, y, btnW, btnH);
       ctx.fillStyle = '#ffffff';
-      ctx.font = '20px system-ui, sans-serif';
+      ctx.font = '18px system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(label, btnX + btnW/2, y + btnH/2);
+      ctx.fillText(label, btnX + btnW/2, y + btnH/2 + 0.5);
       adminMenuHotspots.push({ kind, x: btnX, y, w: btnW, h: btnH });
     }
     
@@ -5479,16 +5523,25 @@ function draw() {
     const searchW = 220, searchH = 28;
     const searchX = px + panelW - pad - searchW;
     const searchY = py + pad;
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = hoverUsersSearch ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.lineWidth = 1.2;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.fillRect(searchX, searchY, searchW, searchH);
-    ctx.strokeRect(searchX, searchY, searchW, searchH);
+    ctx.strokeStyle = (hoverUsersSearch || usersSearchActive) ? '#ffffff' : '#888888';
+    ctx.strokeRect(searchX + 0.5, searchY + 0.5, searchW - 1, searchH - 1);
     ctx.fillStyle = usersState.search ? '#ffffff' : '#888888';
     ctx.font = '14px system-ui, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(usersState.search || 'Search users…', searchX + 10, searchY + searchH/2 + 0.5);
+    const searchText = usersState.search || 'Search users…';
+    ctx.fillText(searchText, searchX + 10, searchY + searchH/2 + 0.5);
+    // Caret when active
+    if (usersSearchActive) {
+      const tw = ctx.measureText(usersState.search || '').width;
+      const cx = searchX + 10 + tw + 1;
+      const cy1 = searchY + 6, cy2 = searchY + searchH - 6;
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(cx, cy1); ctx.lineTo(cx, cy2); ctx.stroke();
+    }
     usersUiHotspots.push({ kind: 'search', x: searchX, y: searchY, w: searchW, h: searchH });
 
     // Layout areas
@@ -5898,12 +5951,13 @@ function draw() {
     
     for (const filter of filterOptions) {
       const isActive = userLevelsState.filterSource === filter.id;
+      const isHover = hoverUserLevelsFilterId === filter.id;
       
-      ctx.fillStyle = isActive ? 'rgba(100, 150, 200, 0.8)' : 'rgba(255, 255, 255, 0.1)';
+      ctx.fillStyle = isActive ? 'rgba(100, 150, 200, 0.8)' : (isHover ? 'rgba(255,255,255,0.15)' : 'rgba(255, 255, 255, 0.1)');
       ctx.fillRect(filterX, searchY, filterW, filterH);
-      ctx.strokeStyle = isActive ? 'rgba(100, 150, 200, 1)' : 'rgba(255, 255, 255, 0.3)';
+      ctx.strokeStyle = isActive ? 'rgba(100, 150, 200, 0.8)' : '#cfd2cf';
       ctx.lineWidth = 1;
-      ctx.strokeRect(filterX, searchY, filterW, filterH);
+      ctx.strokeRect(filterX + 0.5, searchY + 0.5, filterW - 1, filterH - 1);
       
       ctx.fillStyle = '#ffffff';
       ctx.font = '12px system-ui, sans-serif';
@@ -7143,7 +7197,8 @@ function renderGlobalOverlays(): void {
         const ix = px + pad;
         const iw = panelW - pad * 2;
         const selected = (uiOverlay.listIndex ?? 0) === i;
-        ctx.fillStyle = selected ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.25)';
+        const isHoverRow = (uiOverlay as any).hoverDnDIndex === i;
+        ctx.fillStyle = selected ? 'rgba(255,255,255,0.12)' : (isHoverRow ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.25)');
         ctx.fillRect(ix, iy, iw, rowH - 4);
         ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(ix + 0.5, iy + 0.5, iw - 1, rowH - 4 - 1);
         ctx.fillStyle = item.disabled ? '#a0a0a0' : '#ffffff';
@@ -7163,6 +7218,23 @@ function renderGlobalOverlays(): void {
           ctx.lineTo(px + panelW - pad, y);
           ctx.stroke();
         }
+        // Ghost preview of dragged item
+        const dragIdx = uiOverlay.dndDragIndex;
+        const dragItem = items[dragIdx];
+        if (dragItem) {
+          const ghostY = (uiOverlay.dndPointerY ?? (cy)) - rowH / 2;
+          const gx = px + pad + 4;
+          const gw = panelW - pad * 2 - 8;
+          const gh = rowH - 6;
+          ctx.globalAlpha = 0.6;
+          ctx.fillStyle = 'rgba(136,212,255,0.25)';
+          ctx.fillRect(gx, ghostY, gw, gh);
+          ctx.strokeStyle = '#88d4ff'; ctx.lineWidth = 1;
+          ctx.strokeRect(gx + 0.5, ghostY + 0.5, gw - 1, gh - 1);
+          ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.font = '14px system-ui, sans-serif';
+          ctx.fillText(String(dragItem.label || ''), gx + 8, ghostY + gh / 2 + 0.5);
+          ctx.globalAlpha = 1.0;
+        }
       }
       // Buttons: Save (index 0) and Cancel (index 1)
       const bw = 120, bh = 30, gap = 12;
@@ -7170,14 +7242,16 @@ function renderGlobalOverlays(): void {
       const saveX = px + panelW - pad - bw * 2 - gap;
       const cancelX = px + panelW - pad - bw;
       // Save
-      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      const saveHover = (uiOverlay as any).hoverDnDBtn === 'save';
+      ctx.fillStyle = saveHover ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.10)';
       ctx.fillRect(saveX, by, bw, bh);
       ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(saveX, by, bw, bh);
       ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '15px system-ui, sans-serif';
       ctx.fillText('Save', saveX + bw / 2, by + bh / 2 + 0.5);
       overlayHotspots.push({ kind: 'btn', index: 0, x: saveX, y: by, w: bw, h: bh });
       // Cancel
-      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      const cancelHover = (uiOverlay as any).hoverDnDBtn === 'cancel';
+      ctx.fillStyle = cancelHover ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.10)';
       ctx.fillRect(cancelX, by, bw, bh);
       ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(cancelX, by, bw, bh);
       ctx.fillStyle = '#ffffff'; ctx.font = '15px system-ui, sans-serif';
@@ -7353,7 +7427,7 @@ function renderGlobalOverlays(): void {
       const detY = listY;
       ctx.fillStyle = 'rgba(255,255,255,0.05)';
       ctx.fillRect(detX, detY, detailW, listH);
-      ctx.strokeStyle = '#666666'; ctx.lineWidth = 1; ctx.strokeRect(detX + 0.5, detY + 0.5, detailW - 1, listH - 1);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(detX + 0.5, detY + 0.5, detailW - 1, listH - 1);
       // Selected details text
       const idx = uiOverlay.selectedLevelIndex ?? 0;
       if (filtered[idx]) {

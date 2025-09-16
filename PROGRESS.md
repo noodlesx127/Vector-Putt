@@ -79,10 +79,10 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
     - Users Admin (`gameState === 'users'` in `src/main.ts`)
       - [x] Right-pane action buttons hover states (Promote/Demote, Enable/Disable, Delete) with standard hover fill and border
       - [x] List row hover brighten (selection remains blue-highlighted)
-      - [ ] Search box focused typing (currently uses prompt on click); consider inline focused input
+      - [x] Search box focused typing with inline input and caret; Enter/Esc blurs; Backspace edits; printable keys append. (`src/main.ts`)
     - Admin Menu (`gameState === 'adminMenu'`)
-      - [ ] Hover highlight for large menu buttons (Level Management, User Management, Game Settings)
-      - [ ] Optional: align title font size to 28px to match other panels (currently bold 32px)
+      - [x] Hover highlight for large menu buttons (Level Management, User Management, Game Settings)
+      - [x] Align title font size to 28px to match other panels (was bold 32px)
     - Level Management (Admin) (`gameState === 'levelManagement'`)
       - [x] Hover states for list rows and Delete buttons
       - [x] Unify list panel border color to `#cfd2cf` (was `#666`)
@@ -218,6 +218,8 @@ All completed; see `COMPLETED.md` for the full list of milestones and details.
 - [ ] Track upcoming MVP-adjacent tasks here (seed from `TODO.md`).
 
 ## Blockers / Open Questions
+ - [x] UI Consistency — Users Admin inline search typing TypeScript errors (resolved 2025-09-15)
+  - Resolution: Repaired `mousedown` Users Admin block structure; added `usersSearchActive` flag, inline key handler for typing (printables, Backspace, Enter/Esc), caret rendering in search box; removed invalid hotspot cases and aligned to `UsersHotspot.kind`. Type-check is clean.
 - [ ] Confirm hole capture radius vs. exact entry (measure from videos)
 - [ ] Decide Tiled (TMX/JSON) vs. simple custom level JSON for MVP
 

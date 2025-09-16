@@ -249,6 +249,9 @@ class LevelEditorImpl implements LevelEditor {
   // Measure tool state
   private measureStart: { x: number; y: number } | null = null;
   private measureEnd: { x: number; y: number } | null = null;
+  private pinnedMeasures: Array<{ a: { x: number; y: number }; b: { x: number; y: number } }> = [];
+  private lastClickMs: number = 0;
+  private lastClickPos: { x: number; y: number } | null = null;
   // Track last modifier keys for preview constraints
   private lastModifiers: { shift: boolean; ctrl: boolean; alt: boolean } = { shift: false, ctrl: false, alt: false };
   
@@ -1491,6 +1494,23 @@ class LevelEditorImpl implements LevelEditor {
       ctx.restore();
     }
 
+    // Render pinned measurements
+    if (this.pinnedMeasures.length > 0) {
+      ctx.save();
+      for (const m of this.pinnedMeasures) {
+        const a = m.a, b = m.b;
+        ctx.strokeStyle = 'rgba(255,255,102,0.8)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#ffff66';
+        ctx.beginPath(); ctx.arc(a.x, a.y, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(b.x, b.y, 3, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+
     // Pull globals for geometry render
     const gs = env.getGlobalState();
     const { waters, watersPoly, sands, sandsPoly, bridges, hills, decorations, walls, polyWalls, posts, ball, hole } = gs as any;
@@ -2426,6 +2446,17 @@ class LevelEditorImpl implements LevelEditor {
       const snap = (n: number) => { try { if (this.showGrid && env.getShowGrid()) { const g = env.getGridSize(); return Math.round(n / g) * g; } } catch {} return n; };
       const px = snap(clamp(p.x, fairX, fairX + fairW));
       const py = snap(clamp(p.y, fairY, fairY + fairH));
+      // Detect double-click to clear pinned measures
+      const now = Date.now();
+      if (this.lastClickPos && (now - this.lastClickMs) < 300) {
+        const dx = px - this.lastClickPos.x, dy = py - this.lastClickPos.y;
+        if ((dx * dx + dy * dy) <= 36) {
+          this.pinnedMeasures = [];
+          this.measureStart = null; this.measureEnd = null;
+          try { env.showToast('Cleared pinned measurements'); } catch {}
+        }
+      }
+      this.lastClickMs = now; this.lastClickPos = { x: px, y: py };
       this.measureStart = { x: px, y: py };
       this.measureEnd = { x: px, y: py };
       return;
@@ -2967,8 +2998,15 @@ class LevelEditorImpl implements LevelEditor {
       if (Array.isArray(poly.points)) {
         const i = vertexIndex * 2;
         if (i >= 0 && i + 1 < poly.points.length) {
-          poly.points[i] = px;
-          poly.points[i + 1] = py;
+          let sx = px, sy = py;
+          if (this.showAlignmentGuides) {
+            const snapRes = this.computeAlignmentSnap(px, py, env);
+            sx = snapRes.x; sy = snapRes.y; this.liveGuides = snapRes.guides;
+          } else {
+            this.liveGuides = [];
+          }
+          poly.points[i] = sx;
+          poly.points[i + 1] = sy;
         }
       }
       return;
@@ -3035,8 +3073,13 @@ class LevelEditorImpl implements LevelEditor {
     // --- Single-object resize ---
     if (this.isResizing && !this.isGroupResizing && this.selectedObjects.length === 1 && this.resizeStartBounds && this.resizeStartMouse && this.resizeHandleIndex !== null) {
       const obj = this.selectedObjects[0];
-      const dx = px - this.resizeStartMouse.x;
-      const dy = py - this.resizeStartMouse.y;
+      let ax = px, ay = py;
+      if (this.showAlignmentGuides) {
+        const snapRes = this.computeAlignmentSnap(px, py, env);
+        ax = snapRes.x; ay = snapRes.y; this.liveGuides = snapRes.guides;
+      } else { this.liveGuides = []; }
+      const dx = ax - this.resizeStartMouse.x;
+      const dy = ay - this.resizeStartMouse.y;
       // Start from original bounds
       let { x, y, w, h } = { ...this.resizeStartBounds };
       const idx = this.resizeHandleIndex;
@@ -3062,8 +3105,13 @@ class LevelEditorImpl implements LevelEditor {
 
     // --- Group resize ---
     if (this.isGroupResizing && this.resizeStartBounds && this.resizeStartMouse && this.groupResizeOriginals && this.resizeHandleIndex !== null) {
-      const dx = px - this.resizeStartMouse.x;
-      const dy = py - this.resizeStartMouse.y;
+      let ax = px, ay = py;
+      if (this.showAlignmentGuides) {
+        const snapRes = this.computeAlignmentSnap(px, py, env);
+        ax = snapRes.x; ay = snapRes.y; this.liveGuides = snapRes.guides;
+      } else { this.liveGuides = []; }
+      const dx = ax - this.resizeStartMouse.x;
+      const dy = ay - this.resizeStartMouse.y;
       let { x: bx, y: by, w: bw, h: bh } = { ...this.resizeStartBounds };
       const idx = this.resizeHandleIndex;
       if (idx === 0) { bx += dx; by += dy; bw -= dx; bh -= dy; }
@@ -3454,6 +3502,14 @@ class LevelEditorImpl implements LevelEditor {
       if (this.polygonInProgress) {
         e.preventDefault();
         this.finishPolygon(env);
+        return;
+      }
+      // Pin current measurement
+      if (this.selectedTool === 'measure' && this.measureStart && this.measureEnd) {
+        e.preventDefault();
+        this.pinnedMeasures.push({ a: { ...this.measureStart }, b: { ...this.measureEnd } });
+        this.measureStart = null; this.measureEnd = null;
+        try { env.showToast('Pinned measurement'); } catch {}
         return;
       }
     }

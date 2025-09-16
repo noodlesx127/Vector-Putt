@@ -2007,8 +2007,9 @@ class LevelEditorImpl implements LevelEditor {
         const desired = { x: this.lastMousePosition.x, y: this.lastMousePosition.y };
         let res = this.computePolygonSnap({ x: lastX, y: lastY }, desired, tool,
           { ctrl: this.lastModifiers.ctrl, shift: this.lastModifiers.shift }, env);
-        // Also align to global guides if enabled (applies axis alignment in addition to poly snap)
-        if (this.showAlignmentGuides) {
+        // Also align to global guides if enabled and not overridden by modifiers
+        const allowGuides = this.showAlignmentGuides && !this.lastModifiers.ctrl && !this.lastModifiers.alt;
+        if (allowGuides) {
           const ag = this.computeAlignmentSnap(res.x, res.y, env);
           if (ag.guides && ag.guides.length) {
             this.liveGuides = ag.guides;
@@ -2017,8 +2018,12 @@ class LevelEditorImpl implements LevelEditor {
             const g0 = ag.guides[0];
             const axisLabel = g0.kind === 'x' ? `x=${Math.round(ag.x)}` : `y=${Math.round(ag.y)}`;
             this.liveGuideBubbles.push({ x: desired.x + 10, y: desired.y + 10, text: axisLabel });
+          } else {
+            this.liveGuides = [];
           }
           res = { ...res, x: ag.x, y: ag.y } as any;
+        } else {
+          this.liveGuides = [];
         }
         // Next-segment preview: dashed or solid based on View toggle
         if (this.previewDashedNextSegment) ctx.setLineDash([4, 3]); else ctx.setLineDash([]);
@@ -3093,6 +3098,8 @@ class LevelEditorImpl implements LevelEditor {
     
     // Track mouse position for clipboard paste
     this.lastMousePosition = { x: p.x, y: p.y };
+    // Track modifiers
+    this.lastModifiers = { shift: !!e.shiftKey, ctrl: !!e.ctrlKey, alt: !!e.altKey };
     // Track modifier keys and preview join style
     this.lastModifiers = { shift: !!e.shiftKey, ctrl: !!e.ctrlKey, alt: !!e.altKey };
     if (this.polygonInProgress) this.polygonJoinBevel = !!e.altKey;
@@ -3128,7 +3135,9 @@ class LevelEditorImpl implements LevelEditor {
         const i = vertexIndex * 2;
         if (i >= 0 && i + 1 < poly.points.length) {
           let sx = px, sy = py;
-          if (this.showAlignmentGuides) {
+          // Ctrl forces grid-only; Alt disables guides
+          const allowGuides = this.showAlignmentGuides && !e.ctrlKey && !e.altKey;
+          if (allowGuides) {
             const snapRes = this.computeAlignmentSnap(px, py, env);
             sx = snapRes.x; sy = snapRes.y; this.liveGuides = snapRes.guides;
           } else {
@@ -3210,7 +3219,9 @@ class LevelEditorImpl implements LevelEditor {
     if (this.isResizing && !this.isGroupResizing && this.selectedObjects.length === 1 && this.resizeStartBounds && this.resizeStartMouse && this.resizeHandleIndex !== null) {
       const obj = this.selectedObjects[0];
       let ax = px, ay = py;
-      if (this.showAlignmentGuides) {
+      // Ctrl forces grid-only; Alt disables guides
+      const allowGuides = this.showAlignmentGuides && !e.ctrlKey && !e.altKey;
+      if (allowGuides) {
         const snapRes = this.computeAlignmentSnap(px, py, env);
         ax = snapRes.x; ay = snapRes.y; this.liveGuides = snapRes.guides; this.liveGuideBubbles = [];
         if (snapRes.guides.length) {
@@ -3262,7 +3273,9 @@ class LevelEditorImpl implements LevelEditor {
     // --- Group resize ---
     if (this.isGroupResizing && this.resizeStartBounds && this.resizeStartMouse && this.groupResizeOriginals && this.resizeHandleIndex !== null) {
       let ax = px, ay = py;
-      if (this.showAlignmentGuides) {
+      // Ctrl forces grid-only; Alt disables guides
+      const allowGuides = this.showAlignmentGuides && !e.ctrlKey && !e.altKey;
+      if (allowGuides) {
         const snapRes = this.computeAlignmentSnap(px, py, env);
         ax = snapRes.x; ay = snapRes.y; this.liveGuides = snapRes.guides;
       } else { this.liveGuides = []; }
@@ -3310,7 +3323,9 @@ class LevelEditorImpl implements LevelEditor {
     if (this.isDragMoving && this.dragMoveStart) {
       // Optional alignment snap using mouse position as anchor
       let ax = rx, ay = ry;
-      if (this.showAlignmentGuides) {
+      // Ctrl forces grid-only; Alt disables guides
+      const allowGuides = this.showAlignmentGuides && !e.ctrlKey && !e.altKey;
+      if (allowGuides) {
         const snapRes = this.computeAlignmentSnap(px, py, env);
         ax = snapRes.x; ay = snapRes.y;
         this.liveGuides = snapRes.guides;

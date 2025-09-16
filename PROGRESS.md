@@ -156,21 +156,21 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
   - **Alignment Aids — Plan**
     - [ ] Smart Alignment Guides (drag-move/resize/vertex drag/polygon drafting)
       - Snap to nearby object edges and centers (left/center/right, top/middle/bottom) within ~6px; show cyan guide lines and spacing labels; Alt disables guides; Ctrl forces grid-only snap. Implement in `handleMouseMove()` and render in `renderLevelEditor()` using transient `liveGuides`.
-      - [in progress] Drag-move snapping to edges/centers implemented; renders guide lines and spacing bubbles; applied to resize and vertex-drag.
+      - [in progress] Drag-move snapping to edges/centers implemented; renders guide lines and spacing bubbles; applied to resize and vertex-drag. Snapping also includes persistent ruler guides. Alt disables guides; Ctrl forces grid-only during drag/resize/vertex drag.
     - [ ] Rulers (top/left) with tick marks and cursor indicators
-      - View toggle “Rulers”. Draw after background and before content overlays; minor=20px, mid=50px, major=100px; labels at majors; live cursor line.
-      - [in progress] Ruler strips render with refined tick density/labels and typography to match UI_Design.md.
+      - View toggle “Rulers”. Draw after background and before content overlays; minor=20px, mid=50px, major=100px; labels at majors (coordinate readout); live cursor line.
+      - [in progress] Ruler strips render with refined tick density/labels and typography; further polish to match UI_Design.md exactly.
     - [ ] Measure Tool
       - Tools → “Measure Tool”: click-drag to measure length/angle (Δx/Δy); snaps to grid/vertices/edges; ESC cancels; Enter pins; double-click clears.
       - [in progress] Measure overlay (line + label) implemented with grid snap; Enter pins; double-click clears pinned; persistent rendering added.
     - [ ] Polygon Drafting alignment
       - [in progress] Draft segment endpoint now also respects alignment guides in addition to 45° and poly vertex/edge snapping; axis value bubble shown near cursor.
-    - [ ] Axis lock for drag-move
-      - Shift while dragging constrains movement to dominant axis; mirrors polygon tool modifiers.
+    - [x] Axis lock for drag-move
+      - Implemented: Shift while dragging constrains movement to dominant axis; mirrors polygon tool modifiers.
     - [ ] Align/Distribute commands (multi-select)
       - Edit → Align Left/Right/Top/Bottom/Center (H/V); Distribute spacing (H/V) using `getSelectionBounds()`.
-    - [ ] Numeric readout on drafting
-      - Show segment length and angle next to the yellow next-segment guide during polygon drafting.
+    - [x] Numeric readout on drafting
+      - Implemented: Segment length and angle shown near the preview segment midpoint in a subtle pill.
     - [x] Ruler guide lines
       - Implemented: drag out guides from rulers (top/left). Guides persist and render; snapping includes these guides; double-click the ruler band clears guides for that axis.
 

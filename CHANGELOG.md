@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Level Editor • Alignment Aids: View toggles for Alignment Guides and Rulers with dynamic labels and toast feedback. Smart guides compute snaps to nearby object edges/centers and fairway edges within a threshold, and render cyan guide lines. Guide bubbles show axis values and deltas; spacing labels indicate edge-to-guide distance during drag-move/resize/vertex drag. (`src/editor/levelEditor.ts`)
 - Level Editor • Rulers: Top and left rulers with minor/mid/major ticks and live cursor indicator. Rendered within fairway bounds following UI_Design.md styling. (`src/editor/levelEditor.ts`)
 - Level Editor • Measure Tool: Tools menu entry added. Click-drag to measure with grid/alignment snapping, overlay line + endpoints + label (length/angle/delta), Esc to cancel, Enter to pin, double-click to clear pinned measures. Pinned measurements render persistently. (`src/editor/levelEditor.ts`)
+ - Level Editor • Ruler‑Drag Guides: drag from rulers to create persistent guide lines; snapping includes these; double‑click a ruler band clears guides for that axis. (`src/editor/levelEditor.ts`)
 - Level Editor • Tools: Duplicate action in Tools menu with dynamic enable/disable and label, plus keyboard shortcut `Ctrl+D`. Duplicates selected objects and pastes at cursor position with grid snapping and fairway clamping. (`src/editor/levelEditor.ts`)
 - Level Editor • Polygons: Vertex editing in Select Tool. Selected `wallsPoly`/`waterPoly`/`sandPoly` display vertex handles; dragging a vertex snaps to grid and clamps to fairway bounds. (`src/editor/levelEditor.ts`)
 - Level Editor • Diagonal Geometry: 45°-constrained polygon drawing tools `Walls45`, `Water45`, `Sand45`. Segments snap to 0/45/90°; Enter closes, Esc cancels; Ctrl temporarily disables constraint (free angle). Normal poly tools accept Shift to temporarily constrain to 45°. Persist to existing `wallsPoly`/`waterPoly`/`sandPoly` arrays. (`src/editor/levelEditor.ts`)
@@ -26,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
  - UI • Level Editor Menus: Menubar order updated to File → Edit → View → Objects → Decorations → Editor Tools. (`src/editor/levelEditor.ts`)
+ - Level Editor • Alignment Aids UX: Alt temporarily disables guides during interactions; Ctrl forces grid‑only snapping (overrides alignment guides) for drag‑move, resize, and vertex drag. (`src/editor/levelEditor.ts`)
  - UI • Level Editor Menus: Moved Metadata, Suggest Par, Suggest Cup Positions, and Test Level under Editor Tools for better grouping. (`src/editor/levelEditor.ts`)
  - Level Editor • Menus: Tools dropdown now reflects disabled state for Copy/Cut/Paste/Duplicate and Undo/Redo based on current selection/history/clipboard. (`src/editor/levelEditor.ts`)
  - Level Editor • Objects menu: added `Walls45`, `Water45`, and `Sand45` entries. (`src/editor/levelEditor.ts`)

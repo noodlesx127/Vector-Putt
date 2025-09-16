@@ -65,7 +65,8 @@ export type EditorTool =
   | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'walls45' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'water45' | 'sand' | 'sandPoly' | 'sand45' | 'hill' | 'decoration' | 'measure';
 
 export type EditorAction =
-  | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'previewFillOnClose' | 'previewDashedNext' | 'alignmentGuides' | 'rulersToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'chamfer' | 'angledCorridor' | 'courseCreator';
+  | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'previewFillOnClose' | 'previewDashedNext' | 'alignmentGuides' | 'rulersToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'chamfer' | 'angledCorridor' | 'courseCreator'
+  | 'alignLeft' | 'alignRight' | 'alignTop' | 'alignBottom' | 'alignCenterH' | 'alignCenterV' | 'distributeH' | 'distributeV';
 
 export type EditorMenuId = 'file' | 'edit' | 'view' | 'objects' | 'decorations' | 'tools';
 
@@ -968,331 +969,90 @@ class LevelEditorImpl implements LevelEditor {
       }
     }
 
+    // Select newly created polygons to give feedback
+    this.selectedObjects = createdPolys;
     env.setGlobalState(gs);
     this.syncEditorDataFromGlobals(env);
-    if (createdPolys.length > 0) {
-      this.selectedObjects = createdPolys;
-      env.showToast(`Chamfered ${createdPolys.length} polygon(s)`);
-    } else {
-      env.showToast('Nothing to chamfer');
-    }
+    env.showToast(`Chamfered ${eligible.length} rectangle(s) into polygons`);
   }
 
-  // Angled Corridor stamp: creates two parallel 45° wall polygons centered at the cursor
-  private async placeAngledCorridorStamp(): Promise<void> {
-    if (!this.env) return;
-    const env = this.env;
-    const centerX = this.lastMousePosition.x;
-    const centerY = this.lastMousePosition.y;
-
-    // Prompts
-    let dir: 'NE' | 'NW' | 'SE' | 'SW' = 'NE';
-    try {
-      const s = await env.showPrompt('Direction (NE/NW/SE/SW):', 'NE', 'Angled Corridor');
-      if (s === null) return;
-      const up = (s || 'NE').toUpperCase();
-      if (up === 'NE' || up === 'NW' || up === 'SE' || up === 'SW') dir = up as any;
-    } catch {}
-
-    const askNumber = async (label: string, defVal: number) => {
-      try {
-        const r = await env.showPrompt(label, String(defVal), 'Angled Corridor');
-        if (r === null) return null as number | null;
-        const v = Math.max(1, Math.floor(Number(r)));
-        return Number.isFinite(v) ? v : defVal;
-      } catch { return defVal; }
-    };
-
-    const width = await askNumber('Corridor width (px):', 60);
-    if (width === null) return;
-    const length = await askNumber('Corridor length (px):', 200);
-    if (length === null) return;
-    const thickness = await askNumber('Wall thickness (px):', 8);
-    if (thickness === null) return;
-
-    this.pushUndoSnapshot('Place Angled Corridor');
-
-    const angleMap: Record<typeof dir, number> = { NE: Math.PI / 4, NW: 3 * Math.PI / 4, SE: -Math.PI / 4, SW: -3 * Math.PI / 4 };
-    const ang = angleMap[dir];
-    const ux = Math.cos(ang), uy = Math.sin(ang); // along corridor
-    const nx = -uy, ny = ux; // normal to corridor (left side)
-
-    // Clamp/snap center to fairway for better placement
-    const { x: fx, y: fy, w: fw, h: fh } = env.fairwayRect();
-    const clampX = (x: number) => Math.max(fx, Math.min(fx + fw, x));
-    const clampY = (y: number) => Math.max(fy, Math.min(fy + fh, y));
-    const snapped = (() => {
-      let gridOn = false, g = 20;
-      try { gridOn = this.showGrid && env.getShowGrid(); g = env.getGridSize(); } catch {}
-      const snap = (n: number) => gridOn ? Math.round(n / g) * g : Math.round(n);
-      return { x: snap(clampX(centerX)), y: snap(clampY(centerY)), snap, g };
-    })();
-
-    const halfLen = length / 2;
-    const halfTh = thickness / 2;
-    const halfW = width / 2;
-
-    // Two centerlines offset by +/- halfW along normal
-    const c1 = { x: snapped.x + nx * halfW, y: snapped.y + ny * halfW };
-    const c2 = { x: snapped.x - nx * halfW, y: snapped.y - ny * halfW };
-
-    const rectPolyPoints = (cx: number, cy: number) => {
-      // four corners: (±u*halfLen ± n*halfTh)
-      const p1 = { x: cx + ux * (-halfLen) + nx * (-halfTh), y: cy + uy * (-halfLen) + ny * (-halfTh) };
-      const p2 = { x: cx + ux * ( halfLen) + nx * (-halfTh), y: cy + uy * ( halfLen) + ny * (-halfTh) };
-      const p3 = { x: cx + ux * ( halfLen) + nx * ( halfTh), y: cy + uy * ( halfLen) + ny * ( halfTh) };
-      const p4 = { x: cx + ux * (-halfLen) + nx * ( halfTh), y: cy + uy * (-halfLen) + ny * ( halfTh) };
-      const pts = [p1, p2, p3, p4];
-      const flat: number[] = [];
-      for (const p of pts) flat.push(snapped.snap(clampX(p.x)), snapped.snap(clampY(p.y)));
-      return flat;
-    };
-
-    const gs = env.getGlobalState();
-    const poly1 = { points: rectPolyPoints(c1.x, c1.y) };
-    const poly2 = { points: rectPolyPoints(c2.x, c2.y) };
-    (gs.polyWalls as any[]).push(poly1);
-    (gs.polyWalls as any[]).push(poly2);
-
-    env.setGlobalState(gs);
-    this.syncEditorDataFromGlobals(env);
-    this.selectedObjects = [
-      { type: 'wallsPoly', object: (gs.polyWalls as any[])[(gs.polyWalls as any[]).length - 2], index: (gs.polyWalls as any[]).length - 2 } as any,
-      { type: 'wallsPoly', object: (gs.polyWalls as any[])[(gs.polyWalls as any[]).length - 1], index: (gs.polyWalls as any[]).length - 1 } as any
-    ];
-    env.showToast('Angled Corridor placed');
-  }
-
-  private deleteSelectedObjects(): void {
-    if (this.selectedObjects.length === 0 || !this.env) return;
-    
-    const gs = this.env.getGlobalState();
-    
-    // Sort by index descending to avoid index shifting issues
-    const sortedObjects = [...this.selectedObjects].sort((a, b) => {
-      const aIndex = 'index' in a ? a.index : 0;
-      const bIndex = 'index' in b ? b.index : 0;
-      return bIndex - aIndex;
-    });
-    
-    for (const obj of sortedObjects) {
-      if (obj.type === 'wall' && 'index' in obj) {
-        const idx = obj.index;
-        if (idx >= 0 && idx < gs.walls.length) gs.walls.splice(idx, 1);
-      } else if (obj.type === 'post' && 'index' in obj) {
-        const idx = obj.index;
-        if (idx >= 0 && idx < gs.posts.length) gs.posts.splice(idx, 1);
-      } else if (obj.type === 'water' && 'index' in obj) {
-        const idx = obj.index;
-        if (idx >= 0 && idx < gs.waters.length) gs.waters.splice(idx, 1);
-      } else if (obj.type === 'sand' && 'index' in obj) {
-        const idx = obj.index;
-        if (idx >= 0 && idx < gs.sands.length) gs.sands.splice(idx, 1);
-      } else if (obj.type === 'bridge' && 'index' in obj) {
-        const idx = obj.index;
-        if (idx >= 0 && idx < gs.bridges.length) gs.bridges.splice(idx, 1);
-      } else if (obj.type === 'hill' && 'index' in obj) {
-        const idx = obj.index;
-        if (idx >= 0 && idx < gs.hills.length) gs.hills.splice(idx, 1);
-      } else if (obj.type === 'decoration' && 'index' in obj) {
-        const idx = obj.index;
-        if (idx >= 0 && idx < gs.decorations.length) gs.decorations.splice(idx, 1);
-      } else if (obj.type === 'wallsPoly' && 'index' in obj) {
-        const idx = obj.index;
-        if (idx >= 0 && idx < gs.polyWalls.length) gs.polyWalls.splice(idx, 1);
-      } else if (obj.type === 'waterPoly' && 'index' in obj) {
-        const idx = obj.index;
-        if (idx >= 0 && idx < gs.watersPoly.length) gs.watersPoly.splice(idx, 1);
-      } else if (obj.type === 'sandPoly' && 'index' in obj) {
-        const idx = obj.index;
-        if (idx >= 0 && idx < gs.sandsPoly.length) gs.sandsPoly.splice(idx, 1);
-      }
-    }
-    
-    this.env.setGlobalState(gs);
-    this.syncEditorDataFromGlobals(this.env);
-    this.selectedObjects = [];
-  }
-
-  // Grid snapping helpers
-  private nudgeSelectedObjects(direction: string, largeStep: boolean, env: EditorEnv): void {
-    if (this.selectedObjects.length === 0) return;
-
-    this.pushUndoSnapshot(`Nudge ${this.selectedObjects.length} object(s)`);
-
-    const gridSize = this.gridSize;
-    const selectionIsAllCircles = this.selectedObjects.every(o => (o.type === 'tee' || o.type === 'cup' || o.type === 'post'));
-    // Circle-like (tee/cup/post): default 1px fine step; Shift = grid step for convenience
-    // Other objects: default grid step; Shift = 5x grid steps (as before)
-    const stepSize = selectionIsAllCircles
-      ? (largeStep ? gridSize : 1)
-      : (largeStep ? gridSize * 5 : gridSize);
-    
-    let dx = 0, dy = 0;
-    switch (direction) {
-      case 'ArrowLeft': dx = -stepSize; break;
-      case 'ArrowRight': dx = stepSize; break;
-      case 'ArrowUp': dy = -stepSize; break;
-      case 'ArrowDown': dy = stepSize; break;
-    }
-
-    const { x: fairX, y: fairY, w: fairW, h: fairH } = env.fairwayRect();
-    const clampX = (x: number) => Math.max(fairX, Math.min(fairX + fairW, x));
-    const clampY = (y: number) => Math.max(fairY, Math.min(fairY + fairH, y));
-
-    const gs = env.getGlobalState();
-
-    for (const obj of this.selectedObjects) {
-      if (obj.type === 'tee') {
-        if (this.editorLevelData) {
-          this.editorLevelData.tee.x = clampX(this.editorLevelData.tee.x + dx);
-          this.editorLevelData.tee.y = clampY(this.editorLevelData.tee.y + dy);
-        }
-        gs.ball.x = clampX(gs.ball.x + dx);
-        gs.ball.y = clampY(gs.ball.y + dy);
-      } else if (obj.type === 'cup') {
-        if (this.editorLevelData) {
-          this.editorLevelData.cup.x = clampX(this.editorLevelData.cup.x + dx);
-          this.editorLevelData.cup.y = clampY(this.editorLevelData.cup.y + dy);
-        }
-        gs.hole.x = clampX(gs.hole.x + dx);
-        gs.hole.y = clampY(gs.hole.y + dy);
-      } else if (obj.type === 'post') {
-        const o: any = obj.object;
-        o.x = clampX(o.x + dx);
-        o.y = clampY(o.y + dy);
-      } else if (obj.type === 'wall' || obj.type === 'water' || obj.type === 'sand' || obj.type === 'bridge' || obj.type === 'hill') {
-        const o: any = obj.object;
-        o.x = clampX(o.x + dx);
-        o.y = clampY(o.y + dy);
-      } else if (obj.type === 'wallsPoly' || obj.type === 'waterPoly' || obj.type === 'sandPoly') {
-        const poly: any = obj.object;
-        const pts: number[] = poly.points || [];
-        for (let i = 0; i < pts.length; i += 2) {
-          pts[i] = clampX(pts[i] + dx);
-          pts[i + 1] = clampY(pts[i + 1] + dy);
-        }
-      } else if (obj.type === 'decoration') {
-        const d: any = obj.object;
-        d.x = clampX(d.x + dx);
-        d.y = clampY(d.y + dy);
-      }
-    }
-
-    env.setGlobalState(gs);
-    this.syncEditorDataFromGlobals(env);
-    
-    let stepDesc = '';
-    if (selectionIsAllCircles) {
-      stepDesc = largeStep ? `grid step (${gridSize}px)` : '1px';
-    } else {
-      stepDesc = largeStep ? `large step (${gridSize * 5}px)` : `grid step (${gridSize}px)`;
-    }
-    env.showToast(`Nudged ${this.selectedObjects.length} object(s) by ${stepDesc}`);
-  }
-
-  private alignSelectedObjects(direction: string, env: EditorEnv): void {
+  // Align selected objects to edges or centers depending on direction
+  private alignSelectedObjects(direction: 'ArrowLeft'|'ArrowRight'|'ArrowUp'|'ArrowDown'|'centerH'|'centerV', env: EditorEnv): void {
     if (this.selectedObjects.length < 2) return;
 
     this.pushUndoSnapshot(`Align ${this.selectedObjects.length} object(s)`);
-
-    // Get bounds of all selected objects
     const bounds = this.selectedObjects.map(obj => this.getObjectBounds(obj));
-    
-    let targetValue: number;
-    let isHorizontal: boolean;
-
+    let targetValue = 0; let isHorizontal = true;
     switch (direction) {
-      case 'ArrowLeft': // Align left edges
-        targetValue = Math.min(...bounds.map(b => b.x));
-        isHorizontal = true;
-        break;
-      case 'ArrowRight': // Align right edges
-        targetValue = Math.max(...bounds.map(b => b.x + b.w));
-        isHorizontal = true;
-        break;
-      case 'ArrowUp': // Align top edges
-        targetValue = Math.min(...bounds.map(b => b.y));
-        isHorizontal = false;
-        break;
-      case 'ArrowDown': // Align bottom edges
-        targetValue = Math.max(...bounds.map(b => b.y + b.h));
-        isHorizontal = false;
-        break;
-      default:
-        return;
+      case 'ArrowLeft': targetValue = Math.min(...bounds.map(b => b.x)); isHorizontal = true; break;
+      case 'ArrowRight': targetValue = Math.max(...bounds.map(b => b.x + b.w)); isHorizontal = true; break;
+      case 'ArrowUp': targetValue = Math.min(...bounds.map(b => b.y)); isHorizontal = false; break;
+      case 'ArrowDown': targetValue = Math.max(...bounds.map(b => b.y + b.h)); isHorizontal = false; break;
+      case 'centerH': targetValue = (Math.min(...bounds.map(b => b.x)) + Math.max(...bounds.map(b => b.x + b.w))) / 2; isHorizontal = true; break;
+      case 'centerV': targetValue = (Math.min(...bounds.map(b => b.y)) + Math.max(...bounds.map(b => b.y + b.h))) / 2; isHorizontal = false; break;
     }
-
-    const { x: fairX, y: fairY, w: fairW, h: fairH } = env.fairwayRect();
-    const clampX = (x: number) => Math.max(fairX, Math.min(fairX + fairW, x));
-    const clampY = (y: number) => Math.max(fairY, Math.min(fairY + fairH, y));
-
     const gs = env.getGlobalState();
-
     for (let i = 0; i < this.selectedObjects.length; i++) {
       const obj = this.selectedObjects[i];
-      const objBounds = bounds[i];
-      
+      const b = bounds[i];
       let dx = 0, dy = 0;
-      
       if (isHorizontal) {
-        if (direction === 'ArrowLeft') {
-          dx = targetValue - objBounds.x;
-        } else { // ArrowRight
-          dx = targetValue - (objBounds.x + objBounds.w);
-        }
+        if (direction === 'ArrowLeft') dx = targetValue - b.x;
+        else if (direction === 'ArrowRight') dx = targetValue - (b.x + b.w);
+        else if (direction === 'centerH') dx = targetValue - (b.x + b.w / 2);
       } else {
-        if (direction === 'ArrowUp') {
-          dy = targetValue - objBounds.y;
-        } else { // ArrowDown
-          dy = targetValue - (objBounds.y + objBounds.h);
-        }
+        if (direction === 'ArrowUp') dy = targetValue - b.y;
+        else if (direction === 'ArrowDown') dy = targetValue - (b.y + b.h);
+        else if (direction === 'centerV') dy = targetValue - (b.y + b.h / 2);
       }
-
-      // Apply the alignment offset
-      if (obj.type === 'tee') {
-        if (this.editorLevelData) {
-          this.editorLevelData.tee.x = clampX(this.editorLevelData.tee.x + dx);
-          this.editorLevelData.tee.y = clampY(this.editorLevelData.tee.y + dy);
-        }
-        gs.ball.x = clampX(gs.ball.x + dx);
-        gs.ball.y = clampY(gs.ball.y + dy);
-      } else if (obj.type === 'cup') {
-        if (this.editorLevelData) {
-          this.editorLevelData.cup.x = clampX(this.editorLevelData.cup.x + dx);
-          this.editorLevelData.cup.y = clampY(this.editorLevelData.cup.y + dy);
-        }
-        gs.hole.x = clampX(gs.hole.x + dx);
-        gs.hole.y = clampY(gs.hole.y + dy);
-      } else if (obj.type === 'post') {
-        const o: any = obj.object;
-        o.x = clampX(o.x + dx);
-        o.y = clampY(o.y + dy);
-      } else if (obj.type === 'wall' || obj.type === 'water' || obj.type === 'sand' || obj.type === 'bridge' || obj.type === 'hill') {
-        const o: any = obj.object;
-        o.x = clampX(o.x + dx);
-        o.y = clampY(o.y + dy);
-      } else if (obj.type === 'wallsPoly' || obj.type === 'waterPoly' || obj.type === 'sandPoly') {
-        const poly: any = obj.object;
-        const pts: number[] = poly.points || [];
-        for (let j = 0; j < pts.length; j += 2) {
-          pts[j] = clampX(pts[j] + dx);
-          pts[j + 1] = clampY(pts[j + 1] + dy);
-        }
-      } else if (obj.type === 'decoration') {
-        const d: any = obj.object;
-        d.x = clampX(d.x + dx);
-        d.y = clampY(d.y + dy);
-      }
+      this.translateObject(obj, dx, dy, gs);
     }
-
     env.setGlobalState(gs);
     this.syncEditorDataFromGlobals(env);
-    
-    const alignmentType = isHorizontal 
-      ? (direction === 'ArrowLeft' ? 'left edges' : 'right edges')
-      : (direction === 'ArrowUp' ? 'top edges' : 'bottom edges');
-    env.showToast(`Aligned ${this.selectedObjects.length} objects to ${alignmentType}`);
+    env.showToast(`Aligned ${this.selectedObjects.length} object(s)`);
+  }
+
+  // Distribute selected objects evenly along H/V axis
+  private distributeSelectedObjects(orientation: 'H' | 'V', env: EditorEnv): void {
+    if (this.selectedObjects.length < 3) return;
+    this.pushUndoSnapshot(`Distribute ${this.selectedObjects.length} object(s) ${orientation === 'H' ? 'horizontally' : 'vertically'}`);
+    const items = this.selectedObjects.map(obj => ({ obj, b: this.getObjectBounds(obj) }));
+    if (orientation === 'H') items.sort((a, b) => (a.b.x + a.b.w / 2) - (b.b.x + b.b.w / 2));
+    else items.sort((a, b) => (a.b.y + a.b.h / 2) - (b.b.y + b.b.h / 2));
+    const first = items[0].b; const last = items[items.length - 1].b;
+    const span = orientation === 'H' ? (last.x + last.w - first.x) : (last.y + last.h - first.y);
+    const totalSize = items.reduce((acc, it) => acc + (orientation === 'H' ? it.b.w : it.b.h), 0);
+    const gaps = items.length - 1; const gapSize = (span - totalSize) / gaps;
+    const gs = env.getGlobalState();
+    for (let i = 1; i < items.length; i++) {
+      const prev = items[i - 1]; const cur = items[i];
+      if (orientation === 'H') {
+        const target = prev.b.x + prev.b.w + gapSize;
+        const dx = target - cur.b.x; this.translateObject(cur.obj, dx, 0, gs); cur.b.x += dx;
+      } else {
+        const target = prev.b.y + prev.b.h + gapSize;
+        const dy = target - cur.b.y; this.translateObject(cur.obj, 0, dy, gs); cur.b.y += dy;
+      }
+    }
+    env.setGlobalState(gs);
+    this.syncEditorDataFromGlobals(env);
+  }
+
+  // Translate helper by type
+  private translateObject(obj: SelectableObject, dx: number, dy: number, gs: any): void {
+    const t = obj.type as SelectableObject['type'];
+    const o: any = obj.object as any;
+    if (t === 'wallsPoly' || t === 'waterPoly' || t === 'sandPoly') {
+      const pts: number[] = Array.isArray(o.points) ? o.points : [];
+      for (let i = 0; i + 1 < pts.length; i += 2) { pts[i] += dx; pts[i + 1] += dy; }
+    } else if (t === 'tee') {
+      o.x += dx; o.y += dy; gs.ball.x = o.x; gs.ball.y = o.y;
+    } else if (t === 'cup') {
+      o.x += dx; o.y += dy; gs.hole.x = o.x; gs.hole.y = o.y;
+    } else {
+      if (typeof o.x === 'number') o.x += dx;
+      if (typeof o.y === 'number') o.y += dy;
+    }
   }
 
   // Helper method to finish polygon creation
@@ -1344,7 +1104,15 @@ class LevelEditorImpl implements LevelEditor {
         { label: 'Copy (Ctrl+C)', item: { kind: 'action', action: 'copy' } },
         { label: 'Cut (Ctrl+X)', item: { kind: 'action', action: 'cut' } },
         { label: 'Paste (Ctrl+V)', item: { kind: 'action', action: 'paste' } },
-        { label: 'Duplicate (Ctrl+D)', item: { kind: 'action', action: 'duplicate' } }
+        { label: 'Duplicate (Ctrl+D)', item: { kind: 'action', action: 'duplicate' }, separator: true },
+        { label: 'Align Left', item: { kind: 'action', action: 'alignLeft' } },
+        { label: 'Align Right', item: { kind: 'action', action: 'alignRight' } },
+        { label: 'Align Top', item: { kind: 'action', action: 'alignTop' } },
+        { label: 'Align Bottom', item: { kind: 'action', action: 'alignBottom' } },
+        { label: 'Align Center (H)', item: { kind: 'action', action: 'alignCenterH' } },
+        { label: 'Align Center (V)', item: { kind: 'action', action: 'alignCenterV' } },
+        { label: 'Distribute Horizontally', item: { kind: 'action', action: 'distributeH' } },
+        { label: 'Distribute Vertically', item: { kind: 'action', action: 'distributeV' } }
       ]
     },
     view: {
@@ -2508,6 +2276,16 @@ class LevelEditorImpl implements LevelEditor {
               displayLabel = this.selectedObjects.length > 0 ? 'Duplicate (Ctrl+D)' : 'Duplicate';
               isDisabled = this.selectedObjects.length === 0;
               break;
+            case 'alignLeft':
+            case 'alignRight':
+            case 'alignTop':
+            case 'alignBottom':
+            case 'alignCenterH':
+            case 'alignCenterV':
+            case 'distributeH':
+            case 'distributeV':
+              isDisabled = this.selectedObjects.length < 2;
+              break;
             case 'gridToggle':
               displayLabel = this.showGrid ? 'Grid On' : 'Grid Off';
               break;
@@ -2791,6 +2569,22 @@ class LevelEditorImpl implements LevelEditor {
             } else if (item.action === 'rulersToggle') {
               this.showRulers = !this.showRulers;
               try { env.showToast(`Rulers ${this.showRulers ? 'ON' : 'OFF'}`); } catch {}
+            } else if (item.action === 'alignLeft') {
+              this.alignSelectedObjects('ArrowLeft', env);
+            } else if (item.action === 'alignRight') {
+              this.alignSelectedObjects('ArrowRight', env);
+            } else if (item.action === 'alignTop') {
+              this.alignSelectedObjects('ArrowUp', env);
+            } else if (item.action === 'alignBottom') {
+              this.alignSelectedObjects('ArrowDown', env);
+            } else if (item.action === 'alignCenterH') {
+              this.alignSelectedObjects('centerH', env);
+            } else if (item.action === 'alignCenterV') {
+              this.alignSelectedObjects('centerV', env);
+            } else if (item.action === 'distributeH') {
+              this.distributeSelectedObjects('H', env);
+            } else if (item.action === 'distributeV') {
+              this.distributeSelectedObjects('V', env);
             } else if (item.action === 'suggestCup') {
               void this.suggestCup();
             } else if (item.action === 'courseCreator') {
@@ -2891,8 +2685,21 @@ class LevelEditorImpl implements LevelEditor {
         this.selectedTool === 'walls45'  || this.selectedTool === 'water45'  || this.selectedTool === 'sand45'
       ) {
         if (!this.polygonInProgress) {
-          // Start new polygon
-          this.polygonInProgress = { tool: this.selectedTool, points: [px, py] };
+          // Start new polygon — include alignment guide snap if enabled (Ctrl=grid-only, Alt=disable guides)
+          let sx = px, sy = py;
+          const allowGuides = this.showAlignmentGuides && !e.ctrlKey && !e.altKey;
+          if (allowGuides) {
+            const ag = this.computeAlignmentSnap(px, py, env);
+            sx = ag.x; sy = ag.y; this.liveGuides = ag.guides;
+            // Bubble for snapped axis value
+            this.liveGuideBubbles = [];
+            if (ag.guides.length) {
+              const g0 = ag.guides[0];
+              const label = g0.kind === 'x' ? `x=${Math.round(sx)}` : `y=${Math.round(sy)}`;
+              this.liveGuideBubbles.push({ x: px + 10, y: py + 10, text: label });
+            }
+          } else { this.liveGuides = []; this.liveGuideBubbles = []; }
+          this.polygonInProgress = { tool: this.selectedTool, points: [sx, sy] };
           return;
         } else {
           // Check if clicking near the starting point to close polygon
@@ -2908,8 +2715,24 @@ class LevelEditorImpl implements LevelEditor {
           // Otherwise add a new point using snapping + 45° constraint logic
           const lastLen = this.polygonInProgress.points.length;
           const prev = { x: this.polygonInProgress.points[lastLen - 2], y: this.polygonInProgress.points[lastLen - 1] };
-          const res = this.computePolygonSnap(prev, { x: px, y: py }, this.selectedTool,
+          let res = this.computePolygonSnap(prev, { x: px, y: py }, this.selectedTool,
             { ctrl: !!e.ctrlKey, shift: !!e.shiftKey }, env);
+          // Apply alignment guides to the resulting point to match preview (Ctrl=grid-only, Alt=disable guides)
+          const allowGuides = this.showAlignmentGuides && !e.ctrlKey && !e.altKey;
+          if (allowGuides) {
+            const ag = this.computeAlignmentSnap(res.x, res.y, env);
+            res = { ...res, x: ag.x, y: ag.y } as any;
+            this.liveGuides = ag.guides;
+            // Guide bubble for axis/spacing
+            this.liveGuideBubbles = [];
+            if (ag.guides.length) {
+              const g0 = ag.guides[0];
+              const label = g0.kind === 'x' ? `x=${Math.round(ag.x)}` : `y=${Math.round(ag.y)}`;
+              this.liveGuideBubbles.push({ x: px + 10, y: py + 10, text: label });
+              const space = Math.round(Math.abs((g0.kind === 'x' ? ag.x : ag.y) - g0.pos));
+              this.liveGuideBubbles.push({ x: px + 10, y: py - 24, text: (g0.kind === 'x' ? `↔ ${space} px` : `↕ ${space} px`) });
+            }
+          } else { this.liveGuides = []; this.liveGuideBubbles = []; }
           this.polygonInProgress.points.push(res.x, res.y);
           return;
         }
@@ -3114,6 +2937,15 @@ class LevelEditorImpl implements LevelEditor {
     const ry = clampY(p.y);
     const px = snap(rx);
     const py = snap(ry);
+
+    // Ruler drag update (live preview of guide)
+    if (this.isRulerDragging && this.rulerDragKind) {
+      const pos = this.rulerDragKind === 'x' ? clampX(p.x) : clampY(p.y);
+      this.rulerDragPos = pos;
+      this.liveGuides = [{ kind: this.rulerDragKind, pos }];
+      this.liveGuideBubbles = [{ x: px + 10, y: py + 10, text: `${this.rulerDragKind}=${Math.round(pos)}` }];
+      return;
+    }
 
     // Measure Tool update
     if (this.selectedTool === 'measure' && this.measureStart) {
@@ -3393,6 +3225,21 @@ class LevelEditorImpl implements LevelEditor {
     };
     const px = snap(clamp(p.x, fairX, fairX + fairW));
     const py = snap(clamp(p.y, fairY, fairY + fairH));
+
+    // Finalize ruler drag -> persist guide
+    if (this.isRulerDragging && this.rulerDragKind && this.rulerDragPos !== null) {
+      const kind = this.rulerDragKind;
+      const pos = kind === 'x' ? Math.max(fairX, Math.min(fairX + fairW, this.rulerDragPos))
+                               : Math.max(fairY, Math.min(fairY + fairH, this.rulerDragPos));
+      this.persistentGuides.push({ kind, pos });
+      try { env.showToast(`Added ${kind.toUpperCase()} guide @ ${Math.round(pos)}`); } catch {}
+      this.isRulerDragging = false;
+      this.rulerDragKind = null;
+      this.rulerDragPos = null;
+      this.liveGuides = [];
+      this.liveGuideBubbles = [];
+      return;
+    }
 
     // Finish editor rectangle placement (wall/bridge/water/sand/hill)
     if (this.isEditorDragging && this.editorDragTool && this.editorDragStart && this.editorDragCurrent) {
@@ -3814,6 +3661,100 @@ class LevelEditorImpl implements LevelEditor {
       }
       return;
     }
+  }
+
+  // Delete currently selected objects from the level
+  private deleteSelectedObjects(): void {
+    if (!this.env) return;
+    const env = this.env;
+    if (this.selectedObjects.length === 0) return;
+
+    const gs = env.getGlobalState();
+    let blocked = false;
+
+    // Collect indices to delete per array type
+    const del: Record<string, number[]> = {
+      wall: [], water: [], sand: [], bridge: [], hill: [], decoration: [], post: [],
+      wallsPoly: [], waterPoly: [], sandPoly: []
+    } as any;
+
+    for (const so of this.selectedObjects) {
+      const t = so.type as SelectableObject['type'];
+      if (t === 'tee' || t === 'cup') { blocked = true; continue; }
+      if ('index' in (so as any) && typeof (so as any).index === 'number') {
+        del[t]?.push((so as any).index);
+      }
+    }
+
+    const removeFrom = (arr: any[], indices: number[]) => {
+      indices.sort((a, b) => b - a);
+      for (const i of indices) { if (i >= 0 && i < arr.length) arr.splice(i, 1); }
+    };
+
+    removeFrom(gs.walls as any[], del.wall);
+    removeFrom(gs.polyWalls as any[], del.wallsPoly);
+    removeFrom(gs.waters as any[], del.water);
+    removeFrom(gs.watersPoly as any[], del.waterPoly);
+    removeFrom(gs.sands as any[], del.sand);
+    removeFrom(gs.sandsPoly as any[], del.sandPoly);
+    removeFrom(gs.bridges as any[], del.bridge);
+    removeFrom(gs.hills as any[], del.hill);
+    removeFrom(gs.decorations as any[], del.decoration);
+    removeFrom(gs.posts as any[], del.post);
+
+    env.setGlobalState(gs);
+    this.syncEditorDataFromGlobals(env);
+    this.selectedObjects = [];
+    if (blocked) try { env.showToast('Tee/Cup cannot be deleted'); } catch {}
+  }
+
+  // Nudge selected objects by arrow keys; Shift => larger step
+  private nudgeSelectedObjects(direction: 'ArrowLeft'|'ArrowRight'|'ArrowUp'|'ArrowDown', bigStep: boolean, env: EditorEnv): void {
+    if (this.selectedObjects.length === 0) return;
+    const gs = env.getGlobalState();
+    const { x: fairX, y: fairY, w: fairW, h: fairH } = env.fairwayRect();
+    const clampX = (x: number) => Math.max(fairX, Math.min(fairX + fairW, x));
+    const clampY = (y: number) => Math.max(fairY, Math.min(fairY + fairH, y));
+    let step = 1;
+    try { const g = env.getGridSize(); if (bigStep && typeof g === 'number' && g > 0) step = Math.max(2, Math.min(40, g)); else if (bigStep) step = 10; } catch { if (bigStep) step = 10; }
+    let dx = 0, dy = 0;
+    if (direction === 'ArrowLeft') dx = -step;
+    else if (direction === 'ArrowRight') dx = step;
+    else if (direction === 'ArrowUp') dy = -step;
+    else if (direction === 'ArrowDown') dy = step;
+
+    for (const so of this.selectedObjects) {
+      const t = so.type as SelectableObject['type'];
+      const o: any = so.object as any;
+      if (t === 'wallsPoly' || t === 'waterPoly' || t === 'sandPoly') {
+        const pts: number[] = Array.isArray(o.points) ? o.points : [];
+        for (let i = 0; i + 1 < pts.length; i += 2) {
+          pts[i] = clampX(pts[i] + dx);
+          pts[i + 1] = clampY(pts[i + 1] + dy);
+        }
+      } else if (t === 'tee') {
+        const nx = clampX(o.x + dx), ny = clampY(o.y + dy);
+        o.x = nx; o.y = ny; gs.ball.x = nx; gs.ball.y = ny;
+      } else if (t === 'cup') {
+        const nx = clampX(o.x + dx), ny = clampY(o.y + dy);
+        o.x = nx; o.y = ny; gs.hole.x = nx; gs.hole.y = ny;
+      } else if (t === 'post' || t === 'wall' || t === 'water' || t === 'sand' || t === 'bridge' || t === 'hill' || t === 'decoration') {
+        if (typeof o.x === 'number') o.x = clampX(o.x + dx);
+        if (typeof o.y === 'number') o.y = clampY(o.y + dy);
+        if (t === 'post') {
+          const snapped = this.snapPostPosition(o.x, o.y, o.r ?? 12, env);
+          o.x = snapped.x; o.y = snapped.y;
+        }
+      }
+    }
+    env.setGlobalState(gs);
+    this.syncEditorDataFromGlobals(env);
+  }
+
+  // Placeholder for Angled Corridor stamp placement
+  private async placeAngledCorridorStamp(): Promise<void> {
+    if (!this.env) return; 
+    try { this.env.showToast('Angled Corridor tool is not implemented yet'); } catch {}
   }
 
   // Synchronize editor's internal level data from the current global state

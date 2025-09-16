@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Level Editor • Polygons: Vertex editing in Select Tool. Selected `wallsPoly`/`waterPoly`/`sandPoly` display vertex handles; dragging a vertex snaps to grid and clamps to fairway bounds. (`src/editor/levelEditor.ts`)
 - Level Editor • Diagonal Geometry: 45°-constrained polygon drawing tools `Walls45`, `Water45`, `Sand45`. Segments snap to 0/45/90°; Enter closes, Esc cancels; Ctrl temporarily disables constraint (free angle). Normal poly tools accept Shift to temporarily constrain to 45°. Persist to existing `wallsPoly`/`waterPoly`/`sandPoly` arrays. (`src/editor/levelEditor.ts`)
  - Level Editor • Tools: Chamfer/Bevel conversion for rectangles (Walls/Water/Sand). One-click converts selected rect-like objects into beveled octagonal polygons, respecting rotation; prompts for bevel amount (pixels); snaps to grid when enabled; inserts into `wallsPoly`/`waterPoly`/`sandPoly` and removes originals; updates selection to new polys. (`src/editor/levelEditor.ts`)
+- Level Editor • Align/Distribute: Edit menu actions Align Left/Right/Top/Bottom/Center (H/V) and Distribute (H/V) for multi-selection. Alignment snaps objects to shared edges or centers; distribution computes even spacing across the selection span. (`src/editor/levelEditor.ts`)
  - Options • Slope arrows toggle: `showSlopeArrows` added to Options panel to show/hide hill direction arrows during play. (`src/main.ts`)
  - Admin Game Settings • Par Heuristics: added sliders for Baseline Shot (px), Turn Penalty, Hill Bump, and Bank Weight. Values persist via Firebase and are consumed by the editor’s Suggest Par. (`src/main.ts`, `src/firebase/database.ts`, `src/editor/levelEditor.ts`)
  - Level System • Cup position suggestions integration: File → “Suggest Cup Positions” proposes ranked markers; clicking applies cup, runs lint, and prompts to apply a par suggestion using admin-tuned coefficients. (`src/editor/levelHeuristics.ts`, `src/editor/levelEditor.ts`)
@@ -36,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Level Editor • Polygon preview: Removed closing dashed segment while drafting; the outline remains open and only the placed edges are shown. A yellow dashed preview shows the next segment to the cursor. (`src/editor/levelEditor.ts`)
  - Level Editor • Diagonal Geometry UX: while drawing polygons, Shift locks to 45° increments on normal poly tools; Ctrl enables free-angle for the 45° tools; Alt toggles preview lineJoin (miter/bevel). Added snap-to-vertex and snap-to-edge across existing polygons with on-canvas guide visuals and a preview segment from the last vertex to the snapped point. (`src/editor/levelEditor.ts`)
 - Play • Hill arrows styling: arrows slightly tinted green with dark under-stroke for contrast; size subtly scales with hill `falloff`; visibility controlled by Options toggle. (`src/main.ts`)
+- Level Editor • Edit menu: Align/Distribute items dynamically enable only when appropriate selection size (Align requires ≥2; Distribute computes spacing for ≥3 and no-ops otherwise). (`src/editor/levelEditor.ts`)
 
 ## v0.3.28 — 2025-09-06
 {{ ... }}
@@ -60,6 +62,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Physics • Hills: stop condition no longer triggers while the ball is in a hill with active downhill acceleration. Prevents the ball from occasionally “parking” on a slope at very low speeds. (`src/main.ts`)
  - Physics • Hills corner jitter: resolved a bug where the ball could get stuck jittering/bouncing in concave corners under slope acceleration. We now allow the stop condition if a collision occurred this frame at very low speed, and apply slight extra damping to kill residual jitter. (`update()` in `src/main.ts`)
+- Level Editor • Chamfer/Bevel tail corruption: repaired the end of `chamferBevelSelected()` where stray variables caused compile errors; now creates polygons, removes originals, selects new polys, and syncs. (`src/editor/levelEditor.ts`)
+- Level Editor • Missing helpers: implemented `deleteSelectedObjects()` and `nudgeSelectedObjects()` used by Delete and Arrow key nudges; resolves related TS property errors. (`src/editor/levelEditor.ts`)
+- Level Editor • Ruler drag finalize (Y clamp): fixed incorrect variables when finalizing Y‑axis guides to use `fairY`/`fairH`. (`src/editor/levelEditor.ts`)
 
 
 ## v0.3.27 — 2025-09-06

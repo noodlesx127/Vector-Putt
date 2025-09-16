@@ -20,9 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Level Editor • Menus: Tools dropdown now reflects disabled state for Copy/Cut/Paste/Duplicate and Undo/Redo based on current selection/history/clipboard. (`src/editor/levelEditor.ts`)
 - Level Editor • Objects menu: added `Walls45`, `Water45`, and `Sand45` entries. (`src/editor/levelEditor.ts`)
- - Level Editor • Tools menu: added “Chamfer Bevel…” action under Editor Tools. (`src/editor/levelEditor.ts`)
+ - Level Editor • Tools: Chamfer/Bevel conversion for rectangles (Walls/Water/Sand). One-click converts selected rect-like objects into beveled octagonal polygons, respecting rotation; prompts for bevel amount (pixels); snaps to grid when enabled; inserts into `wallsPoly`/`waterPoly`/`sandPoly` and removes originals; updates selection to new polys. (`src/editor/levelEditor.ts`)
+ - Level Editor • Polygon preview: Delayed fill until 4 vertices for `wallsPoly`/`waterPoly`/`sandPoly` (and 45° variants) to avoid confusing early triangle fill while drafting the 3rd vertex. (`src/editor/levelEditor.ts`)
  - Level Editor • Diagonal Geometry UX: while drawing polygons, Shift locks to 45° increments on normal poly tools; Ctrl enables free-angle for the 45° tools; Alt toggles preview lineJoin (miter/bevel). Added snap-to-vertex and snap-to-edge across existing polygons with on-canvas guide visuals and a preview segment from the last vertex to the snapped point. (`src/editor/levelEditor.ts`)
- - Play • Hill arrows styling: arrows slightly tinted green with dark under-stroke for contrast; size subtly scales with hill `falloff`; visibility controlled by Options toggle. (`src/main.ts`)
+- Play • Hill arrows styling: arrows slightly tinted green with dark under-stroke for contrast; size subtly scales with hill `falloff`; visibility controlled by Options toggle. (`src/main.ts`)
 
 ## v0.3.28 — 2025-09-06
 

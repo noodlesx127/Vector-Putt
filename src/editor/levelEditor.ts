@@ -1845,22 +1845,32 @@ class LevelEditorImpl implements LevelEditor {
       
       // Fill based on tool type (treat 45° variants as their base types)
       if (tool === 'waterPoly' || tool === 'water45') {
-        ctx.globalAlpha = 0.35;
-        ctx.fillStyle = COLORS.waterFill;
-        ctx.fill();
-        ctx.globalAlpha = 1;
+        // Delay fill until at least 4 points to avoid early triangular fill
+        if (pts.length >= 8) {
+          ctx.globalAlpha = 0.35;
+          ctx.fillStyle = COLORS.waterFill;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
         ctx.strokeStyle = COLORS.waterStroke;
       } else if (tool === 'sandPoly' || tool === 'sand45') {
-        ctx.globalAlpha = 0.35;
-        ctx.fillStyle = COLORS.sandFill;
-        ctx.fill();
-        ctx.globalAlpha = 1;
+        // Delay fill until at least 4 points to avoid early triangular fill
+        if (pts.length >= 8) {
+          ctx.globalAlpha = 0.35;
+          ctx.fillStyle = COLORS.sandFill;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
         ctx.strokeStyle = COLORS.sandStroke;
       } else if (tool === 'wallsPoly' || tool === 'walls45') {
-        ctx.globalAlpha = 0.35;
-        ctx.fillStyle = COLORS.wallFill;
-        ctx.fill();
-        ctx.globalAlpha = 1;
+        // Do not fill early for walls: wait until at least 4 points to avoid
+        // confusing triangular fill when placing the 3rd vertex.
+        if (pts.length >= 8) { // 4 points * 2 coords
+          ctx.globalAlpha = 0.35;
+          ctx.fillStyle = COLORS.wallFill;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
         ctx.strokeStyle = COLORS.wallStroke;
       }
       

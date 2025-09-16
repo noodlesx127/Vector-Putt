@@ -1,7 +1,8 @@
  - UI • Level Editor Menus: Added new Edit and View menus.
    - Edit: Undo, Redo, Copy, Cut, Paste, Duplicate.
-   - View: Grid Toggle, Preview Fill Only On Close.
+   - View: Grid Toggle, Preview Fill Only On Close, Dashed Next Segment.
    - Preview Fill Only On Close toggles whether in-progress polygon tools fill before closure. (`src/editor/levelEditor.ts`)
+ - Level Editor • Drafting hint overlay while drawing polygons: on-canvas hint near cursor shows “Enter: Close • Esc: Cancel”. (`src/editor/levelEditor.ts`)
 # Changelog
 
 All notable changes to this project will be documented in this file.

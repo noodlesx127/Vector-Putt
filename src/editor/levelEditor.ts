@@ -65,7 +65,7 @@ export type EditorTool =
   | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'walls45' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'water45' | 'sand' | 'sandPoly' | 'sand45' | 'hill' | 'decoration';
 
 export type EditorAction =
-  | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'previewFillOnClose' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'chamfer' | 'angledCorridor' | 'courseCreator';
+  | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'previewFillOnClose' | 'previewDashedNext' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'chamfer' | 'angledCorridor' | 'courseCreator';
 
 export type EditorMenuId = 'file' | 'edit' | 'view' | 'objects' | 'decorations' | 'tools';
 
@@ -238,6 +238,8 @@ class LevelEditorImpl implements LevelEditor {
   private polygonJoinBevel: boolean = false;
   // View option: when true, in-progress polygon preview only fills on close
   private previewFillOnClose: boolean = false;
+  // View option: when true, show next-segment preview as dashed; otherwise solid
+  private previewDashedNextSegment: boolean = true;
   // Track last modifier keys for preview constraints
   private lastModifiers: { shift: boolean; ctrl: boolean; alt: boolean } = { shift: false, ctrl: false, alt: false };
   
@@ -1270,7 +1272,8 @@ class LevelEditorImpl implements LevelEditor {
       title: 'View',
       items: [
         { label: 'Grid Toggle', item: { kind: 'action', action: 'gridToggle' } },
-        { label: 'Preview Fill Only On Close', item: { kind: 'action', action: 'previewFillOnClose' } }
+        { label: 'Preview Fill Only On Close', item: { kind: 'action', action: 'previewFillOnClose' } },
+        { label: 'Dashed Next Segment', item: { kind: 'action', action: 'previewDashedNext' } }
       ]
     },
     objects: {
@@ -1905,7 +1908,8 @@ class LevelEditorImpl implements LevelEditor {
         const desired = { x: this.lastMousePosition.x, y: this.lastMousePosition.y };
         const res = this.computePolygonSnap({ x: lastX, y: lastY }, desired, tool,
           { ctrl: this.lastModifiers.ctrl, shift: this.lastModifiers.shift }, env);
-        ctx.setLineDash([4, 3]);
+        // Next-segment preview: dashed or solid based on View toggle
+        if (this.previewDashedNextSegment) ctx.setLineDash([4, 3]); else ctx.setLineDash([]);
         ctx.lineWidth = 2;
         ctx.strokeStyle = '#ffff66';
         ctx.beginPath();
@@ -1913,6 +1917,26 @@ class LevelEditorImpl implements LevelEditor {
         ctx.lineTo(res.x, res.y);
         ctx.stroke();
         ctx.setLineDash([]);
+
+        // Subtle drafting hint near cursor
+        try {
+          const hint = 'Enter: Close  •  Esc: Cancel';
+          ctx.font = '11px system-ui, sans-serif';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
+          const pad = 4;
+          const tw = Math.ceil(ctx.measureText(hint).width);
+          const th = 14;
+          const hx = Math.min(Math.max(res.x + 10, fairX + 2), fairX + fairW - tw - pad * 2 - 2);
+          const hy = Math.min(Math.max(res.y + 10, fairY + 2), fairY + fairH - th - pad * 2 - 2);
+          ctx.fillStyle = 'rgba(0,0,0,0.65)';
+          ctx.fillRect(hx, hy, tw + pad * 2, th + pad * 2);
+          ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(hx, hy, tw + pad * 2, th + pad * 2);
+          ctx.fillStyle = 'rgba(255,255,255,0.9)';
+          ctx.fillText(hint, hx + pad, hy + pad);
+        } catch {}
         // Guide indicator
         if (res.guide) {
           if (res.guide.kind === 'vertex') {
@@ -2200,6 +2224,9 @@ class LevelEditorImpl implements LevelEditor {
             case 'previewFillOnClose':
               displayLabel = `Preview Fill Only On Close: ${this.previewFillOnClose ? 'On' : 'Off'}`;
               break;
+            case 'previewDashedNext':
+              displayLabel = `Dashed Next Segment: ${this.previewDashedNextSegment ? 'On' : 'Off'}`;
+              break;
             case 'suggestCup':
               // keep default label
               break;
@@ -2407,6 +2434,9 @@ class LevelEditorImpl implements LevelEditor {
             } else if (item.action === 'previewFillOnClose') {
               this.previewFillOnClose = !this.previewFillOnClose;
               try { env.showToast(`Preview Fill Only On Close ${this.previewFillOnClose ? 'ON' : 'OFF'}`); } catch {}
+            } else if (item.action === 'previewDashedNext') {
+              this.previewDashedNextSegment = !this.previewDashedNextSegment;
+              try { env.showToast(`Dashed Next Segment ${this.previewDashedNextSegment ? 'ON' : 'OFF'}`); } catch {}
             } else if (item.action === 'suggestCup') {
               void this.suggestCup();
             } else if (item.action === 'courseCreator') {

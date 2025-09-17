@@ -14,6 +14,7 @@ import {
   applyLevelDataFixups,
   validateLevelData
 } from './filesystem';
+import { importLevelFromScreenshot } from './importScreenshot';
 import firebaseLevelStore from '../firebase/FirebaseLevelStore';
 import type { LevelEntry as FirebaseLevelEntry } from '../firebase/FirebaseLevelStore';
 import firebaseCourseStore from '../firebase/FirebaseCourseStore';
@@ -65,7 +66,7 @@ export type EditorTool =
   | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'walls45' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'water45' | 'sand' | 'sandPoly' | 'sand45' | 'hill' | 'decoration' | 'measure';
 
 export type EditorAction =
-  | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'previewFillOnClose' | 'previewDashedNext' | 'alignmentGuides' | 'guideDetailsToggle' | 'rulersToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'chamfer' | 'angledCorridor' | 'courseCreator'
+  | 'save' | 'saveAs' | 'load' | 'import' | 'importScreenshot' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'previewFillOnClose' | 'previewDashedNext' | 'alignmentGuides' | 'guideDetailsToggle' | 'rulersToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'chamfer' | 'angledCorridor' | 'courseCreator'
   | 'alignLeft' | 'alignRight' | 'alignTop' | 'alignBottom' | 'alignCenterH' | 'alignCenterV' | 'distributeH' | 'distributeV';
 
 export type EditorMenuId = 'file' | 'edit' | 'view' | 'objects' | 'decorations' | 'tools';
@@ -1182,7 +1183,8 @@ class LevelEditorImpl implements LevelEditor {
         { label: 'Save', item: { kind: 'action', action: 'save' } },
         { label: 'Save As', item: { kind: 'action', action: 'saveAs' } },
         { label: 'Level Load', item: { kind: 'action', action: 'load' } },
-        { label: 'Import', item: { kind: 'action', action: 'import' } },
+        { label: 'Import (JSON)', item: { kind: 'action', action: 'import' } },
+        { label: 'Import from Screenshot…', item: { kind: 'action', action: 'importScreenshot' } },
         { label: 'Export', item: { kind: 'action', action: 'export' } },
         { label: 'Delete', item: { kind: 'action', action: 'delete' } },
         { label: 'Back/Exit', item: { kind: 'action', action: 'back' }, separator: true }
@@ -2740,6 +2742,8 @@ class LevelEditorImpl implements LevelEditor {
               void this.openLoadPicker();
             } else if (item.action === 'import') {
               void this.importLevel();
+            } else if (item.action === 'importScreenshot') {
+              void this.importFromScreenshot();
             } else if (item.action === 'export') {
               void this.exportLevel();
             } else if (item.action === 'metadata') {
@@ -4475,6 +4479,40 @@ class LevelEditorImpl implements LevelEditor {
     this.editorCurrentSavedId = null; // imported file is not yet saved
     this.applyLevelToEnv(fixed, env);
     env.showToast('Imported level');
+  }
+
+  async importFromScreenshot(): Promise<void> {
+    if (!this.env) return;
+    const env = this.env;
+    const file = await new Promise<File | null>((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.multiple = false;
+      input.onchange = (e) => {
+        const f = (e.target as HTMLInputElement).files?.[0] || null;
+        resolve(f);
+      };
+      input.click();
+    });
+    if (!file) return;
+
+    const targetW = Math.max(400, Math.floor(env.width));
+    const targetH = Math.max(300, Math.floor(env.height));
+    const imported = await importLevelFromScreenshot(file, { targetWidth: targetW, targetHeight: targetH, gridSize: (()=>{ try { return env.getGridSize(); } catch { return 20; } })() });
+    if (!imported) { try { env.showToast('Import failed'); } catch {} return; }
+
+    const fixed = applyLevelDataFixups(imported);
+    // Ensure author tracking and timestamps
+    fixed.meta = fixed.meta || {};
+    if (!fixed.meta.authorId) fixed.meta.authorId = env.getUserId();
+    if (!fixed.meta.authorName) fixed.meta.authorName = this.resolveDisplayName(env);
+    fixed.meta.modified = new Date().toISOString();
+    if (!fixed.meta.created) fixed.meta.created = fixed.meta.modified;
+
+    this.editorCurrentSavedId = null; // new imported draft
+    this.applyLevelToEnv(fixed, env);
+    env.showToast('Imported from screenshot');
   }
 
   async exportLevel(): Promise<void> {

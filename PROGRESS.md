@@ -177,6 +177,22 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
     - [x] Grid compliance
       - When grid is enabled, alignment snap results and guide line positions are quantized to the grid; ruler‑dragged guides snap to grid during drag and on finalize; rulers adjust tick spacing to the grid and the ruler cursor crosshair snaps to grid. (`src/editor/levelEditor.ts`)
 
+## From Original Game Screenshots — New Objects to Add (2025-09-16)
+Observed in `level_screenshots/` and the three provided screenshots. Add these object types to the editor, runtime, and schema. See `firebase.md` for data model updates and `UI_Design.md` for menu placement.
+
+- [ ] One-way Walls / Gates
+  - Wall segments that collide from one side only; ball passes through from the other side. Editor: orientation property (up/right/down/left) and arrow indicator. Runtime: treat as wall only when the collision normal opposes the allowed direction. Add to Objects menu as `OneWayWall` (rect + poly variants later).
+- [ ] Breakable Walls (Red fence around cup)
+  - Fence/wall segments with hit points (e.g., 2–4). Collisions above a speed threshold decrement HP; on zero, segment disappears with debris/sound. Resets on hole restart/retry. Editor: `hp` field and color style (red). Schema: store `hpMax`, `hp`.
+- [ ] Fast Turf / Ice (low‑friction strip)
+  - Light‑green strips that reduce friction so the ball carries farther. Editor: `fastTurf` region (rect + poly). Runtime: friction multiplier < 1.0; excluded on bridges. Visual: lighter green fill per `PALETTE.md`.
+- [ ] Flowerbed / Garden (no‑play zone)
+  - Decorative flowerbed area seen in screenshots. Decide behavior: out‑of‑bounds (reset) vs. heavy‑rough (very high friction). Lean OOB for parity with original look unless videos show roll‑through. Editor: `garden` region (rect + poly) with floral texture.
+- [ ] Ball Teleporter Holes
+  - Paired enter/exit holes that instantly move the ball. Editor: place Source and Target and link via id; draw a faint line/arrow between linked holes; adjustable radius. Runtime: preserve velocity and direction by default; spawn with a small offset and short cooldown (~200ms) to avoid immediate re‑trigger; play SFX/particles. Schema: `teleporters[]` with `{ id, a:{x,y,r}, b:{x,y,r}, preserveSpeed?: true }`.
+- [ ] Preset: Thin Deflector Board
+  - The angled white slats inside fairways can be authored with rotated `wall` rectangles today; add a convenience preset in Objects → `Deflector` that drops a thin wall with default dimensions at 45° for faster authoring. No new runtime behavior.
+
 ## Next Up (Short Horizon)
 - Seeded from `TODO.md` backlog:
 

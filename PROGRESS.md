@@ -161,7 +161,7 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
       - [in progress] Ruler strips render with refined tick density/labels and typography; further polish to match UI_Design.md exactly.
     - [x] Measure Tool
       - Tools → “Measure Tool”: click-drag to measure length/angle (Δx/Δy); snaps to grid/vertices/edges; ESC cancels; Enter pins; double-click clears.
-      - [x] Interactions done: ESC cancels; Enter pins; double-click clears. Implemented in `src/editor/levelEditor.ts` (`handleKeyDown()`, `handleMouseDown()`/`handleMouseMove()`/`handleMouseUp()`).
+      - [x] Bugfix: Mouse up now auto-pins the measurement; right‑click reliably clears both in‑progress and pinned measurements and does not resume measuring on mouse move. (`src/editor/levelEditor.ts`)
       - [x] Ruler-drag live guides: drag out guides from rulers (top/left). Guides persist and render; snapping includes these guides; double-click the ruler band clears guides for that axis.
     - [x] Polygon Drafting alignment
       - Preview segment and placed vertices snap to alignment guides (in addition to 45° and poly vertex/edge snapping). Axis value bubble shown near cursor; spacing bubble shown when snapped. Click placements (first and subsequent points) now match the preview snap. (`src/editor/levelEditor.ts`)
@@ -171,6 +171,7 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
       - Edit → Align Left/Right/Top/Bottom/Center (H/V) and Distribute spacing (H/V) implemented. Uses object bounds centers/edges and even spacing across selection span; dynamic enablement based on selection size. (`src/editor/levelEditor.ts`)
     - [x] Numeric readout on drafting
       - Implemented: Segment length and angle shown near the preview segment midpoint in a subtle pill.
+      - [x] Guide Details UX: numeric alignment labels moved to a stacked area at the top‑left inside the fairway so they never overlap the object being placed; added View → “Guide Details” toggle to show/hide these labels. (`src/editor/levelEditor.ts`)
     - [x] Ruler guide lines
       - Implemented: drag out guides from rulers (top/left). Guides persist and render; snapping includes these guides; double-click the ruler band clears guides for that axis.
     - [x] Grid compliance

@@ -65,7 +65,7 @@ export type EditorTool =
   | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'walls45' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'water45' | 'sand' | 'sandPoly' | 'sand45' | 'hill' | 'decoration' | 'measure';
 
 export type EditorAction =
-  | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'previewFillOnClose' | 'previewDashedNext' | 'alignmentGuides' | 'rulersToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'chamfer' | 'angledCorridor' | 'courseCreator'
+  | 'save' | 'saveAs' | 'load' | 'import' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'previewFillOnClose' | 'previewDashedNext' | 'alignmentGuides' | 'guideDetailsToggle' | 'rulersToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'chamfer' | 'angledCorridor' | 'courseCreator'
   | 'alignLeft' | 'alignRight' | 'alignTop' | 'alignBottom' | 'alignCenterH' | 'alignCenterV' | 'distributeH' | 'distributeV';
 
 export type EditorMenuId = 'file' | 'edit' | 'view' | 'objects' | 'decorations' | 'tools';
@@ -245,6 +245,8 @@ class LevelEditorImpl implements LevelEditor {
   private showAlignmentGuides: boolean = true;
   // View option: show rulers (top/left)
   private showRulers: boolean = false;
+  // View option: show numeric guide detail labels (axis/spacing). When off, only cyan guide lines render.
+  private showGuideDetails: boolean = true;
   // Transient live guides computed during interactions
   private liveGuides: Array<{ kind: 'x' | 'y'; pos: number }> = [];
   // Persistent ruler-dragged guides
@@ -1166,6 +1168,9 @@ class LevelEditorImpl implements LevelEditor {
 
     env.setGlobalState(gs);
     this.polygonInProgress = null;
+    // Clear transient guide visuals after commit
+    this.liveGuides = [];
+    this.liveGuideBubbles = [];
   }
 
   // Menu definitions
@@ -1209,6 +1214,7 @@ class LevelEditorImpl implements LevelEditor {
         { label: 'Preview Fill Only On Close', item: { kind: 'action', action: 'previewFillOnClose' } },
         { label: 'Dashed Next Segment', item: { kind: 'action', action: 'previewDashedNext' } },
         { label: 'Alignment Guides', item: { kind: 'action', action: 'alignmentGuides' } },
+        { label: 'Guide Details', item: { kind: 'action', action: 'guideDetailsToggle' } },
         { label: 'Rulers', item: { kind: 'action', action: 'rulersToggle' } }
       ]
     },
@@ -2146,17 +2152,19 @@ class LevelEditorImpl implements LevelEditor {
       ctx.restore();
     }
 
-    // Guide bubbles (labels)
-    if (this.liveGuideBubbles && this.liveGuideBubbles.length > 0) {
-      const { x: fx, y: fy, w: fw, h: fh } = env.fairwayRect();
+    // Guide bubbles (labels) — stacked at top-left inside fairway when enabled
+    if (this.showGuideDetails && this.liveGuideBubbles && this.liveGuideBubbles.length > 0) {
+      const { x: fx, y: fy } = env.fairwayRect();
       ctx.save();
       ctx.font = '12px system-ui, sans-serif';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
+      const pad = 4; const th = 16; const gap = 4;
+      let row = 0;
       for (const b of this.liveGuideBubbles) {
-        const pad = 4; const th = 16; const tw = Math.ceil(ctx.measureText(b.text).width);
-        const bx = Math.min(Math.max(b.x, fx + 2), fx + fw - tw - pad * 2 - 2);
-        const by = Math.min(Math.max(b.y, fy + 2), fy + fh - th - pad * 2 - 2);
+        const tw = Math.ceil(ctx.measureText(b.text).width);
+        const bx = fx + 6; // margin inside fairway
+        const by = fy + 6 + row * (th + pad * 2 + gap);
         ctx.fillStyle = 'rgba(0,0,0,0.70)';
         ctx.fillRect(bx, by, tw + pad * 2, th + pad * 2);
         ctx.strokeStyle = 'rgba(255,255,255,0.25)';
@@ -2164,6 +2172,7 @@ class LevelEditorImpl implements LevelEditor {
         ctx.strokeRect(bx, by, tw + pad * 2, th + pad * 2);
         ctx.fillStyle = 'rgba(255,255,255,0.95)';
         ctx.fillText(b.text, bx + pad, by + pad);
+        row++;
       }
       ctx.restore();
     }
@@ -2403,6 +2412,9 @@ class LevelEditorImpl implements LevelEditor {
             case 'alignmentGuides':
               displayLabel = `Alignment Guides: ${this.showAlignmentGuides ? 'On' : 'Off'}`;
               break;
+            case 'guideDetailsToggle':
+              displayLabel = `Guide Details: ${this.showGuideDetails ? 'On' : 'Off'}`;
+              break;
             case 'rulersToggle':
               displayLabel = `Rulers: ${this.showRulers ? 'On' : 'Off'}`;
               break;
@@ -2461,6 +2473,14 @@ class LevelEditorImpl implements LevelEditor {
 
     // Measure Tool begin
     if (this.selectedTool === 'measure') {
+      // Right-click: clear any in-progress and pinned measurements and do not start a new one
+      if (e.button === 2) {
+        e.preventDefault();
+        this.measureStart = null; this.measureEnd = null;
+        this.pinnedMeasures = [];
+        try { env.showToast('Cleared measurements'); } catch {}
+        return;
+      }
       const { x: fairX, y: fairY, w: fairW, h: fairH } = env.fairwayRect();
       const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
       const snap = (n: number) => { try { if (this.showGrid && env.getShowGrid()) { const g = env.getGridSize(); return Math.round(n / g) * g; } } catch {} return n; };
@@ -2674,6 +2694,9 @@ class LevelEditorImpl implements LevelEditor {
             } else if (item.action === 'alignmentGuides') {
               this.showAlignmentGuides = !this.showAlignmentGuides;
               try { env.showToast(`Alignment Guides ${this.showAlignmentGuides ? 'ON' : 'OFF'}`); } catch {}
+            } else if (item.action === 'guideDetailsToggle') {
+              this.showGuideDetails = !this.showGuideDetails;
+              try { env.showToast(`Guide Details ${this.showGuideDetails ? 'ON' : 'OFF'}`); } catch {}
             } else if (item.action === 'rulersToggle') {
               this.showRulers = !this.showRulers;
               try { env.showToast(`Rulers ${this.showRulers ? 'ON' : 'OFF'}`); } catch {}
@@ -3334,6 +3357,20 @@ class LevelEditorImpl implements LevelEditor {
     const px = snap(clamp(p.x, fairX, fairX + fairW));
     const py = snap(clamp(p.y, fairY, fairY + fairH));
 
+    // Measure Tool finalize: mouse up pins current measurement
+    if (this.selectedTool === 'measure') {
+      // Right click on mouse up should already be handled in mousedown path
+      if (this.measureStart && this.measureEnd) {
+        this.pinnedMeasures.push({ a: { ...this.measureStart }, b: { ...this.measureEnd } });
+        this.measureStart = null; this.measureEnd = null;
+        // Clear any guide details from prior alignment helpers
+        this.liveGuides = [];
+        this.liveGuideBubbles = [];
+        try { if (e.button !== 2) env.showToast('Pinned measurement'); } catch {}
+        return;
+      }
+    }
+
     // Finalize ruler drag -> persist guide
     if (this.isRulerDragging && this.rulerDragKind && this.rulerDragPos !== null) {
       const kind = this.rulerDragKind;
@@ -3389,6 +3426,9 @@ class LevelEditorImpl implements LevelEditor {
       this.editorDragStart = null;
       this.editorDragCurrent = null;
       this.syncEditorDataFromGlobals(env);
+      // Clear transient guide visuals after placement
+      this.liveGuides = [];
+      this.liveGuideBubbles = [];
       return;
     }
 
@@ -3397,6 +3437,8 @@ class LevelEditorImpl implements LevelEditor {
       this.isVertexDragging = false;
       this.vertexDrag = null;
       this.syncEditorDataFromGlobals(env);
+      this.liveGuides = [];
+      this.liveGuideBubbles = [];
       return;
     }
 
@@ -3409,6 +3451,8 @@ class LevelEditorImpl implements LevelEditor {
       this.groupRotationStartAngle = 0;
       this.groupRotateOriginals = null;
       this.syncEditorDataFromGlobals(env);
+      this.liveGuides = [];
+      this.liveGuideBubbles = [];
       return;
     }
 
@@ -3421,6 +3465,8 @@ class LevelEditorImpl implements LevelEditor {
       this.resizeStartMouse = null;
       this.groupResizeOriginals = null;
       this.syncEditorDataFromGlobals(env);
+      this.liveGuides = [];
+      this.liveGuideBubbles = [];
       return;
     }
 

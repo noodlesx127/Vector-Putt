@@ -1,3 +1,5 @@
+### Fixed
+- Level Editor • Measure Tool: releasing the mouse now pins the current measurement automatically; right-click clears current and pinned measurements reliably and does not resume measuring on mouse move. Also clear alignment guide labels after placements/commits to avoid lingering readouts. (`src/editor/levelEditor.ts`)
  - UI • Level Editor Menus: Added new Edit and View menus.
    - Edit: Undo, Redo, Copy, Cut, Paste, Duplicate.
    - View: Grid Toggle, Preview Fill Only On Close, Dashed Next Segment.
@@ -16,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Level Editor • Alignment Aids: View toggles for Alignment Guides and Rulers with dynamic labels and toast feedback. Smart guides compute snaps to nearby object edges/centers and fairway edges within a threshold, and render cyan guide lines. Guide bubbles show axis values and deltas; spacing labels indicate edge-to-guide distance during drag-move/resize/vertex drag. (`src/editor/levelEditor.ts`)
 - Level Editor • Rulers: Top and left rulers with minor/mid/major ticks and live cursor indicator. Rendered within fairway bounds following UI_Design.md styling. (`src/editor/levelEditor.ts`)
 - Level Editor • Measure Tool: Tools menu entry added. Click-drag to measure with grid/alignment snapping, overlay line + endpoints + label (length/angle/delta), Esc to cancel, Enter to pin, double-click to clear pinned measures. Pinned measurements render persistently. (`src/editor/levelEditor.ts`)
+ - Level Editor • View: new "Guide Details" toggle to show/hide numeric alignment readouts (axis values and spacing). When off, cyan guide lines render without on-canvas labels. (`src/editor/levelEditor.ts`)
  - Level Editor • Ruler‑Drag Guides: drag from rulers to create persistent guide lines; snapping includes these; double‑click a ruler band clears guides for that axis. (`src/editor/levelEditor.ts`)
 - Level Editor • Tools: Duplicate action in Tools menu with dynamic enable/disable and label, plus keyboard shortcut `Ctrl+D`. Duplicates selected objects and pastes at cursor position with grid snapping and fairway clamping. (`src/editor/levelEditor.ts`)
 - Level Editor • Polygons: Vertex editing in Select Tool. Selected `wallsPoly`/`waterPoly`/`sandPoly` display vertex handles; dragging a vertex snaps to grid and clamps to fairway bounds. (`src/editor/levelEditor.ts`)
@@ -35,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Level Editor • Tools: Chamfer/Bevel conversion for rectangles (Walls/Water/Sand). One-click converts selected rect-like objects into beveled octagonal polygons, respecting rotation; prompts for bevel amount (pixels); snaps to grid when enabled; inserts into `wallsPoly`/`waterPoly`/`sandPoly` and removes originals; updates selection to new polys. (`src/editor/levelEditor.ts`)
  - Level Editor • Polygon preview: Delayed fill until 4 vertices for `wallsPoly`/`waterPoly`/`sandPoly` (and 45° variants) to avoid confusing early triangle fill while drafting the 3rd vertex. (`src/editor/levelEditor.ts`)
  - Level Editor • Polygon preview: Removed closing dashed segment while drafting; the outline remains open and only the placed edges are shown. A yellow dashed preview shows the next segment to the cursor. (`src/editor/levelEditor.ts`)
+ - Level Editor • Alignment Guide details: repositioned the on-canvas guide detail labels to a stacked, non-intrusive area at the top-left inside the fairway, instead of near the cursor/object. (`src/editor/levelEditor.ts`)
  - Level Editor • Diagonal Geometry UX: while drawing polygons, Shift locks to 45° increments on normal poly tools; Ctrl enables free-angle for the 45° tools; Alt toggles preview lineJoin (miter/bevel). Added snap-to-vertex and snap-to-edge across existing polygons with on-canvas guide visuals and a preview segment from the last vertex to the snapped point. (`src/editor/levelEditor.ts`)
 - Play • Hill arrows styling: arrows slightly tinted green with dark under-stroke for contrast; size subtly scales with hill `falloff`; visibility controlled by Options toggle. (`src/main.ts`)
 - Level Editor • Edit menu: Align/Distribute items dynamically enable only when appropriate selection size (Align requires ≥2; Distribute computes spacing for ≥3 and no-ops otherwise). (`src/editor/levelEditor.ts`)

@@ -44,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Level Editor • Edit menu: Align/Distribute items dynamically enable only when appropriate selection size (Align requires ≥2; Distribute computes spacing for ≥3 and no-ops otherwise). (`src/editor/levelEditor.ts`)
  - Level Editor • Alignment Aids respect grid: When grid is enabled, alignment snaps and guide lines are quantized to the grid; ruler‑dragged guide positions snap to the grid during drag and on finalize; rulers adjust tick spacing to the grid and cursor crosshair snaps to grid. (`src/editor/levelEditor.ts`)
 
+- UI • User Made Levels: search/filter bar styling brought to parity with Load Levels overlay (placeholder text, hover/focus stroke, and opacity). (`src/main.ts`)
+- UI • DnD List overlay: added grabbed row dashed outline and insertion end caps for clearer drag‑and‑drop affordance. (`src/main.ts`)
+- UI • Panels: standardized panel border stroke width to 1.5px with color `#cfd2cf` across Main Menu, Admin Menu, Users, Options, Course Select, Changelog, and User Levels. (`src/main.ts`)
+
 ## v0.3.28 — 2025-09-06
 {{ ... }}
 

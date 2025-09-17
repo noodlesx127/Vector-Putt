@@ -92,12 +92,13 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
       - [x] Add hover state for right-pane “Play Course” button
     - User Made Levels (`gameState === 'userLevels'`)
       - [x] List row hover visuals (selection remains blue-highlighted)
-      - [ ] Ensure search/filter bar hover/focus parity with Load Levels overlay (current is acceptable but could match exactly)
+      - [x] Ensure search/filter bar hover/focus parity with Load Levels overlay (placeholder, hover/focus stroke, opacity) — matches `loadLevels` overlay styling.
     - Overlays — DnD List (`uiOverlay.kind === 'dndList'`)
-      - [ ] Add row hover visuals and grabbed/target slot indicators for better affordance
+      - [x] Add grabbed row dashed outline and insertion end caps during drag; hover visuals already present.
     - Global polish
-      - [ ] Sweep to ensure all panel borders use consistent stroke width (prefer 1.5) and color `#cfd2cf`
-      - [ ] Verify all primary/secondary buttons follow the standard sizes (28–32px) with hover fills per `UI_Design.md`
+      - [x] Sweep to ensure all panel borders use consistent stroke width (1.5) and color `#cfd2cf` (Main Menu, Admin Menu, Users, Options, Course Select, Changelog, User Levels)
+      - [x] Verify all primary/secondary buttons follow the standard sizes (28–32px) with hover fills per `UI_Design.md`
+        - Normalized Back and secondary buttons to 32px where previously 36/40 (Admin Menu, Level Management, Users, User Levels). Kept large 36px only for primary CTAs (e.g., Main Menu Start). Course Select “Play Course” set to 32px. Overlays remain within 28–32px standard.
 
 - **Level System**
   - [x] Suggest Par: integrate grid/A* path-based heuristic

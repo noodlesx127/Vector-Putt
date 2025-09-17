@@ -2457,7 +2457,7 @@ function getChangelogBackRect() {
   let py = Math.floor(HEIGHT / 2 - panelH / 2);
   px = Math.max(20, Math.min(WIDTH - panelW - 20, px));
   py = Math.max(20, Math.min(HEIGHT - panelH - 20, py));
-  const w = 120, h = 40;
+  const w = 120, h = 32;
   const x = px + panelW - pad - w;
   const y = py + panelH - pad - h;
   return { x, y, w, h };
@@ -2746,14 +2746,14 @@ function getMainStartRect() {
 }
 function getMainLevelEditorRect() {
   const s = getMainStartRect();
-  const w = s.w, h = s.h;
+  const w = s.w, h = 32; // secondary action size
   const x = s.x;
   const y = s.y + 50;
   return { x, y, w, h };
 }
 function getMainOptionsRect() {
   const le = getMainLevelEditorRect();
-  const w = le.w, h = le.h;
+  const w = le.w, h = 32; // secondary action size
   const x = le.x;
   const y = le.y + 50;
   return { x, y, w, h };
@@ -2771,7 +2771,7 @@ function getMainNameRect() {
 // Main Menu: Changelog button (bottom-right inside panel)
 function getMainChangelogRect() {
   const p = getMainPanelRect();
-  const w = 160, h = 36;
+  const w = 160, h = 32; // secondary action size
   const x = p.x + p.w - p.pad - w;
   const y = p.y + p.h - p.pad - h;
   return { x, y, w, h };
@@ -4937,7 +4937,7 @@ function draw() {
     ctx.fillStyle = 'rgba(0,0,0,0.85)';
     ctx.fillRect(p.x, p.y, p.w, p.h);
     ctx.strokeStyle = '#cfd2cf';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.5;
     ctx.strokeRect(p.x + 0.5, p.y + 0.5, p.w - 1, p.h - 1);
 
     // Title inside panel
@@ -5217,7 +5217,7 @@ function draw() {
     ctx.fillStyle = 'rgba(0,0,0,0.85)';
     ctx.fillRect(panelX, panelY, panelW, panelH);
     ctx.strokeStyle = '#cfd2cf';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.5;
     ctx.strokeRect(panelX, panelY, panelW, panelH);
     
     // Title
@@ -5252,7 +5252,7 @@ function draw() {
     drawAdminMenuBtn('Game Settings', 'gameSettings', startY + (btnH + btnGap) * 2);
     
     // Back button
-    const backBtnW = 120, backBtnH = 40;
+    const backBtnW = 120, backBtnH = 32;
     const backX = panelX + 30, backY = panelY + panelH - backBtnH - 30;
     ctx.fillStyle = 'rgba(255,255,255,0.1)';
     ctx.fillRect(backX, backY, backBtnW, backBtnH);
@@ -5348,7 +5348,7 @@ function draw() {
     drawSetting('Sand Multiplier (×K)', 'sand', baseY + 210, 1.0, 10.0, 0.2, v => v.toFixed(2));
     
     // Buttons
-    const btnW = 120, btnH = 36;
+    const btnW = 120, btnH = 32;
     const saveX = panelX + panelW - btnW - 30;
     const backX = saveX - btnW - 14;
     const by = panelY + panelH - btnH - 24;
@@ -5509,7 +5509,7 @@ function draw() {
     ctx.fillStyle = 'rgba(0,0,0,0.85)';
     ctx.fillRect(px, py, panelW, panelH);
     ctx.strokeStyle = '#cfd2cf';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.5;
     ctx.strokeRect(px + 0.5, py + 0.5, panelW - 1, panelH - 1);
 
     // Header
@@ -5659,7 +5659,7 @@ function draw() {
     }
 
     // Back button (bottom-right)
-    const backW = 120, backH = 40;
+    const backW = 120, backH = 32;
     const backX = px + panelW - pad - backW;
     const backY = py + panelH - pad - backH;
     ctx.fillStyle = 'rgba(255,255,255,0.10)';
@@ -5691,7 +5691,7 @@ function draw() {
     ctx.fillStyle = 'rgba(0,0,0,0.85)';
     ctx.fillRect(px, py, panelW, panelH);
     ctx.strokeStyle = '#cfd2cf';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.5;
     ctx.strokeRect(px + 0.5, py + 0.5, panelW - 1, panelH - 1);
     
     // Title
@@ -5812,7 +5812,7 @@ function draw() {
         ctx.fillText('Generating preview…', pvX + pvW/2, pvY + pvH/2);
       }
       // Action button: Play Course
-      const btnW = 140, btnH = 36; const btnY = rightY + rightH - btnH - 12; const btnX = rightX + 12;
+      const btnW = 140, btnH = 32; const btnY = rightY + rightH - btnH - 12; const btnX = rightX + 12;
       const hoverPlayCourse = hoverCourseAction === 'playSelectedCourse';
       ctx.fillStyle = hoverPlayCourse ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.10)'; ctx.fillRect(btnX, btnY, btnW, btnH);
       ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(btnX, btnY, btnW, btnH);
@@ -5920,19 +5920,22 @@ function draw() {
     const searchH = 32;
     
     // Search box
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+    // Hover styling parity with Load Levels overlay
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.fillRect(searchX, searchY, searchW, searchH);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(searchX, searchY, searchW, searchH);
+    ctx.strokeStyle = hoverUserLevelsSearch ? '#cfd2cf' : '#888888';
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(searchX + 0.5, searchY + 0.5, searchW - 1, searchH - 1);
     
-    // Search text
-    ctx.fillStyle = userLevelsState.searchQuery ? '#ffffff' : '#888888';
+    // Search text (placeholder parity)
+    ctx.fillStyle = '#ffffff';
     ctx.font = '14px system-ui, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    const searchText = userLevelsState.searchQuery || 'Search levels...';
+    const searchText = userLevelsState.searchQuery || 'Search title or author…';
+    ctx.globalAlpha = userLevelsState.searchQuery ? 1.0 : 0.6;
     ctx.fillText(searchText, searchX + 12, searchY + searchH/2);
+    ctx.globalAlpha = 1.0;
     
     // Add search hotspot
     userLevelsHotspots.push({ kind: 'search', x: searchX, y: searchY, w: searchW, h: searchH });
@@ -6156,7 +6159,7 @@ function draw() {
     
     // Bottom controls: Back (left) and actions (right)
     const backBtnW = 100;
-    const backBtnH = 36;
+    const backBtnH = 32;
     const backBtnX = panelX + 20;
     const backBtnY = panelY + panelH - backBtnH - 20;
     
@@ -6351,7 +6354,7 @@ function draw() {
     ctx.fillStyle = 'rgba(0,0,0,0.85)';
     ctx.fillRect(px, py, panelW, panelH);
     ctx.strokeStyle = '#cfd2cf';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.5;
     ctx.strokeRect(px + 0.5, py + 0.5, panelW - 1, panelH - 1);
 
     // Header
@@ -7205,6 +7208,15 @@ function renderGlobalOverlays(): void {
         ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
         ctx.fillText(item.label, ix + 8, iy + (rowH - 4) / 2 + 0.5);
         overlayHotspots.push({ kind: 'listItem', index: i, x: ix, y: iy, w: iw, h: rowH - 4 });
+
+        // If this row is currently being dragged, show a subtle grabbed outline
+        if (typeof uiOverlay.dndDragIndex === 'number' && uiOverlay.dndDragIndex === i) {
+          try { (ctx as any).setLineDash?.([4, 2]); } catch {}
+          ctx.strokeStyle = '#88d4ff';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(ix + 0.5, iy + 0.5, iw - 1, rowH - 4 - 1);
+          try { (ctx as any).setLineDash?.([]); } catch {}
+        }
       }
       // If dragging, draw insertion indicator
       if (typeof uiOverlay.dndDragIndex === 'number' && typeof uiOverlay.dndTargetIndex === 'number') {
@@ -7216,6 +7228,14 @@ function renderGlobalOverlays(): void {
           ctx.beginPath();
           ctx.moveTo(px + pad, y);
           ctx.lineTo(px + panelW - pad, y);
+          ctx.stroke();
+
+          // End caps to better indicate the insertion slot
+          ctx.beginPath();
+          ctx.moveTo(px + pad, y - 6);
+          ctx.lineTo(px + pad, y + 6);
+          ctx.moveTo(px + panelW - pad, y - 6);
+          ctx.lineTo(px + panelW - pad, y + 6);
           ctx.stroke();
         }
         // Ghost preview of dragged item
@@ -7479,7 +7499,7 @@ function renderGlobalOverlays(): void {
       ctx.fillStyle = 'rgba(0,0,0,0.85)';
       ctx.fillRect(px, py, editorPanelW, editorPanelH);
       ctx.strokeStyle = '#cfd2cf';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1.5;
       ctx.strokeRect(px + 0.5, py + 0.5, editorPanelW - 1, editorPanelH - 1);
       
       // Title area

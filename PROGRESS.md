@@ -173,6 +173,8 @@ As of 2025-09-03, focus these open items migrated from `TODO.md`:
       - Implemented: Segment length and angle shown near the preview segment midpoint in a subtle pill.
     - [x] Ruler guide lines
       - Implemented: drag out guides from rulers (top/left). Guides persist and render; snapping includes these guides; double-click the ruler band clears guides for that axis.
+    - [x] Grid compliance
+      - When grid is enabled, alignment snap results and guide line positions are quantized to the grid; ruler‑dragged guides snap to grid during drag and on finalize; rulers adjust tick spacing to the grid and the ruler cursor crosshair snaps to grid. (`src/editor/levelEditor.ts`)
 
 ## Next Up (Short Horizon)
 - Seeded from `TODO.md` backlog:

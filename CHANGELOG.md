@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Level Editor • Diagonal Geometry UX: while drawing polygons, Shift locks to 45° increments on normal poly tools; Ctrl enables free-angle for the 45° tools; Alt toggles preview lineJoin (miter/bevel). Added snap-to-vertex and snap-to-edge across existing polygons with on-canvas guide visuals and a preview segment from the last vertex to the snapped point. (`src/editor/levelEditor.ts`)
 - Play • Hill arrows styling: arrows slightly tinted green with dark under-stroke for contrast; size subtly scales with hill `falloff`; visibility controlled by Options toggle. (`src/main.ts`)
 - Level Editor • Edit menu: Align/Distribute items dynamically enable only when appropriate selection size (Align requires ≥2; Distribute computes spacing for ≥3 and no-ops otherwise). (`src/editor/levelEditor.ts`)
+ - Level Editor • Alignment Aids respect grid: When grid is enabled, alignment snaps and guide lines are quantized to the grid; ruler‑dragged guide positions snap to the grid during drag and on finalize; rulers adjust tick spacing to the grid and cursor crosshair snaps to grid. (`src/editor/levelEditor.ts`)
 
 ## v0.3.28 — 2025-09-06
 {{ ... }}

@@ -302,17 +302,89 @@ class LevelEditorImpl implements LevelEditor {
     const ady = Math.abs(dy);
     // Decide axis vs diagonal with a simple threshold; otherwise snap to perfect diagonal
     const axisBias = 1.5; // if one component is 1.5x larger, prefer axis
-    if (adx > ady * axisBias) {
-      return { x, y: prevY };
-    }
-    if (ady > adx * axisBias) {
-      return { x: prevX, y };
-    }
+    if (adx > ady * axisBias) return { x, y: prevY };
+    if (ady > adx * axisBias) return { x: prevX, y };
     // Diagonal: make |dx| == |dy| preserving signs and using the larger magnitude
     const len = Math.max(adx, ady);
     const sx = dx < 0 ? -1 : 1;
     const sy = dy < 0 ? -1 : 1;
     return { x: prevX + sx * len, y: prevY + sy * len };
+  }
+
+  // Compute snapping for drag-move based on the selection bounds rather than the mouse point.
+  // Returns adjusted dx/dy and any guide lines used for snapping. Considers left/center/right and top/middle/bottom of the moved selection.
+  private computeMoveSnapForSelection(rawDx: number, rawDy: number, env: EditorEnv): { dx: number; dy: number; guides: Array<{ kind: 'x' | 'y'; pos: number }> } {
+    const guides: Array<{ kind: 'x' | 'y'; pos: number }> = [];
+    if (!this.showAlignmentGuides || this.selectedObjects.length === 0) return { dx: rawDx, dy: rawDy, guides };
+    const threshold = 6;
+    const gs = env.getGlobalState();
+    const { x: fairX, y: fairY, w: fairW, h: fairH } = env.fairwayRect();
+    const candX: number[] = [fairX, fairX + Math.floor(fairW / 2), fairX + fairW];
+    const candY: number[] = [fairY, fairY + Math.floor(fairH / 2), fairY + fairH];
+    // Include persistent ruler guides
+    for (const g of this.persistentGuides) { if (g.kind === 'x') candX.push(g.pos); else candY.push(g.pos); }
+    // Candidate bounds from non-selected objects
+    const arrays: Array<{ arr: any[]; type: SelectableObject['type'] }> = [
+      { arr: gs.walls || [], type: 'wall' as any },
+      { arr: gs.polyWalls || [], type: 'wallsPoly' as any },
+      { arr: gs.waters || [], type: 'water' as any },
+      { arr: gs.watersPoly || [], type: 'waterPoly' as any },
+      { arr: gs.sands || [], type: 'sand' as any },
+      { arr: gs.sandsPoly || [], type: 'sandPoly' as any },
+      { arr: gs.bridges || [], type: 'bridge' as any },
+      { arr: gs.hills || [], type: 'hill' as any },
+      { arr: gs.posts || [], type: 'post' as any },
+      { arr: gs.decorations || [], type: 'decoration' as any },
+    ];
+    for (const { arr, type } of arrays) {
+      const a = arr as any[];
+      for (let i = 0; i < a.length; i++) {
+        const obj: SelectableObject = { type: type, object: a[i], index: i } as any;
+        // Skip currently selected
+        if (this.selectedObjects.some(o => o.type === obj.type && (o as any).index === (obj as any).index)) continue;
+        const b = this.getObjectBounds(obj);
+        if (b.w > 0 && b.h > 0) {
+          candX.push(b.x, b.x + Math.floor(b.w / 2), b.x + b.w);
+          candY.push(b.y, b.y + Math.floor(b.h / 2), b.y + b.h);
+        }
+      }
+    }
+    // Proposed moved selection bounds
+    const sel = this.getSelectionBounds();
+    const moved = { x: sel.x + rawDx, y: sel.y + rawDy, w: sel.w, h: sel.h };
+    const testXs = [moved.x, moved.x + Math.floor(moved.w / 2), moved.x + moved.w];
+    const testYs = [moved.y, moved.y + Math.floor(moved.h / 2), moved.y + moved.h];
+
+    // Find best X adjustment
+    let bestXAdjust = 0; let bestXDist = Number.POSITIVE_INFINITY; let bestXGuide: number | null = null;
+    for (const tx of testXs) {
+      for (const cx of candX) {
+        const d = Math.abs(tx - cx);
+        if (d < bestXDist) { bestXDist = d; bestXAdjust = cx - tx; bestXGuide = cx; }
+      }
+    }
+    // Find best Y adjustment
+    let bestYAdjust = 0; let bestYDist = Number.POSITIVE_INFINITY; let bestYGuide: number | null = null;
+    for (const ty of testYs) {
+      for (const cy of candY) {
+        const d = Math.abs(ty - cy);
+        if (d < bestYDist) { bestYDist = d; bestYAdjust = cy - ty; bestYGuide = cy; }
+      }
+    }
+    let dx = rawDx, dy = rawDy;
+    if (bestXGuide !== null && bestXDist <= threshold) { dx = rawDx + bestXAdjust; guides.push({ kind: 'x', pos: bestXGuide }); }
+    if (bestYGuide !== null && bestYDist <= threshold) { dy = rawDy + bestYAdjust; guides.push({ kind: 'y', pos: bestYGuide }); }
+    // Grid quantization for displacement and guides
+    try {
+      const gridOn = this.showGrid && env.getShowGrid();
+      if (gridOn) {
+        const g = env.getGridSize();
+        dx = Math.round(dx / g) * g;
+        dy = Math.round(dy / g) * g;
+        for (let i = 0; i < guides.length; i++) { guides[i] = { kind: guides[i].kind, pos: Math.round(guides[i].pos / g) * g }; }
+      }
+    } catch {}
+    return { dx, dy, guides };
   }
 
   // Compute alignment snapping for current mouse position against nearby object edges/centers and fairway edges
@@ -369,6 +441,21 @@ class LevelEditorImpl implements LevelEditor {
       if (d < bestDy) { bestDy = d; bestY = cy; }
     }
     if (bestY !== null && bestDy <= threshold) { sy = bestY; guides.push({ kind: 'y', pos: bestY }); }
+    // Respect grid: when grid is on, round snapped result to grid to keep objects aligned with grid
+    try {
+      const gridOn = this.showGrid && env.getShowGrid();
+      if (gridOn) {
+        const g = env.getGridSize();
+        sx = Math.round(sx / g) * g;
+        sy = Math.round(sy / g) * g;
+        // Also quantize guide positions so the rendered guide lines align with the grid
+        for (let i = 0; i < guides.length; i++) {
+          const gi = guides[i];
+          const qp = Math.round(gi.pos / g) * g;
+          guides[i] = { kind: gi.kind, pos: qp };
+        }
+      }
+    } catch {}
     return { x: sx, y: sy, guides };
   }
 
@@ -2134,7 +2221,17 @@ class LevelEditorImpl implements LevelEditor {
       ctx.strokeStyle = '#cfd2cf';
       ctx.fillStyle = '#cfd2cf';
       ctx.font = '10px system-ui, sans-serif';
-      const minor = 20, mid = 50, major = 100;
+      // Ticks respect grid settings
+      let minor = 20, mid = 50, major = 100;
+      try {
+        const gridOn = this.showGrid && env.getShowGrid();
+        if (gridOn) {
+          const g = env.getGridSize();
+          minor = Math.max(5, g);
+          mid = g * 5;
+          major = g * 10;
+        }
+      } catch {}
       // X axis ticks
       for (let x = 0; x <= fw; x += minor) {
         const X = fx + x;
@@ -2153,9 +2250,17 @@ class LevelEditorImpl implements LevelEditor {
         ctx.beginPath(); ctx.moveTo(fx + leftW, Y); ctx.lineTo(fx + leftW - tw, Y); ctx.stroke();
         if (isMajor) { ctx.fillText(String(y), fx + 2, Y + 2); }
       }
-      // Cursor crosshair on rulers
-      const cxr = this.lastMousePosition?.x ?? (fx + fw / 2);
-      const cyr = this.lastMousePosition?.y ?? (fy + fh / 2);
+      // Cursor crosshair on rulers (snap to grid if enabled)
+      let cxr = this.lastMousePosition?.x ?? (fx + fw / 2);
+      let cyr = this.lastMousePosition?.y ?? (fy + fh / 2);
+      try {
+        const gridOn = this.showGrid && env.getShowGrid();
+        if (gridOn) {
+          const g = env.getGridSize();
+          cxr = Math.round(cxr / g) * g;
+          cyr = Math.round(cyr / g) * g;
+        }
+      } catch {}
       if (cxr >= fx && cxr <= fx + fw) { ctx.strokeStyle = 'rgba(255,255,102,0.8)'; ctx.beginPath(); ctx.moveTo(cxr, fy); ctx.lineTo(cxr, fy + topH); ctx.stroke(); }
       if (cyr >= fy && cyr <= fy + fh) { ctx.strokeStyle = 'rgba(255,255,102,0.8)'; ctx.beginPath(); ctx.moveTo(fx, cyr); ctx.lineTo(fx + leftW, cyr); ctx.stroke(); }
       ctx.restore();
@@ -2343,7 +2448,10 @@ class LevelEditorImpl implements LevelEditor {
         this.rulerDragKind = band;
         const clampX = (x: number) => Math.max(fx, Math.min(fx + fw, x));
         const clampY = (y: number) => Math.max(fy, Math.min(fy + fh, y));
-        this.rulerDragPos = band === 'x' ? clampX(p.x) : clampY(p.y);
+        let pos0 = band === 'x' ? clampX(p.x) : clampY(p.y);
+        // Snap guide to grid if enabled
+        try { if (this.showGrid && env.getShowGrid()) { const g = env.getGridSize(); pos0 = Math.round(pos0 / g) * g; } } catch {}
+        this.rulerDragPos = pos0;
         // Initialize preview
         this.liveGuides = [{ kind: band, pos: this.rulerDragPos! }];
         this.liveGuideBubbles = [{ x: p.x + 10, y: p.y + 10, text: `${band}=${Math.round(this.rulerDragPos!)}` }];
@@ -2940,7 +3048,9 @@ class LevelEditorImpl implements LevelEditor {
 
     // Ruler drag update (live preview of guide)
     if (this.isRulerDragging && this.rulerDragKind) {
-      const pos = this.rulerDragKind === 'x' ? clampX(p.x) : clampY(p.y);
+      let pos = this.rulerDragKind === 'x' ? clampX(p.x) : clampY(p.y);
+      // Snap guide to grid if enabled
+      try { if (this.showGrid && env.getShowGrid()) { const g = env.getGridSize(); pos = Math.round(pos / g) * g; } } catch {}
       this.rulerDragPos = pos;
       this.liveGuides = [{ kind: this.rulerDragKind, pos }];
       this.liveGuideBubbles = [{ x: px + 10, y: py + 10, text: `${this.rulerDragKind}=${Math.round(pos)}` }];
@@ -3153,36 +3263,34 @@ class LevelEditorImpl implements LevelEditor {
     }
 
     if (this.isDragMoving && this.dragMoveStart) {
-      // Optional alignment snap using mouse position as anchor
-      let ax = rx, ay = ry;
-      // Ctrl forces grid-only; Alt disables guides
-      const allowGuides = this.showAlignmentGuides && !e.ctrlKey && !e.altKey;
-      if (allowGuides) {
-        const snapRes = this.computeAlignmentSnap(px, py, env);
-        ax = snapRes.x; ay = snapRes.y;
-        this.liveGuides = snapRes.guides;
-        // Build guide bubble label
-        this.liveGuideBubbles = [];
-        if (snapRes.guides.length) {
-          const g = snapRes.guides[0];
-          const label = g.kind === 'x' ? `x=${Math.round(ax)}` : `y=${Math.round(ay)}`;
-          this.liveGuideBubbles.push({ x: px + 10, y: py + 10, text: label });
-        }
-      } else {
-        this.liveGuides = [];
-        this.liveGuideBubbles = [];
-      }
-      let rawDx = ax - this.dragMoveStart.x;
-      let rawDy = ay - this.dragMoveStart.y;
-      // Axis lock with Shift: constrain to dominant axis
+      // Compute raw delta from drag start (mouse), then apply axis lock, then selection-bounds-based snapping
+      let rawDx = rx - this.dragMoveStart.x;
+      let rawDy = ry - this.dragMoveStart.y;
       if (e.shiftKey) {
         if (Math.abs(rawDx) >= Math.abs(rawDy)) { rawDy = 0; } else { rawDx = 0; }
       }
-      const selectionIsAllCircles = this.selectedObjects.length > 0 && this.selectedObjects.every(o => (o.type === 'post' || o.type === 'tee' || o.type === 'cup'));
-      const dx = selectionIsAllCircles ? rawDx : (gridOn ? Math.round(rawDx / gridSize) * gridSize : rawDx);
-      const dy = selectionIsAllCircles ? rawDy : (gridOn ? Math.round(rawDy / gridSize) * gridSize : rawDy);
+      // Ctrl forces grid-only; Alt disables guides
+      const allowGuides = this.showAlignmentGuides && !e.ctrlKey && !e.altKey;
+      let dx = rawDx, dy = rawDy;
+      this.liveGuides = [];
+      this.liveGuideBubbles = [];
+      if (allowGuides) {
+        const selSnap = this.computeMoveSnapForSelection(rawDx, rawDy, env);
+        dx = selSnap.dx; dy = selSnap.dy; this.liveGuides = selSnap.guides;
+        if (selSnap.guides.length) {
+          const g = selSnap.guides[0];
+          const sel = this.getSelectionBounds();
+          const disp = { x: sel.x + dx, y: sel.y + dy, w: sel.w, h: sel.h };
+          const label = g.kind === 'x' ? `x=${Math.round(disp.x)}` : `y=${Math.round(disp.y)}`;
+          this.liveGuideBubbles.push({ x: px + 10, y: py + 10, text: label });
+        }
+      } else {
+        // If guides are off, still respect grid for non-circular selection
+        const selectionIsAllCircles = this.selectedObjects.length > 0 && this.selectedObjects.every(o => (o.type === 'post' || o.type === 'tee' || o.type === 'cup'));
+        if (!selectionIsAllCircles) { dx = gridOn ? Math.round(rawDx / gridSize) * gridSize : rawDx; dy = gridOn ? Math.round(rawDy / gridSize) * gridSize : rawDy; }
+      }
       this.dragMoveOffset = { x: dx, y: dy };
-      // Add delta bubble
+      // Delta bubble
       this.liveGuideBubbles.push({ x: px + 10, y: py - 24, text: `Δ=(${Math.round(dx)}, ${Math.round(dy)})` });
       // Spacing bubble relative to snapped guide
       if (this.liveGuides && this.liveGuides.length) {
@@ -3229,8 +3337,10 @@ class LevelEditorImpl implements LevelEditor {
     // Finalize ruler drag -> persist guide
     if (this.isRulerDragging && this.rulerDragKind && this.rulerDragPos !== null) {
       const kind = this.rulerDragKind;
-      const pos = kind === 'x' ? Math.max(fairX, Math.min(fairX + fairW, this.rulerDragPos))
+      let pos = kind === 'x' ? Math.max(fairX, Math.min(fairX + fairW, this.rulerDragPos))
                                : Math.max(fairY, Math.min(fairY + fairH, this.rulerDragPos));
+      // Snap persisted guide to grid if enabled
+      try { if (this.showGrid && env.getShowGrid()) { const g = env.getGridSize(); pos = Math.round(pos / g) * g; } } catch {}
       this.persistentGuides.push({ kind, pos });
       try { env.showToast(`Added ${kind.toUpperCase()} guide @ ${Math.round(pos)}`); } catch {}
       this.isRulerDragging = false;

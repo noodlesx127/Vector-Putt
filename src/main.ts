@@ -1,6 +1,7 @@
  import CHANGELOG_RAW from '../CHANGELOG.md?raw';
 import firebaseManager from './firebase';
 import { levelEditor } from './editor/levelEditor';
+import { computePolysFromThresholds, buildDefaultThresholds } from './editor/importScreenshot';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -107,7 +108,7 @@ function newLevelId(): string {
 // ------------------------------
 // In-Game Modal Overlay System
 // ------------------------------
-type UiOverlayKind = 'none' | 'toast' | 'confirm' | 'prompt' | 'list' | 'dndList' | 'courseEditor' | 'courseCreator' | 'metadata' | 'loadLevels';
+type UiOverlayKind = 'none' | 'toast' | 'confirm' | 'prompt' | 'list' | 'dndList' | 'courseEditor' | 'courseCreator' | 'metadata' | 'loadLevels' | 'importReview';
 type UiToast = { id: number; message: string; expiresAt: number };
 type UiListItem = { id?: string; label: string; value?: any; disabled?: boolean };
 type UiOverlayState = {
@@ -155,6 +156,17 @@ type UiOverlayState = {
   courseList?: Array<{ id: string; title: string; levelIds: string[]; levelTitles: string[] }>;
   selectedCourseIndex?: number;
   courseScrollOffset?: number;
+  // Import Review overlay
+  imageData?: ImageData;
+  thresholds?: any;
+  fairway?: { x: number; y: number; w: number; h: number };
+  gridSize?: number;
+  canvas?: { width: number; height: number };
+  currentPolys?: { wallsPoly: Array<{ points: number[] }>; sandPoly: Array<{ points: number[] }>; waterPoly: Array<{ points: number[] }> };
+  previewPolys?: { wallsPoly: Array<{ points: number[] }>; sandPoly: Array<{ points: number[] }>; waterPoly: Array<{ points: number[] }> };
+  showWalls?: boolean;
+  showSand?: boolean;
+  showWater?: boolean;
   // Load Levels overlay state
   loadLevels?: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>; 
   loadFilter?: 'all' | 'built-in' | 'user' | 'local';
@@ -194,6 +206,28 @@ function showUiToast(message: string, durationMs = 2200): void {
 function showUiConfirm(message: string, title = 'Confirm'): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     uiOverlay = { kind: 'confirm', title, message, resolve, cancelable: true };
+  });
+}
+
+// Import Review overlay: allows reviewing detected polys and optionally clearing categories.
+function showUiImportReview(init: {
+  imageData: ImageData;
+  thresholds: any;
+  fairway: { x: number; y: number; w: number; h: number };
+  gridSize: number;
+  canvas: { width: number; height: number };
+  currentPolys: { wallsPoly: Array<{ points: number[] }>; sandPoly: Array<{ points: number[] }>; waterPoly: Array<{ points: number[] }> };
+}): Promise<{ thresholds: any; polys: { wallsPoly: Array<{ points: number[] }>; sandPoly: Array<{ points: number[] }>; waterPoly: Array<{ points: number[] }> } } | null> {
+  return new Promise((resolve) => {
+    uiOverlay = {
+      kind: 'importReview',
+      title: 'Import Review',
+      ...init,
+      clearWalls: false,
+      clearSand: false,
+      clearWater: false,
+      resolve
+    } as any;
   });
 }
 
@@ -515,6 +549,71 @@ function handleOverlayMouseDown(e: MouseEvent) {
           // focusing is implicit; typing handled by key handler
           return;
         }
+      }
+      if (uiOverlay.kind === 'importReview') {
+        if (hs.kind === 'btn') {
+          const a = hs.action || '';
+          const o: any = uiOverlay as any;
+          const applyToggle = (key: 'showWalls'|'showSand'|'showWater') => { o[key] = !(o[key] !== false); };
+          const nudgeThresholds = (looser: boolean) => {
+            const t = o.thresholds || buildDefaultThresholds();
+            const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+            const clamp360 = (v: number) => Math.max(0, Math.min(360, v));
+            const dH = looser ? 6 : -6;
+            const dS = looser ? 0.03 : -0.03;
+            const dV = looser ? 0.03 : -0.03;
+            // Fairway
+            t.fairway.hMin = clamp360(t.fairway.hMin - dH);
+            t.fairway.hMax = clamp360(t.fairway.hMax + dH);
+            t.fairway.sMin = clamp01(t.fairway.sMin - dS);
+            t.fairway.vMin = clamp01(t.fairway.vMin - dV);
+            // Water
+            t.water.hMin = clamp360(t.water.hMin - dH);
+            t.water.hMax = clamp360(t.water.hMax + dH);
+            t.water.sMin = clamp01(t.water.sMin - dS);
+            t.water.vMin = clamp01(t.water.vMin - dV);
+            // Sand
+            t.sand.hMin = clamp360(t.sand.hMin - dH);
+            t.sand.hMax = clamp360(t.sand.hMax + dH);
+            t.sand.sMin = clamp01(t.sand.sMin - dS);
+            t.sand.vMin = clamp01(t.sand.vMin - dV);
+            // Walls (gray/low sat high val)
+            t.walls.sMax = clamp01(t.walls.sMax + (looser ? dS : -dS));
+            t.walls.vMin = clamp01(t.walls.vMin - dV);
+            o.thresholds = t;
+          };
+          const recompute = () => {
+            try {
+              const img: ImageData | undefined = o.imageData;
+              if (!img) return;
+              const fair = o.fairway || { x: 0, y: 0, w: img.width, h: img.height };
+              const grid = o.gridSize || 20;
+              const cw = o.canvas?.width || img.width;
+              const ch = o.canvas?.height || img.height;
+              if (o.thresholds) {
+                o.previewPolys = computePolysFromThresholds(img, fair, o.thresholds, grid, cw, ch);
+              }
+            } catch {}
+          };
+          if (a === 'toggle_walls') { applyToggle('showWalls'); return; }
+          if (a === 'toggle_sand') { applyToggle('showSand'); return; }
+          if (a === 'toggle_water') { applyToggle('showWater'); return; }
+          if (a === 'looser') { nudgeThresholds(true); recompute(); return; }
+          if (a === 'stricter') { nudgeThresholds(false); recompute(); return; }
+          if (a === 'recompute') { recompute(); return; }
+          if (a === 'accept') {
+            const polys = (o.previewPolys || o.currentPolys) || { wallsPoly: [], sandPoly: [], waterPoly: [] };
+            uiOverlay.resolve?.({ thresholds: o.thresholds, polys });
+            uiOverlay = { kind: 'none' } as any;
+            return;
+          }
+          if (a === 'cancel') {
+            uiOverlay.resolve?.(null);
+            uiOverlay = { kind: 'none' } as any;
+            return;
+          }
+        }
+        return;
       }
       if (uiOverlay.kind === 'list') {
         if (hs.kind === 'listItem' && typeof hs.index === 'number') {
@@ -2943,6 +3042,7 @@ canvas.addEventListener('mousedown', (e) => {
               const res = await showUiDnDList(title, items as any);
               return res ? res.map(it => ({ label: it.label, value: (it as any).value })) : null;
             },
+            showImportReview: (init: any) => showUiImportReview(init),
             showCourseEditor: (courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] }) => showUiCourseEditor(courseData),
             showUiCourseCreator: (courseList: Array<{ id: string; title: string; levelIds: string[]; levelTitles: string[] }>) => showUiCourseCreator(courseList),
             getGlobalState: () => ({
@@ -3163,12 +3263,14 @@ canvas.addEventListener('mousedown', (e) => {
       showToast: (msg: string) => showUiToast(msg),
       showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
       showPrompt: (msg: string, def?: string, title?: string) => showUiPrompt(msg, def, title),
+      showMetadataForm: (init: any, title?: string) => showUiMetadataForm(init, title),
       showList: (title: string, items: Array<{label: string; value: any}>, startIndex?: number) => showUiList(title, items, startIndex),
       showDnDList: async (title: string, items: Array<{label: string; value: any}>) => {
         const res = await showUiDnDList(title, items as any);
         return res ? res.map(it => ({ label: it.label, value: (it as any).value })) : null;
       },
       showLoadLevels: (levels: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>) => showUiLoadLevels(levels),
+      showImportReview: (init: any) => showUiImportReview(init),
       showCourseEditor: (courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] }) => showUiCourseEditor(courseData),
       showUiCourseCreator: (courseList: Array<{ id: string; title: string; levelIds: string[]; levelTitles: string[] }>) => showUiCourseCreator(courseList),
       getGlobalState: () => ({
@@ -3610,12 +3712,14 @@ canvas.addEventListener('mousemove', (e) => {
       showToast: (msg: string) => showUiToast(msg),
       showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
       showPrompt: (msg: string, def?: string, title?: string) => showUiPrompt(msg, def, title),
+      showMetadataForm: (init: any, title?: string) => showUiMetadataForm(init, title),
       showList: (title: string, items: Array<{label: string; value: any}>, startIndex?: number) => showUiList(title, items, startIndex),
       showDnDList: async (title: string, items: Array<{label: string; value: any}>) => {
         const res = await showUiDnDList(title, items as any);
         return res ? res.map(it => ({ label: it.label, value: (it as any).value })) : null;
       },
       showLoadLevels: (levels: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>) => showUiLoadLevels(levels),
+      showImportReview: (init: any) => showUiImportReview(init),
       showCourseEditor: (courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] }) => showUiCourseEditor(courseData),
       showUiCourseCreator: (courseList: Array<{ id: string; title: string; levelIds: string[]; levelTitles: string[] }>) => showUiCourseCreator(courseList),
       getGlobalState: () => ({
@@ -3867,12 +3971,14 @@ canvas.addEventListener('mouseup', (e) => {
       showToast: (msg: string) => showUiToast(msg),
       showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
       showPrompt: (msg: string, def?: string, title?: string) => showUiPrompt(msg, def, title),
+      showMetadataForm: (init: any, title?: string) => showUiMetadataForm(init, title),
       showList: (title: string, items: Array<{label: string; value: any}>, startIndex?: number) => showUiList(title, items, startIndex),
       showDnDList: async (title: string, items: Array<{label: string; value: any}>) => {
         const res = await showUiDnDList(title, items as any);
         return res ? res.map(it => ({ label: it.label, value: (it as any).value })) : null;
       },
       showLoadLevels: (levels: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>) => showUiLoadLevels(levels),
+      showImportReview: (init: any) => showUiImportReview(init),
       showCourseEditor: (courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] }) => showUiCourseEditor(courseData),
       showUiCourseCreator: (courseList: Array<{ id: string; title: string; levelIds: string[]; levelTitles: string[] }>) => showUiCourseCreator(courseList),
       getGlobalState: () => ({
@@ -4083,12 +4189,14 @@ function handleLevelEditorKeys(e: KeyboardEvent) {
     showToast: (msg: string) => showUiToast(msg),
     showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
     showPrompt: (msg: string, def?: string, title?: string) => showUiPrompt(msg, def, title),
+    showMetadataForm: (init: any, title?: string) => showUiMetadataForm(init, title),
     showList: (title: string, items: Array<{label: string; value: any}>, startIndex?: number) => showUiList(title, items, startIndex),
     showDnDList: async (title: string, items: Array<{label: string; value: any}>) => {
       const res = await showUiDnDList(title, items as any);
       return res ? res.map(it => ({ label: it.label, value: (it as any).value })) : null;
     },
     showLoadLevels: (levels: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>) => showUiLoadLevels(levels),
+    showImportReview: (init: any) => showUiImportReview(init),
     showCourseEditor: (courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] }) => showUiCourseEditor(courseData),
     showUiCourseCreator: (courseList: Array<{ id: string; title: string; levelIds: string[]; levelTitles: string[] }>) => showUiCourseCreator(courseList),
     getGlobalState: () => ({
@@ -5155,6 +5263,8 @@ function draw() {
       showToast: (msg: string) => showUiToast(msg),
       showConfirm: (msg: string, title?: string) => showUiConfirm(msg, title),
       showPrompt: (msg: string, def?: string, title?: string) => showUiPrompt(msg, def, title),
+      showMetadataForm: (init: any, title?: string) => showUiMetadataForm(init, title),
+      showImportReview: (init: any) => showUiImportReview(init),
       showList: (title: string, items: Array<{label: string; value: any}>, startIndex?: number) => showUiList(title, items, startIndex),
       getGlobalState: () => ({
         WIDTH,
@@ -7334,6 +7444,112 @@ function renderGlobalOverlays(): void {
       ctx.fillStyle = '#ffffff'; ctx.font = '15px system-ui, sans-serif';
       ctx.fillText('Cancel', cxBtn + bw / 2, by + bh / 2 + 0.5);
       overlayHotspots.push({ kind: 'btn', index: 1, x: cxBtn, y: by, w: bw, h: bh });
+    } else if (uiOverlay.kind === 'importReview') {
+      // Import Review overlay UI
+      const o: any = uiOverlay as any;
+      const padSm = 10;
+      const sectionW = panelW - pad * 2;
+      let y = cy;
+      // Build/cached preview canvas for the imageData
+      if (!o.imageCanvas && o.imageData) {
+        try {
+          const cv = document.createElement('canvas');
+          cv.width = o.imageData.width; cv.height = o.imageData.height;
+          const c2d = cv.getContext('2d')!;
+          c2d.putImageData(o.imageData, 0, 0);
+          o.imageCanvas = cv;
+        } catch {}
+      }
+      const imgCv = o.imageCanvas as HTMLCanvasElement | undefined;
+      const imgW = imgCv ? imgCv.width : 0;
+      const imgH = imgCv ? imgCv.height : 0;
+      // Preview rect (keep aspect)
+      const prevH = Math.min(360, panelH - (cy - py) - 160);
+      const prevW = Math.min(sectionW, Math.round(prevH * (imgW && imgH ? (imgW / imgH) : 1.6)));
+      const prevX = px + pad;
+      const prevY = y;
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(prevX, prevY, prevW, prevH);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(prevX + 0.5, prevY + 0.5, prevW - 1, prevH - 1);
+      if (imgCv) {
+        // Draw scaled
+        const scale = Math.min(prevW / imgW, prevH / imgH);
+        const dw = Math.floor(imgW * scale), dh = Math.floor(imgH * scale);
+        const dx = prevX + Math.floor((prevW - dw) / 2);
+        const dy = prevY + Math.floor((prevH - dh) / 2);
+        ctx.drawImage(imgCv, dx, dy, dw, dh);
+        // Overlay polys (previewPolys if present; else currentPolys)
+        const polys = (o.previewPolys || o.currentPolys) || { wallsPoly: [], sandPoly: [], waterPoly: [] };
+        const drawPoly = (pts: number[], stroke: string) => {
+          if (!pts || pts.length < 4) return;
+          ctx.beginPath();
+          for (let i = 0; i + 3 < pts.length; i += 2) {
+            const x = dx + Math.round(pts[i] * scale);
+            const y = dy + Math.round(pts[i + 1] * scale);
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          }
+          ctx.strokeStyle = stroke;
+          ctx.lineWidth = 2;
+          try { (ctx as any).setLineDash?.([4, 3]); } catch {}
+          ctx.stroke();
+          try { (ctx as any).setLineDash?.([]); } catch {}
+        };
+        const showWalls = (o.showWalls !== false);
+        const showSand = (o.showSand !== false);
+        const showWater = (o.showWater !== false);
+        if (showWalls) for (const p of (polys.wallsPoly || [])) drawPoly(p.points, '#e2e2e2');
+        if (showSand) for (const p of (polys.sandPoly || [])) drawPoly(p.points, '#d4b36a');
+        if (showWater) for (const p of (polys.waterPoly || [])) drawPoly(p.points, '#1f6dff');
+      }
+      y += prevH + 12;
+
+      // Controls row: toggles
+      const btnH = 28; const btnW = 110; let bx = px + pad;
+      const drawToggle = (label: string, on: boolean, action: string) => {
+        ctx.fillStyle = on ? 'rgba(100,150,200,0.5)' : 'rgba(255,255,255,0.10)';
+        ctx.fillRect(bx, y, btnW, btnH);
+        ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(bx + 0.5, y + 0.5, btnW - 1, btnH - 1);
+        ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '14px system-ui, sans-serif';
+        ctx.fillText(label, bx + btnW / 2, y + btnH / 2 + 0.5);
+        overlayHotspots.push({ kind: 'btn', action, x: bx, y, w: btnW, h: btnH });
+        bx += btnW + padSm;
+      };
+      drawToggle('Walls', (o.showWalls !== false), 'toggle_walls');
+      drawToggle('Sand', (o.showSand !== false), 'toggle_sand');
+      drawToggle('Water', (o.showWater !== false), 'toggle_water');
+
+      // Threshold presets and recompute
+      const rx = px + panelW - pad - (btnW * 3 + padSm * 2);
+      const by = y;
+      const drawBtn = (label: string, action: string, x: number) => {
+        ctx.fillStyle = 'rgba(255,255,255,0.10)';
+        ctx.fillRect(x, by, btnW, btnH);
+        ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.2; ctx.strokeRect(x + 0.5, by + 0.5, btnW - 1, btnH - 1);
+        ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '14px system-ui, sans-serif';
+        ctx.fillText(label, x + btnW / 2, by + btnH / 2 + 0.5);
+        overlayHotspots.push({ kind: 'btn', action, x, y: by, w: btnW, h: btnH });
+      };
+      drawBtn('Looser', 'looser', rx);
+      drawBtn('Stricter', 'stricter', rx + btnW + padSm);
+      drawBtn('Recompute', 'recompute', rx + (btnW + padSm) * 2);
+
+      // Accept/Cancel
+      const bw = 120, bh = 30, gap = 12;
+      const by2 = py + panelH - pad - bh;
+      const okx = px + panelW - pad - bw * 2 - gap;
+      const cxBtn = px + panelW - pad - bw;
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillRect(okx, by2, bw, bh);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(okx, by2, bw, bh);
+      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '15px system-ui, sans-serif';
+      ctx.fillText('Accept', okx + bw / 2, by2 + bh / 2 + 0.5);
+      overlayHotspots.push({ kind: 'btn', action: 'accept', x: okx, y: by2, w: bw, h: bh });
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillRect(cxBtn, by2, bw, bh);
+      ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1.5; ctx.strokeRect(cxBtn, by2, bw, bh);
+      ctx.fillStyle = '#ffffff'; ctx.font = '15px system-ui, sans-serif';
+      ctx.fillText('Cancel', cxBtn + bw / 2, by2 + bh / 2 + 0.5);
+      overlayHotspots.push({ kind: 'btn', action: 'cancel', x: cxBtn, y: by2, w: bw, h: bh });
     } else if (uiOverlay.kind === 'loadLevels') {
       // Level Load overlay: filters + scrollable list + Load/Cancel
       const all = uiOverlay.loadLevels ?? [];

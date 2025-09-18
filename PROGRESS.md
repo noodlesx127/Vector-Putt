@@ -213,7 +213,11 @@ A new Level Editor feature to rapidly bootstrap a level from a screenshot. Users
   - [x] Polygon simplification (RDP) and grid snapping utilities (reuse existing grid size) (`src/editor/importScreenshot.ts`)
   - [x] Cup detection (circle scan) with click-to-confirm fallback — basic tee/cup click confirmation wired post-import; review overlay variant pending
   - [x] Convert extracted geometry to `LevelData`, open as editable draft; run `applyLevelDataFixups()` and `validateLevelData()`
-  - [ ] Review overlay: show masks/contours, allow threshold tweaks, accept/delete shapes before commit
+  - [x] Review overlay: show masks/contours, allow threshold tweaks, accept/cancel before commit
+    - Implemented `uiOverlay.kind === 'importReview'` rendering and interaction.
+    - Added `showImportReview` to `EditorEnv` via `src/main.ts` (wired to `showUiImportReview`).
+    - Overlay interactions: layer toggles (Walls/Sand/Water), threshold nudges (Looser/Stricter), Recompute preview, Accept/Cancel.
+    - On Accept, returns `{ thresholds, polys }` to editor and applies to `wallsPoly/sandPoly/waterPoly`.
   - [ ] Unit tests with `level_screenshots/*` samples: segmentation thresholds, contour→geometry mapping, cup detection edge cases
   - [ ] Optional: hills/slope/specials detection pass; evaluate OpenCV.js only if Canvas approach proves insufficient
 

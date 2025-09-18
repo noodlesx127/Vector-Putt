@@ -141,6 +141,15 @@ export interface EditorEnv {
   showDnDList?(title: string, items: Array<{label: string; value: any}>): Promise<Array<{label: string; value: any}> | null>;
   showCourseEditor?(courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] }): Promise<{ action: string; courseData?: any; levelIndex?: number } | null>;
   showUiCourseCreator?(courseList: Array<{ id: string; title: string; levelIds: string[]; levelTitles: string[] }>): Promise<{ action: string; courseData?: any } | null>;
+  // Import Review overlay (optional)
+  showImportReview?(init: {
+    imageData: ImageData;
+    thresholds: any;
+    fairway: { x: number; y: number; w: number; h: number };
+    gridSize: number;
+    canvas: { width: number; height: number };
+    currentPolys: { wallsPoly: Array<{ points: number[] }>; sandPoly: Array<{ points: number[] }>; waterPoly: Array<{ points: number[] }> };
+  }): Promise<{ thresholds: any; polys: { wallsPoly: Array<{ points: number[] }>; sandPoly: Array<{ points: number[] }>; waterPoly: Array<{ points: number[] }> } } | null>;
   renderGlobalOverlays(): void;
   isOverlayActive?(): boolean;
   migrateSingleSlotIfNeeded?(): void;
@@ -4568,6 +4577,32 @@ class LevelEditorImpl implements LevelEditor {
 
     this.editorCurrentSavedId = null; // new imported draft
     this.applyLevelToEnv(fixed, env);
+
+    // Import Review overlay (if available)
+    try {
+      const gridSize = (()=>{ try { return env.getGridSize(); } catch { return 20; } })();
+      const reviewInit = (fixed as any).__review;
+      if (reviewInit && typeof env.showImportReview === 'function') {
+        const res = await env.showImportReview({
+          imageData: reviewInit.imageData,
+          thresholds: reviewInit.thresholds,
+          fairway: reviewInit.fairway,
+          gridSize,
+          canvas: fixed.canvas,
+          currentPolys: { wallsPoly: fixed.wallsPoly || [], sandPoly: fixed.sandPoly || [], waterPoly: fixed.waterPoly || [] }
+        });
+        if (res && res.polys) {
+          // Apply accepted polygons
+          fixed.wallsPoly = res.polys.wallsPoly;
+          fixed.sandPoly = res.polys.sandPoly;
+          fixed.waterPoly = res.polys.waterPoly;
+          // Update editor state to reflect changes
+          this.applyLevelToEnv(fixed, env);
+          try { env.showToast('Import review applied'); } catch {}
+        }
+      }
+    } catch {}
+
     // Post-import confirmations: always ask for Tee click; Cup only if not confidently detected
     this.pendingTeeConfirm = true;
     const cupDetected = !!(fixed?.meta?.importInfo?.cupDetected);

@@ -9,6 +9,30 @@ export interface ScreenshotImportOptions {
   gridSize?: number;
 }
 
+// Public helper: recompute polygons from thresholds (used by Import Review overlay)
+export function computePolysFromThresholds(
+  imgData: ImageData,
+  fairway: { x: number; y: number; w: number; h: number },
+  thresholds: Thresholds,
+  gridSize: number,
+  canvasW: number,
+  canvasH: number
+): { wallsPoly: Array<{ points: number[] }>; sandPoly: Array<{ points: number[] }>; waterPoly: Array<{ points: number[] }> } {
+  const masks = segmentByColor(imgData, fairway, thresholds);
+  const simplifyEps = Math.max(1.5, Math.min(10, gridSize * 0.15));
+  const minPixels = Math.max(60, Math.round((gridSize * gridSize) / 2));
+  const toPolys = (mask: Uint8Array) =>
+    traceContours(mask, imgData.width, imgData.height, minPixels)
+      .map(poly => simplifyPolygon(poly, simplifyEps))
+      .map(poly => snapPolygonToGrid(poly, gridSize))
+      .map(poly => clampPolygon(poly, canvasW, canvasH))
+      .map(points => ({ points: flattenPoints(points) }));
+  const wallsPoly = toPolys(masks.walls);
+  const sandPoly = toPolys(masks.sand);
+  const waterPoly = toPolys(masks.water);
+  return { wallsPoly, sandPoly, waterPoly };
+}
+
 export type LevelData = any; // Uses the editor/runtime LevelData shape already in the project
 
 // Public entry point
@@ -84,6 +108,13 @@ export async function importLevelFromScreenshot(file: File, opts: ScreenshotImpo
           cupDetected: !!cupDetectedCandidate
         }
       }
+    } as any;
+
+    // Attach ephemeral review data (not persisted) for the editor's review overlay
+    (level as any).__review = {
+      imageData: imgData,
+      thresholds,
+      fairway
     };
 
     return level;

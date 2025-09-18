@@ -4567,6 +4567,8 @@ class LevelEditorImpl implements LevelEditor {
     const imported = await importLevelFromScreenshot(file, { targetWidth: targetW, targetHeight: targetH, gridSize: (()=>{ try { return env.getGridSize(); } catch { return 20; } })() });
     if (!imported) { try { env.showToast('Import failed'); } catch {} return; }
 
+    // Preserve importer review payload (ImageData cannot survive JSON clone in fixups)
+    const reviewSeed = (imported as any).__review;
     const fixed = applyLevelDataFixups(imported);
     // Ensure author tracking and timestamps
     fixed.meta = fixed.meta || {};
@@ -4581,8 +4583,8 @@ class LevelEditorImpl implements LevelEditor {
     // Import Review overlay (if available)
     try {
       const gridSize = (()=>{ try { return env.getGridSize(); } catch { return 20; } })();
-      const reviewInit = (fixed as any).__review;
-      if (reviewInit && typeof env.showImportReview === 'function') {
+      const reviewInit = reviewSeed; // use pre-fixups seed that still holds ImageData
+      if (reviewInit && reviewInit.imageData && typeof env.showImportReview === 'function') {
         const res = await env.showImportReview({
           imageData: reviewInit.imageData,
           thresholds: reviewInit.thresholds,

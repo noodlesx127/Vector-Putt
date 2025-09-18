@@ -204,7 +204,7 @@ export function segmentByColor(img: ImageData, fair: { x: number; y: number; w: 
   const { data, width, height } = img;
   const N = width * height;
   const fairMask = new Uint8Array(N);
-  const wallsMask = new Uint8Array(N);
+  let wallsMask = new Uint8Array(N);
   const sandMask = new Uint8Array(N);
   const waterMask = new Uint8Array(N);
   const insideFair = (x: number, y: number) => x >= fair.x && x < fair.x + fair.w && y >= fair.y && y < fair.y + fair.h;
@@ -218,12 +218,13 @@ export function segmentByColor(img: ImageData, fair: { x: number; y: number; w: 
       const b = data[idx * 4 + 2];
       const { h, s, v } = rgbToHsv(r, g, b);
       const isFair = (v >= t.fairway.vMin && s >= t.fairway.sMin && inHueRange(h, t.fairway.hMin, t.fairway.hMax));
+      const isGreenHue = inHueRange(h, t.fairway.hMin, t.fairway.hMax);
       if (isFair) fairMask[idx] = 1;
       if (!insideFair(x, y)) continue; // only detect features within fairway bbox
       if (v >= t.water.vMin && s >= t.water.sMin && inHueRange(h, t.water.hMin, t.water.hMax)) waterMask[idx] = 1;
       if (v >= t.sand.vMin && s >= t.sand.sMin && inHueRange(h, t.sand.hMin, t.sand.hMax)) sandMask[idx] = 1;
-      // walls: light gray (low saturation), high value, but avoid fairway/blue/sand hues
-      if (s <= t.walls.sMax && v >= t.walls.vMin && !isFair) {
+      // walls: light gray (low saturation), high value, avoid any green-hue pixels (even if low S), and avoid blue/tan hues
+      if (s <= t.walls.sMax && v >= t.walls.vMin && !isFair && !isGreenHue) {
         const isBlue = inHueRange(h, t.water.hMin, t.water.hMax) && s >= t.water.sMin;
         const isTan = inHueRange(h, t.sand.hMin, t.sand.hMax) && s >= t.sand.sMin;
         if (!isBlue && !isTan) wallsMask[idx] = 1;
@@ -233,6 +234,25 @@ export function segmentByColor(img: ImageData, fair: { x: number; y: number; w: 
   // Note: We already restrict feature detection (water/sand/walls) to the fairway bounding box
   // via `insideFair(x,y)` above. Do NOT intersect with the green fairway mask here; features are
   // not green themselves and would be zeroed out. Returning masks as-is preserves detections.
+  // Post-filter: keep only wall pixels that touch fairway (prevents filling interior non-green regions)
+  {
+    const keep = new Uint8Array(N);
+    const idx = (x: number, y: number) => y * width + x;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const p = idx(x, y);
+        if (wallsMask[p] !== 1) continue;
+        // 4-neighborhood adjacency to fairway
+        const nearFair = (x > 0 && fairMask[p - 1] === 1) ||
+                         (x + 1 < width && fairMask[p + 1] === 1) ||
+                         (y > 0 && fairMask[p - width] === 1) ||
+                         (y + 1 < height && fairMask[p + width] === 1);
+        if (nearFair) keep[p] = 1;
+      }
+    }
+    wallsMask = keep;
+  }
+
   return { fairway: fairMask, walls: wallsMask, sand: sandMask, water: waterMask };
 }
 

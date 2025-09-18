@@ -219,7 +219,8 @@ function showUiImportReview(init: {
   currentPolys: { wallsPoly: Array<{ points: number[] }>; sandPoly: Array<{ points: number[] }>; waterPoly: Array<{ points: number[] }> };
 }): Promise<{ thresholds: any; polys: { wallsPoly: Array<{ points: number[] }>; sandPoly: Array<{ points: number[] }>; waterPoly: Array<{ points: number[] }> } } | null> {
   return new Promise((resolve) => {
-    uiOverlay = {
+    // Seed overlay state and eagerly compute an initial preview so Accept works even if user never hits Recompute
+    const state: any = {
       kind: 'importReview',
       title: 'Import Review',
       ...init,
@@ -227,7 +228,20 @@ function showUiImportReview(init: {
       clearSand: false,
       clearWater: false,
       resolve
-    } as any;
+    };
+    try {
+      if (!state.previewPolys && state.imageData && state.thresholds && state.fairway) {
+        state.previewPolys = computePolysFromThresholds(
+          state.imageData,
+          state.fairway,
+          state.thresholds,
+          Math.max(2, state.gridSize || 20),
+          (state.canvas?.width) || state.imageData.width,
+          (state.canvas?.height) || state.imageData.height
+        );
+      }
+    } catch {}
+    uiOverlay = state as UiOverlayState;
   });
 }
 
@@ -7149,6 +7163,7 @@ function renderGlobalOverlays(): void {
     if (uiOverlay.kind === 'list') { panelW = standardW; panelH = standardH; }
     if (uiOverlay.kind === 'loadLevels') { panelW = standardW; panelH = standardH; }
     if (uiOverlay.kind === 'metadata') { panelW = standardW; panelH = standardH; }
+    if (uiOverlay.kind === 'importReview') { panelW = standardW; panelH = standardH; }
     if (uiOverlay.kind === 'dndList') {
       const items = uiOverlay.listItems ?? [];
       const visible = Math.min(items.length, 10);

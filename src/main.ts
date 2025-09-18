@@ -227,6 +227,7 @@ function showUiImportReview(init: {
       clearWalls: false,
       clearSand: false,
       clearWater: false,
+      loosenClicks: 0,
       resolve
     };
     try {
@@ -573,9 +574,10 @@ function handleOverlayMouseDown(e: MouseEvent) {
             const t = o.thresholds || buildDefaultThresholds();
             const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
             const clamp360 = (v: number) => Math.max(0, Math.min(360, v));
-            const dH = looser ? 6 : -6;
-            const dS = looser ? 0.03 : -0.03;
-            const dV = looser ? 0.03 : -0.03;
+            // Slightly larger nudge so users see an effect per click
+            const dH = looser ? 12 : -12;
+            const dS = looser ? 0.05 : -0.05;
+            const dV = looser ? 0.05 : -0.05;
             // Fairway
             t.fairway.hMin = clamp360(t.fairway.hMin - dH);
             t.fairway.hMax = clamp360(t.fairway.hMax + dH);
@@ -607,6 +609,7 @@ function handleOverlayMouseDown(e: MouseEvent) {
               if (o.thresholds) {
                 o.previewPolys = computePolysFromThresholds(img, fair, o.thresholds, grid, cw, ch);
               }
+              o.lastRecomputeAt = (typeof performance !== 'undefined') ? performance.now() : Date.now();
             } catch {}
           };
           if (a === 'toggle_walls') { applyToggle('showWalls'); return; }
@@ -7498,11 +7501,12 @@ function renderGlobalOverlays(): void {
         const drawPoly = (pts: number[], stroke: string) => {
           if (!pts || pts.length < 4) return;
           ctx.beginPath();
-          for (let i = 0; i + 3 < pts.length; i += 2) {
+          for (let i = 0; i + 1 < pts.length; i += 2) {
             const x = dx + Math.round(pts[i] * scale);
             const y = dy + Math.round(pts[i + 1] * scale);
             if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
           }
+          ctx.closePath();
           ctx.strokeStyle = stroke;
           ctx.lineWidth = 2;
           try { (ctx as any).setLineDash?.([4, 3]); } catch {}
@@ -7517,6 +7521,22 @@ function renderGlobalOverlays(): void {
         if (showWater) for (const p of (polys.waterPoly || [])) drawPoly(p.points, '#1f6dff');
       }
       y += prevH + 12;
+
+      // Brief detection counts feedback
+      {
+        const polys = (o.previewPolys || o.currentPolys) || { wallsPoly: [], sandPoly: [], waterPoly: [] };
+        const wCount = (polys.wallsPoly || []).length | 0;
+        const sCount = (polys.sandPoly || []).length | 0;
+        const waCount = (polys.waterPoly || []).length | 0;
+        const info = `Detected — Walls: ${wCount}  Sand: ${sCount}  Water: ${waCount}`;
+        ctx.fillStyle = '#aaaaaa';
+        ctx.font = '12px system-ui, sans-serif';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+        ctx.fillText(info, px + pad, y - 4);
+        if (wCount + sCount + waCount === 0) {
+          ctx.fillText('No features detected. Try Looser and Recompute.', px + pad, y + 14);
+        }
+      }
 
       // Controls row: toggles
       const btnH = 28; const btnW = 110; let bx = px + pad;

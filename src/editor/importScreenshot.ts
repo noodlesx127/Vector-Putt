@@ -230,11 +230,9 @@ export function segmentByColor(img: ImageData, fair: { x: number; y: number; w: 
       }
     }
   }
-  // Clean up masks: remove items outside fairway by intersecting with fairway mask (except fairway itself)
-  const andWithFair = (mask: Uint8Array) => {
-    for (let i = 0; i < N; i++) mask[i] = mask[i] & fairMask[i];
-  };
-  andWithFair(wallsMask); andWithFair(sandMask); andWithFair(waterMask);
+  // Note: We already restrict feature detection (water/sand/walls) to the fairway bounding box
+  // via `insideFair(x,y)` above. Do NOT intersect with the green fairway mask here; features are
+  // not green themselves and would be zeroed out. Returning masks as-is preserves detections.
   return { fairway: fairMask, walls: wallsMask, sand: sandMask, water: waterMask };
 }
 
@@ -302,7 +300,9 @@ export function detectCup(imgData: ImageData, fair: { x: number; y: number; w: n
       }
     }
   }
-  if (count < 50) return null; // too few pixels
+  // Require a small but non-trivial cluster. Scale with fairway area so unit tests and small images pass.
+  const minCluster = Math.max(9, Math.round((fair.w * fair.h) / 400));
+  if (count < minCluster) return null; // too few pixels
   const cx = Math.round(sumX / count);
   const cy = Math.round(sumY / count);
   const rEst = Math.max(8, Math.round(Math.sqrt(count / Math.PI)));

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
 import {
   rgbToHsv,
@@ -24,7 +25,11 @@ function makeImageData(width: number, height: number, fill: [number, number, num
       data[i+3] = fill[3];
     }
   }
-  return new ImageData(data, width, height);
+  const ImageDataCtor: any = (globalThis as any).ImageData || class {
+    data: Uint8ClampedArray; width: number; height: number;
+    constructor(d: Uint8ClampedArray, w: number, h: number) { this.data = d; this.width = w; this.height = h; }
+  };
+  return new ImageDataCtor(data, width, height) as any as ImageData;
 }
 
 function paintRect(img: ImageData, x0: number, y0: number, x1: number, y1: number, color: [number, number, number, number]) {

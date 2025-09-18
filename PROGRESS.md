@@ -209,16 +209,16 @@ A new Level Editor feature to rapidly bootstrap a level from a screenshot. Users
 - **Tasks**
   - [x] Editor UI: add File → `Import from Screenshot…` and file input flow (`src/editor/levelEditor.ts`)
     - Implemented menu item and handler `importFromScreenshot()` that opens a file picker, calls the importer, applies fixups, sets metadata, and loads the draft into the editor.
-  - [ ] Implement Canvas-based analyzer for HSV segmentation and contour tracing (no external deps) (`src/editor/importScreenshot.ts`)
-  - [ ] Polygon simplification (RDP) and grid snapping utilities (reuse existing grid size) (`src/editor/importScreenshot.ts`)
+  - [x] Implement Canvas-based analyzer for HSV segmentation and contour tracing (no external deps) (`src/editor/importScreenshot.ts`)
+  - [x] Polygon simplification (RDP) and grid snapping utilities (reuse existing grid size) (`src/editor/importScreenshot.ts`)
   - [ ] Cup detection (circle scan) with click-to-confirm fallback in review overlay
-  - [ ] Convert extracted geometry to `LevelData`, open as editable draft; run `applyLevelDataFixups()` and `validateLevelData()`
+  - [x] Convert extracted geometry to `LevelData`, open as editable draft; run `applyLevelDataFixups()` and `validateLevelData()`
   - [ ] Review overlay: show masks/contours, allow threshold tweaks, accept/delete shapes before commit
   - [ ] Unit tests with `level_screenshots/*` samples: segmentation thresholds, contour→geometry mapping, cup detection edge cases
   - [ ] Optional: hills/slope/specials detection pass; evaluate OpenCV.js only if Canvas approach proves insufficient
 
-  Status: Initial importer scaffolded in `src/editor/importScreenshot.ts` (Phase 1)
-  - Draws screenshot to offscreen canvas, detects rough green fairway bounding box, estimates cup location by dark cluster within fairway, tees fallback to left-center. Composes minimal `LevelData` with par=3 and opens for editing. Next: segmentation masks → contour tracing → polygon simplify → classification to walls/sand/water.
+  Status: Phase 2 implemented in `src/editor/importScreenshot.ts`
+  - Offscreen draw + green fairway bbox; HSV segmentation to masks (fairway, walls, sand, water); Moore-neighbor contour tracing; RDP polygon simplification; grid snapping; clamp to canvas; classification to `wallsPoly`/`sandPoly`/`waterPoly`; compose `LevelData` and open in editor with fixups applied. Cup detection uses dark cluster heuristic; click-to-confirm fallback pending via review overlay. Next: build review overlay with threshold sliders and layer toggles; add unit tests using `level_screenshots/*`.
 
 - **Risks & Mitigations**
   - Varying palettes and compression: expose threshold sliders in review overlay; seed from `PALETTE.md` presets.

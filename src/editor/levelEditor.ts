@@ -248,6 +248,9 @@ class LevelEditorImpl implements LevelEditor {
   private showRulers: boolean = false;
   // View option: show numeric guide detail labels (axis/spacing). When off, only cyan guide lines render.
   private showGuideDetails: boolean = true;
+  // Importer guidance: require the user to click Tee (and optionally Cup) after screenshot import
+  private pendingTeeConfirm: boolean = false;
+  private pendingCupConfirm: boolean = false;
   // Transient live guides computed during interactions
   private liveGuides: Array<{ kind: 'x' | 'y'; pos: number }> = [];
   // Persistent ruler-dragged guides
@@ -1328,6 +1331,28 @@ class LevelEditorImpl implements LevelEditor {
   render(env: EditorEnv): void {
     const { ctx, width: WIDTH, height: HEIGHT } = env;
     const { x: fairX, y: fairY, w: fairW, h: fairH } = env.fairwayRect();
+    // Post-import guidance banner
+    if (this.pendingTeeConfirm || this.pendingCupConfirm) {
+      const msg = this.pendingTeeConfirm ? 'Click to set Tee' : 'Click to set Cup';
+      const pad = 10;
+      const textW = Math.ceil(ctx.measureText ? ctx.measureText(msg).width : msg.length * 8);
+      const bw = Math.min(fairW - 40, textW + 24);
+      const bx = fairX + Math.floor((fairW - bw) / 2);
+      const by = fairY + 8;
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.strokeStyle = '#cfd2cf';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.rect(bx, by, bw, 28);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = '14px system-ui, sans-serif';
+      ctx.fillText(msg, bx + bw / 2, by + 14);
+      ctx.restore();
+    }
 
     // Sync grid state from environment (if provided)
     try {
@@ -2440,6 +2465,37 @@ class LevelEditorImpl implements LevelEditor {
   handleMouseDown(e: MouseEvent, env: EditorEnv): void {
     if (env.isOverlayActive?.()) return;
     const p = env.worldFromEvent(e);
+
+    // Pending confirmations from screenshot import: click-to-confirm Tee/Cup
+    if (this.pendingTeeConfirm || this.pendingCupConfirm) {
+      const { x: fx, y: fy, w: fw, h: fh } = env.fairwayRect();
+      const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+      let px = clamp(p.x, fx, fx + fw);
+      let py = clamp(p.y, fy, fy + fh);
+      try { if (this.showGrid && env.getShowGrid()) { const g = env.getGridSize(); px = Math.round(px / g) * g; py = Math.round(py / g) * g; } } catch {}
+      const gs = env.getGlobalState();
+      if (this.pendingTeeConfirm) {
+        gs.ball.x = px; gs.ball.y = py;
+        if (!this.editorLevelData) this.editorLevelData = {} as any;
+        if (!this.editorLevelData.tee) this.editorLevelData.tee = { x: px, y: py, r: 8 };
+        this.editorLevelData.tee.x = px; this.editorLevelData.tee.y = py;
+        this.pendingTeeConfirm = false;
+        env.setGlobalState(gs);
+        try { env.showToast('Tee set'); } catch {}
+        if (this.pendingCupConfirm) { try { env.showToast('Now click to set Cup'); } catch {} }
+        return;
+      }
+      if (this.pendingCupConfirm) {
+        gs.hole.x = px; gs.hole.y = py;
+        if (!this.editorLevelData) this.editorLevelData = {} as any;
+        if (!this.editorLevelData.cup) this.editorLevelData.cup = { x: px, y: py, r: 12 };
+        this.editorLevelData.cup.x = px; this.editorLevelData.cup.y = py;
+        this.pendingCupConfirm = false;
+        env.setGlobalState(gs);
+        try { env.showToast('Cup set'); } catch {}
+        return;
+      }
+    }
 
     // Ruler-drag guides: start drag when clicking on ruler bands, support double-click to clear
     if (this.showRulers) {
@@ -4512,7 +4568,17 @@ class LevelEditorImpl implements LevelEditor {
 
     this.editorCurrentSavedId = null; // new imported draft
     this.applyLevelToEnv(fixed, env);
+    // Post-import confirmations: always ask for Tee click; Cup only if not confidently detected
+    this.pendingTeeConfirm = true;
+    const cupDetected = !!(fixed?.meta?.importInfo?.cupDetected);
+    this.pendingCupConfirm = !cupDetected;
+    // Switch tool to Tee for clarity (click is intercepted regardless)
+    this.selectedTool = 'tee';
     env.showToast('Imported from screenshot');
+    try {
+      env.showToast('Click to set Tee');
+      if (this.pendingCupConfirm) env.showToast('Then click to set Cup');
+    } catch {}
   }
 
   async exportLevel(): Promise<void> {

@@ -211,14 +211,14 @@ A new Level Editor feature to rapidly bootstrap a level from a screenshot. Users
     - Implemented menu item and handler `importFromScreenshot()` that opens a file picker, calls the importer, applies fixups, sets metadata, and loads the draft into the editor.
   - [x] Implement Canvas-based analyzer for HSV segmentation and contour tracing (no external deps) (`src/editor/importScreenshot.ts`)
   - [x] Polygon simplification (RDP) and grid snapping utilities (reuse existing grid size) (`src/editor/importScreenshot.ts`)
-  - [ ] Cup detection (circle scan) with click-to-confirm fallback in review overlay
+  - [x] Cup detection (circle scan) with click-to-confirm fallback — basic tee/cup click confirmation wired post-import; review overlay variant pending
   - [x] Convert extracted geometry to `LevelData`, open as editable draft; run `applyLevelDataFixups()` and `validateLevelData()`
   - [ ] Review overlay: show masks/contours, allow threshold tweaks, accept/delete shapes before commit
   - [ ] Unit tests with `level_screenshots/*` samples: segmentation thresholds, contour→geometry mapping, cup detection edge cases
   - [ ] Optional: hills/slope/specials detection pass; evaluate OpenCV.js only if Canvas approach proves insufficient
 
   Status: Phase 2 implemented in `src/editor/importScreenshot.ts`
-  - Offscreen draw + green fairway bbox; HSV segmentation to masks (fairway, walls, sand, water); Moore-neighbor contour tracing; RDP polygon simplification; grid snapping; clamp to canvas; classification to `wallsPoly`/`sandPoly`/`waterPoly`; compose `LevelData` and open in editor with fixups applied. Cup detection uses dark cluster heuristic; click-to-confirm fallback pending via review overlay. Next: build review overlay with threshold sliders and layer toggles; add unit tests using `level_screenshots/*`.
+  - Offscreen draw + green fairway bbox; HSV segmentation to masks (fairway, walls, sand, water); Moore-neighbor contour tracing; RDP polygon simplification; grid snapping; clamp to canvas; classification to `wallsPoly`/`sandPoly`/`waterPoly`; compose `LevelData` and open in editor with fixups applied. Post-import guidance prompts user to click Tee; Cup click is requested only if not confidently detected (metadata flag). Next: build review overlay with threshold sliders and layer toggles; add unit tests using `level_screenshots/*`.
 
 - **Risks & Mitigations**
   - Varying palettes and compression: expose threshold sliders in review overlay; seed from `PALETTE.md` presets.

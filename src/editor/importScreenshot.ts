@@ -45,7 +45,8 @@ export async function importLevelFromScreenshot(file: File, opts: ScreenshotImpo
     const waterPoly = toPolys(masks.water);
 
     // 4) Cup detection (dark circular blob) inside fairway with simple fallback
-    const cup = detectCup(imgData, fairway) || {
+    const cupDetectedCandidate = detectCup(imgData, fairway);
+    const cup = cupDetectedCandidate || {
       x: fairway.x + fairway.w - Math.max(20, Math.round(fairway.w * 0.08)),
       y: fairway.y + Math.round(fairway.h / 2),
       r: 12
@@ -78,7 +79,10 @@ export async function importLevelFromScreenshot(file: File, opts: ScreenshotImpo
       meta: {
         title: 'Imported Level',
         description: 'Draft created from screenshot',
-        tags: ['imported', 'screenshot']
+        tags: ['imported', 'screenshot'],
+        importInfo: {
+          cupDetected: !!cupDetectedCandidate
+        }
       }
     };
 
@@ -120,7 +124,7 @@ function drawToOffscreen(img: HTMLImageElement, targetW: number, targetH: number
   return { canvas, ctx };
 }
 
-function rgbToHsv(r: number, g: number, b: number): { h: number; s: number; v: number } {
+export function rgbToHsv(r: number, g: number, b: number): { h: number; s: number; v: number } {
   r /= 255; g /= 255; b /= 255;
   const max = Math.max(r, g, b), min = Math.min(r, g, b);
   const d = max - min;
@@ -138,14 +142,14 @@ function rgbToHsv(r: number, g: number, b: number): { h: number; s: number; v: n
   return { h: h * 360, s, v };
 }
 
-function hexToRgb(hex: string): { r: number; g: number; b: number } {
+export function hexToRgb(hex: string): { r: number; g: number; b: number } {
   const s = hex.replace('#', '');
   const n = parseInt(s.length === 3 ? s.split('').map(c => c + c).join('') : s, 16);
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
 }
 
 // Thresholds seeded from docs/PALETTE.md
-function buildDefaultThresholds() {
+export function buildDefaultThresholds() {
   const fair = hexToRgb('#126a23');
   const water = hexToRgb('#1f6dff');
   const sand = hexToRgb('#d4b36a');
@@ -162,10 +166,10 @@ function buildDefaultThresholds() {
   } as const;
 }
 
-type Thresholds = ReturnType<typeof buildDefaultThresholds>;
+export type Thresholds = ReturnType<typeof buildDefaultThresholds>;
 
 // Segment into binary masks (Uint8Array 0/1) limited to the fairway bbox region
-function segmentByColor(img: ImageData, fair: { x: number; y: number; w: number; h: number }, t: Thresholds): { fairway: Uint8Array; walls: Uint8Array; sand: Uint8Array; water: Uint8Array } {
+export function segmentByColor(img: ImageData, fair: { x: number; y: number; w: number; h: number }, t: Thresholds): { fairway: Uint8Array; walls: Uint8Array; sand: Uint8Array; water: Uint8Array } {
   const { data, width, height } = img;
   const N = width * height;
   const fairMask = new Uint8Array(N);
@@ -203,13 +207,13 @@ function segmentByColor(img: ImageData, fair: { x: number; y: number; w: number;
   return { fairway: fairMask, walls: wallsMask, sand: sandMask, water: waterMask };
 }
 
-function inHueRange(h: number, min: number, max: number): boolean {
+export function inHueRange(h: number, min: number, max: number): boolean {
   if (min <= max) return h >= min && h <= max;
   // wrap-around
   return h >= min || h <= max;
 }
 
-function findGreenBoundingBox(imgData: ImageData): { x: number; y: number; w: number; h: number } | null {
+export function findGreenBoundingBox(imgData: ImageData): { x: number; y: number; w: number; h: number } | null {
   const { data, width, height } = imgData;
   let minX = width, minY = height, maxX = -1, maxY = -1;
   const N = width * height;
@@ -239,7 +243,7 @@ function findGreenBoundingBox(imgData: ImageData): { x: number; y: number; w: nu
   return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
 }
 
-function expandOrFallback(bb: { x: number; y: number; w: number; h: number } | null, W: number, H: number, margin: number) {
+export function expandOrFallback(bb: { x: number; y: number; w: number; h: number } | null, W: number, H: number, margin: number) {
   if (!bb) {
     const m = Math.max(20, margin);
     return { x: m, y: m, w: Math.max(1, W - 2 * m), h: Math.max(1, H - 2 * m) };
@@ -252,7 +256,7 @@ function expandOrFallback(bb: { x: number; y: number; w: number; h: number } | n
   return { x, y, w, h };
 }
 
-function detectCup(imgData: ImageData, fair: { x: number; y: number; w: number; h: number }): { x: number; y: number; r: number } | null {
+export function detectCup(imgData: ImageData, fair: { x: number; y: number; w: number; h: number }): { x: number; y: number; r: number } | null {
   const { data, width } = imgData;
   let sumX = 0, sumY = 0, count = 0;
   for (let y = fair.y; y < fair.y + fair.h; y++) {
@@ -275,7 +279,7 @@ function detectCup(imgData: ImageData, fair: { x: number; y: number; w: number; 
 }
 
 // Contour tracing (Moore-Neighbor) for binary mask (1 = foreground)
-function traceContours(mask: Uint8Array, width: number, height: number, minPixels: number): Array<Array<{ x: number; y: number }>> {
+export function traceContours(mask: Uint8Array, width: number, height: number, minPixels: number): Array<Array<{ x: number; y: number }>> {
   const visited = new Uint8Array(width * height);
   const contours: Array<Array<{ x: number; y: number }>> = [];
   const idx = (x: number, y: number) => y * width + x;
@@ -329,7 +333,7 @@ function traceContours(mask: Uint8Array, width: number, height: number, minPixel
 }
 
 // Ramer–Douglas–Peucker simplification
-function simplifyPolygon(points: Array<{ x: number; y: number }>, epsilon: number): Array<{ x: number; y: number }> {
+export function simplifyPolygon(points: Array<{ x: number; y: number }>, epsilon: number): Array<{ x: number; y: number }> {
   if (points.length <= 3) return points;
   const d2 = (a: { x: number; y: number }, b: { x: number; y: number }) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
   const distSeg = (p: any, a: any, b: any) => {

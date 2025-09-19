@@ -99,8 +99,9 @@ describe('importScreenshot helpers', () => {
   it('detectCup finds dark cluster center', () => {
     const W = 40, H = 24;
     const img = makeImageData(W, H, [18, 90, 35, 255]); // greenish base
-    // Dark cluster near (30, 12) — ensure >= 12 pixels to satisfy minCluster in detectCup
-    for (let y = 10; y <= 12; y++) for (let x = 28; x <= 31; x++) {
+    // Dark cluster near (30, 12) — ensure sufficient pixels for plausible radius (>= ~3px)
+    // 5 rows x 6 cols = 30 pixels
+    for (let y = 9; y <= 13; y++) for (let x = 27; x <= 32; x++) {
       const i = (y * W + x) * 4; img.data[i+0] = 8; img.data[i+1] = 8; img.data[i+2] = 8; img.data[i+3] = 255;
     }
     const fair = { x: 0, y: 0, w: W, h: H };

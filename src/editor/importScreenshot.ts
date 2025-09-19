@@ -18,16 +18,22 @@ export function computePolysFromThresholds(
   canvasW: number,
   canvasH: number
 ): { wallsPoly: Array<{ points: number[] }>; sandPoly: Array<{ points: number[] }>; waterPoly: Array<{ points: number[] }> } {
-  const masks = segmentByColor(imgData, fairway, thresholds);
+  // Work on a cropped fairway sub-image for performance and lower memory
+  const fairImg = cropImageData(imgData, fairway);
+  const localFair = { x: 0, y: 0, w: fairway.w, h: fairway.h };
+  const masks = segmentByColor(fairImg, localFair, thresholds);
   const simplifyEps = Math.max(1.5, Math.min(10, gridSize * 0.15));
   const minPixels = Math.max(60, Math.round((gridSize * gridSize) / 2));
   const toPolys = (mask: Uint8Array) =>
-    traceContours(mask, imgData.width, imgData.height, minPixels)
+    traceContours(mask, fairImg.width, fairImg.height, minPixels)
       .map(poly => simplifyPolygon(poly, simplifyEps))
+      .map(poly => offsetPolygon(poly, fairway.x, fairway.y))
       .map(poly => snapPolygonToGrid(poly, gridSize))
       .map(poly => clampPolygon(poly, canvasW, canvasH))
       .map(points => ({ points: flattenPoints(points) }));
-  const wallsPoly = toPolys(masks.walls);
+  let wallsPoly = toPolys(masks.walls);
+  // Drop the outer perimeter wall polygon that spans the entire fairway bbox (we don't support holes in polys)
+  wallsPoly = wallsPoly.filter(p => !isPerimeterPoly(p.points, fairway));
   const sandPoly = toPolys(masks.sand);
   const waterPoly = toPolys(masks.water);
   return { wallsPoly, sandPoly, waterPoly };
@@ -50,7 +56,10 @@ export async function importLevelFromScreenshot(file: File, opts: ScreenshotImpo
 
     // 2) Segment colors (HSV) → binary masks within the fairway region
     const thresholds = buildDefaultThresholds();
-    const masks = segmentByColor(imgData, fairway, thresholds);
+    // Process on a cropped fairway image for performance
+    const fairImg = cropImageData(imgData, fairway);
+    const localFair = { x: 0, y: 0, w: fairway.w, h: fairway.h };
+    const masks = segmentByColor(fairImg, localFair, thresholds);
 
     // 3) Contour tracing per mask → polygons
     const gridSize = Math.max(2, Math.min(100, Math.round(opts.gridSize || 20)));
@@ -58,18 +67,23 @@ export async function importLevelFromScreenshot(file: File, opts: ScreenshotImpo
     const minPixels = Math.max(60, Math.round((gridSize * gridSize) / 2)); // discard tiny noise
 
     const toPolys = (mask: Uint8Array) =>
-      traceContours(mask, imgData.width, imgData.height, minPixels)
+      traceContours(mask, fairImg.width, fairImg.height, minPixels)
         .map(poly => simplifyPolygon(poly, simplifyEps))
+        .map(poly => offsetPolygon(poly, fairway.x, fairway.y))
         .map(poly => snapPolygonToGrid(poly, gridSize))
         .map(poly => clampPolygon(poly, canvas.width, canvas.height))
         .map(points => ({ points: flattenPoints(points) }));
 
-    const wallsPoly = toPolys(masks.walls);
+    let wallsPoly = toPolys(masks.walls);
+    // Drop the outer perimeter wall polygon that spans the entire fairway bbox (we don't support holes in polys)
+    wallsPoly = wallsPoly.filter(p => !isPerimeterPoly(p.points, fairway));
     const sandPoly = toPolys(masks.sand);
     const waterPoly = toPolys(masks.water);
 
     // 4) Cup detection (dark circular blob) inside fairway with simple fallback
-    const cupDetectedCandidate = detectCup(imgData, fairway);
+    // Run cup detection on cropped image to reduce memory/CPU, then offset back
+    const cupLocal = detectCup(fairImg, localFair);
+    const cupDetectedCandidate = cupLocal ? { x: cupLocal.x + fairway.x, y: cupLocal.y + fairway.y, r: cupLocal.r } : null;
     const cup = cupDetectedCandidate || {
       x: fairway.x + fairway.w - Math.max(20, Math.round(fairway.w * 0.08)),
       y: fairway.y + Math.round(fairway.h / 2),
@@ -359,8 +373,8 @@ export function detectCup(imgData: ImageData, fair: { x: number; y: number; w: n
     const edgeDist = Math.min(b.cx - fair.x, fair.x + fair.w - b.cx, b.cy - fair.y, fair.y + fair.h - b.cy);
     const edgeFactor = Math.max(0, Math.min(1, (edgeDist - fairMargin) / (fairMargin * 3 + 1e-6)));
     const score = roundness * 0.7 + aspect * 0.2 + edgeFactor * 0.1;
-    // Consider plausible radius range
-    if (rEst < 4 || rEst > 20) continue;
+    // Consider plausible radius range (allow smaller clusters on small canvases/tests)
+    if (rEst < 3 || rEst > 20) continue;
     if (!best || score > best.score) best = { score, cx: b.cx, cy: b.cy, r: rEst };
   }
 
@@ -467,6 +481,11 @@ function clampPolygon(points: Array<{ x: number; y: number }>, W: number, H: num
   return points.map(p => ({ x: clamp(p.x, 0, W), y: clamp(p.y, 0, H) }));
 }
 
+function offsetPolygon(points: Array<{ x: number; y: number }>, dx: number, dy: number): Array<{ x: number; y: number }> {
+  if (!Array.isArray(points) || points.length === 0) return points;
+  return points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+}
+
 function flattenPoints(points: Array<{ x: number; y: number }>): number[] {
   const out: number[] = [];
   for (const p of points) { out.push(Math.round(p.x), Math.round(p.y)); }
@@ -480,4 +499,59 @@ function flattenPoints(points: Array<{ x: number; y: number }>): number[] {
     }
   }
   return out;
+}
+
+// Create a cropped ImageData of rect {x,y,w,h} from the source ImageData
+function cropImageData(src: ImageData, rect: { x: number; y: number; w: number; h: number }): ImageData {
+  const sx = Math.max(0, Math.min(src.width, Math.floor(rect.x)));
+  const sy = Math.max(0, Math.min(src.height, Math.floor(rect.y)));
+  const sw = Math.max(1, Math.min(src.width - sx, Math.floor(rect.w)));
+  const sh = Math.max(1, Math.min(src.height - sy, Math.floor(rect.h)));
+  const out = new ImageData(sw, sh);
+  const sdata = src.data;
+  const ddata = out.data;
+  const srcStride = src.width * 4;
+  const dstStride = sw * 4;
+  for (let row = 0; row < sh; row++) {
+    const sOff = ((sy + row) * src.width + sx) * 4;
+    const dOff = row * dstStride;
+    ddata.set(sdata.subarray(sOff, sOff + dstStride), dOff);
+  }
+  return out;
+}
+
+// Heuristic: identify the outer perimeter wall polygon that hugs the fairway rectangle.
+// Because we don't support polygon holes, filling this polygon would cover the entire fairway.
+function isPerimeterPoly(flatPoints: number[], fair: { x: number; y: number; w: number; h: number }): boolean {
+  if (!Array.isArray(flatPoints) || flatPoints.length < 8) return false;
+  // Compute bounding box of the polygon
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (let i = 0; i + 1 < flatPoints.length; i += 2) {
+    const x = flatPoints[i];
+    const y = flatPoints[i + 1];
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+  }
+  const tol = Math.max(2, Math.round(Math.min(fair.w, fair.h) * 0.02));
+  const nearLeft = Math.abs(minX - fair.x) <= tol;
+  const nearRight = Math.abs(maxX - (fair.x + fair.w)) <= tol;
+  const nearTop = Math.abs(minY - fair.y) <= tol;
+  const nearBottom = Math.abs(maxY - (fair.y + fair.h)) <= tol;
+  const sidesNear = [nearLeft, nearRight, nearTop, nearBottom].filter(Boolean).length;
+
+  // Area check (shoelace). Large area relative to fairway indicates a flood-fill risk.
+  let area = 0;
+  for (let i = 0; i + 3 < flatPoints.length; i += 2) {
+    const x1 = flatPoints[i], y1 = flatPoints[i + 1];
+    const x2 = flatPoints[(i + 2) % flatPoints.length], y2 = flatPoints[(i + 3) % flatPoints.length];
+    area += x1 * y2 - x2 * y1;
+  }
+  const polyArea = Math.abs(area) * 0.5;
+  const fairArea = Math.max(1, fair.w * fair.h);
+  const areaFrac = polyArea / fairArea;
+
+  // Consider it a perimeter poly if it hugs at least 3 sides and is large,
+  // or hugs all 4 sides with moderately large area.
+  if ((sidesNear >= 3 && areaFrac >= 0.35) || (sidesNear === 4 && areaFrac >= 0.20)) return true;
+  return false;
 }

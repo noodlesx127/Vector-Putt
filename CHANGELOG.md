@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Screenshot Importer: preserve full wall thickness when tracing. Removed an adjacency post-filter that collapsed walls to 1px outlines, causing thin walls and distorted polygons after import. (`src/editor/importScreenshot.ts`)
 - Screenshot Importer: improved cup detection. Switched to connected-components with circularity scoring and relaxed minimum cluster size; produces correct cup position and realistic radius. Updated unit test accordingly. (`src/editor/importScreenshot.ts`, `src/__tests__/ImportScreenshot.test.ts`)
+- Screenshot Importer: prevented giant perimeter polygon flooding the fairway by filtering out wall polys that hug the fairway’s outer rectangle. This aligns Accept result with Import Review. (`src/editor/importScreenshot.ts`)
+- Import Review performance/stability: processing is now cropped to the fairway region and cup detection runs on the cropped image; reduces memory and CPU usage which mitigates browser tab hangs on Recompute for some screenshots. (`src/editor/importScreenshot.ts`)
 
 ### Changed
  - UI • Level Editor Menus: Menubar order updated to File → Edit → View → Objects → Decorations → Editor Tools. (`src/editor/levelEditor.ts`)

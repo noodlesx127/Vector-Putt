@@ -1,4 +1,10 @@
   /**
+ - **Screenshot → Level Importer (stability/accuracy)**
+   - [x] Performance: crop processing to fairway sub-image; run cup detection on cropped data; expanded wall region by a margin to preserve thickness near fairway borders. (`src/editor/importScreenshot.ts`)
+   - [x] Correctness: filter perimeter-hugging wall polygon that would flood-fill the fairway on Accept; relax wall hue gating for very low saturation to avoid missing gray walls; light mask dilation and finer wall snapping to keep wall bands thick. (`src/editor/importScreenshot.ts`)
+   - [x] Import Review UX: Accept now honors layer toggles (Walls/Sand/Water). If Sand is off in the preview, it will not be applied. (`src/main.ts`)
+   - [ ] Further guardrails: Debounce Recompute, time-slice contour tracing on extremely large screenshots to avoid UI stalls.
+
  * This file tracks current focus, next steps, decisions, and open questions. Keep it short and living. Completed items have been moved to `COMPLETED.md`. Always follow the format of this file.
  */
 
@@ -224,6 +230,7 @@ A new Level Editor feature to rapidly bootstrap a level from a screenshot. Users
 
   Status: Phase 2 implemented in `src/editor/importScreenshot.ts`
   - Offscreen draw + green fairway bbox; HSV segmentation to masks (fairway, walls, sand, water); Moore-neighbor contour tracing; RDP polygon simplification; grid snapping; clamp to canvas; classification to `wallsPoly`/`sandPoly`/`waterPoly`; compose `LevelData` and open in editor with fixups applied. Post-import guidance prompts user to click Tee; Cup click is requested only if not confidently detected (metadata flag). Next: build review overlay with threshold sliders and layer toggles; add unit tests using `level_screenshots/*`.
+  - Recent fixes (2025-09-18): perimeter polygon filter; cropped processing; wall thickness preservation (expanded region + dilation + finer snap); Accept respects toggles.
 
 - **Risks & Mitigations**
   - Varying palettes and compression: expose threshold sliders in review overlay; seed from `PALETTE.md` presets.

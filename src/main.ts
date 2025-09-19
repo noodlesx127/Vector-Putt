@@ -619,7 +619,13 @@ function handleOverlayMouseDown(e: MouseEvent) {
           if (a === 'stricter') { nudgeThresholds(false); recompute(); return; }
           if (a === 'recompute') { recompute(); return; }
           if (a === 'accept') {
-            const polys = (o.previewPolys || o.currentPolys) || { wallsPoly: [], sandPoly: [], waterPoly: [] };
+            const polys0 = (o.previewPolys || o.currentPolys) || { wallsPoly: [], sandPoly: [], waterPoly: [] };
+            // Honor visibility toggles: if a layer is hidden in the review, exclude it on Accept
+            const polys = {
+              wallsPoly: (o.showWalls === false) ? [] : (polys0.wallsPoly || []),
+              sandPoly:  (o.showSand  === false) ? [] : (polys0.sandPoly  || []),
+              waterPoly: (o.showWater === false) ? [] : (polys0.waterPoly || [])
+            };
             uiOverlay.resolve?.({ thresholds: o.thresholds, polys });
             uiOverlay = { kind: 'none' } as any;
             return;

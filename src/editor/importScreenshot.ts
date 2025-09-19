@@ -9,6 +9,54 @@ export interface ScreenshotImportOptions {
   gridSize?: number;
 }
 
+// Expand a rectangle by margin and clamp to image bounds
+function expandRect(rect: { x: number; y: number; w: number; h: number }, margin: number, bounds: { W: number; H: number }) {
+  const x = Math.max(0, Math.floor(rect.x - margin));
+  const y = Math.max(0, Math.floor(rect.y - margin));
+  const w = Math.min(bounds.W - x, Math.floor(rect.w + 2 * margin));
+  const h = Math.min(bounds.H - y, Math.floor(rect.h + 2 * margin));
+  return { x, y, w: Math.max(1, w), h: Math.max(1, h) };
+}
+
+// 4-neighborhood dilation of a binary mask by N iterations
+function dilateMask(mask: Uint8Array, width: number, height: number, iterations: number): Uint8Array {
+  if (iterations <= 0) return mask;
+  let cur = mask;
+  for (let it = 0; it < iterations; it++) {
+    const out = new Uint8Array(width * height);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const p = y * width + x;
+        if (cur[p]) { out[p] = 1; continue; }
+        if ((x > 0 && cur[p - 1]) || (x + 1 < width && cur[p + 1]) || (y > 0 && cur[p - width]) || (y + 1 < height && cur[p + width])) {
+          out[p] = 1;
+        }
+      }
+    }
+    cur = out;
+  }
+  return cur;
+}
+
+// Compute signed area magnitude of polygon given flat points [x0,y0,x1,y1,...]
+function polygonArea(flat: number[]): number {
+  if (!Array.isArray(flat) || flat.length < 6) return 0;
+  let area = 0;
+  for (let i = 0; i + 3 < flat.length; i += 2) {
+    const x1 = flat[i], y1 = flat[i + 1];
+    const x2 = flat[(i + 2) % flat.length], y2 = flat[(i + 3) % flat.length];
+    area += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(area) * 0.5;
+}
+
+function totalPolyArea(polys: Array<{ points: number[] }>): number {
+  if (!Array.isArray(polys)) return 0;
+  let sum = 0;
+  for (const p of polys) sum += polygonArea(p.points);
+  return sum;
+}
+
 // Public helper: recompute polygons from thresholds (used by Import Review overlay)
 export function computePolysFromThresholds(
   imgData: ImageData,
@@ -21,7 +69,13 @@ export function computePolysFromThresholds(
   // Work on a cropped fairway sub-image for performance and lower memory
   const fairImg = cropImageData(imgData, fairway);
   const localFair = { x: 0, y: 0, w: fairway.w, h: fairway.h };
-  const masks = segmentByColor(fairImg, localFair, thresholds);
+  // For walls, allow detection outside the fairway by a margin to preserve full thickness near borders
+  const wallMargin = Math.max(8, Math.round(Math.min(fairway.w, fairway.h) * 0.04));
+  const wallRect = expandRect(fairway, wallMargin, { W: imgData.width, H: imgData.height });
+  const wallImg = cropImageData(imgData, wallRect);
+  const localWallRect = { x: 0, y: 0, w: wallRect.w, h: wallRect.h };
+  const masksFW = segmentByColor(fairImg, localFair, thresholds);
+  const masksWalls = segmentByColor(wallImg, localWallRect, thresholds);
   const simplifyEps = Math.max(1.5, Math.min(10, gridSize * 0.15));
   const minPixels = Math.max(60, Math.round((gridSize * gridSize) / 2));
   const toPolys = (mask: Uint8Array) =>
@@ -31,11 +85,30 @@ export function computePolysFromThresholds(
       .map(poly => snapPolygonToGrid(poly, gridSize))
       .map(poly => clampPolygon(poly, canvasW, canvasH))
       .map(points => ({ points: flattenPoints(points) }));
-  let wallsPoly = toPolys(masks.walls);
+  // Walls traced on the expanded wall image to preserve thickness near fairway borders
+  const toWallPolys = (mask: Uint8Array) =>
+    traceContours(dilateMask(mask, wallImg.width, wallImg.height, 1), wallImg.width, wallImg.height, minPixels)
+      .map(poly => simplifyPolygon(poly, simplifyEps))
+      .map(poly => offsetPolygon(poly, wallRect.x, wallRect.y))
+      // Use a finer snap for walls to avoid collapsing thickness to a single grid line
+      .map(poly => snapPolygonToGrid(poly, Math.max(2, Math.round(gridSize / 2))))
+      .map(poly => clampPolygon(poly, canvasW, canvasH))
+      .map(points => ({ points: flattenPoints(points) }));
+  let wallsPoly = toWallPolys(masksWalls.walls);
   // Drop the outer perimeter wall polygon that spans the entire fairway bbox (we don't support holes in polys)
   wallsPoly = wallsPoly.filter(p => !isPerimeterPoly(p.points, fairway));
-  const sandPoly = toPolys(masks.sand);
-  const waterPoly = toPolys(masks.water);
+  // Sand/Water from fairway region only; then filter tiny fragments
+  let sandPoly = toPolys(masksFW.sand);
+  let waterPoly = toPolys(masksFW.water);
+  const minPolyArea = Math.max(100, Math.round(gridSize * gridSize * 0.8));
+  sandPoly = sandPoly.filter(p => polygonArea(p.points) >= minPolyArea);
+  waterPoly = waterPoly.filter(p => polygonArea(p.points) >= minPolyArea);
+  // Safety: drop trivial sand/water if total area fraction is negligible (<0.5% of fairway)
+  const fairArea = Math.max(1, fairway.w * fairway.h);
+  const sandFrac = totalPolyArea(sandPoly) / fairArea;
+  const waterFrac = totalPolyArea(waterPoly) / fairArea;
+  if (sandFrac < 0.005) sandPoly = [];
+  if (waterFrac < 0.005) waterPoly = [];
   return { wallsPoly, sandPoly, waterPoly };
 }
 
@@ -59,7 +132,13 @@ export async function importLevelFromScreenshot(file: File, opts: ScreenshotImpo
     // Process on a cropped fairway image for performance
     const fairImg = cropImageData(imgData, fairway);
     const localFair = { x: 0, y: 0, w: fairway.w, h: fairway.h };
-    const masks = segmentByColor(fairImg, localFair, thresholds);
+    // For walls, expand region beyond fairway to retain full thickness bands near the edges
+    const wallMargin = Math.max(8, Math.round(Math.min(fairway.w, fairway.h) * 0.04));
+    const wallRect = expandRect(fairway, wallMargin, { W: canvas.width, H: canvas.height });
+    const wallImg = cropImageData(imgData, wallRect);
+    const localWallRect = { x: 0, y: 0, w: wallRect.w, h: wallRect.h };
+    const masksFW = segmentByColor(fairImg, localFair, thresholds);
+    const masksWalls = segmentByColor(wallImg, localWallRect, thresholds);
 
     // 3) Contour tracing per mask → polygons
     const gridSize = Math.max(2, Math.min(100, Math.round(opts.gridSize || 20)));
@@ -73,12 +152,27 @@ export async function importLevelFromScreenshot(file: File, opts: ScreenshotImpo
         .map(poly => snapPolygonToGrid(poly, gridSize))
         .map(poly => clampPolygon(poly, canvas.width, canvas.height))
         .map(points => ({ points: flattenPoints(points) }));
+    const toWallPolys = (mask: Uint8Array) =>
+      traceContours(dilateMask(mask, wallImg.width, wallImg.height, 1), wallImg.width, wallImg.height, minPixels)
+        .map(poly => simplifyPolygon(poly, simplifyEps))
+        .map(poly => offsetPolygon(poly, wallRect.x, wallRect.y))
+        .map(poly => snapPolygonToGrid(poly, gridSize))
+        .map(poly => clampPolygon(poly, canvas.width, canvas.height))
+        .map(points => ({ points: flattenPoints(points) }));
 
-    let wallsPoly = toPolys(masks.walls);
+    let wallsPoly = toWallPolys(masksWalls.walls);
     // Drop the outer perimeter wall polygon that spans the entire fairway bbox (we don't support holes in polys)
     wallsPoly = wallsPoly.filter(p => !isPerimeterPoly(p.points, fairway));
-    const sandPoly = toPolys(masks.sand);
-    const waterPoly = toPolys(masks.water);
+    let sandPoly = toPolys(masksFW.sand);
+    let waterPoly = toPolys(masksFW.water);
+    const minPolyArea = Math.max(100, Math.round(gridSize * gridSize * 0.8));
+    sandPoly = sandPoly.filter(p => polygonArea(p.points) >= minPolyArea);
+    waterPoly = waterPoly.filter(p => polygonArea(p.points) >= minPolyArea);
+    const fairArea = Math.max(1, fairway.w * fairway.h);
+    const sandFrac = totalPolyArea(sandPoly) / fairArea;
+    const waterFrac = totalPolyArea(waterPoly) / fairArea;
+    if (sandFrac < 0.005) sandPoly = [];
+    if (waterFrac < 0.005) waterPoly = [];
 
     // 4) Cup detection (dark circular blob) inside fairway with simple fallback
     // Run cup detection on cropped image to reduce memory/CPU, then offset back
@@ -237,11 +331,13 @@ export function segmentByColor(img: ImageData, fair: { x: number; y: number; w: 
       if (!insideFair(x, y)) continue; // only detect features within fairway bbox
       if (v >= t.water.vMin && s >= t.water.sMin && inHueRange(h, t.water.hMin, t.water.hMax)) waterMask[idx] = 1;
       if (v >= t.sand.vMin && s >= t.sand.sMin && inHueRange(h, t.sand.hMin, t.sand.hMax)) sandMask[idx] = 1;
-      // walls: light gray (low saturation), high value, avoid any green-hue pixels (even if low S), and avoid blue/tan hues
-      if (s <= t.walls.sMax && v >= t.walls.vMin && !isFair && !isGreenHue) {
+      // walls: light gray (low saturation), high value
+      // Relax hue gating: for very low saturation we ignore hue completely; for moderate saturation avoid blue/tan hues.
+      if (s <= t.walls.sMax && v >= t.walls.vMin && !isFair) {
         const isBlue = inHueRange(h, t.water.hMin, t.water.hMax) && s >= t.water.sMin;
         const isTan = inHueRange(h, t.sand.hMin, t.sand.hMax) && s >= t.sand.sMin;
-        if (!isBlue && !isTan) wallsMask[idx] = 1;
+        // If saturation is extremely low (<0.08), accept as wall regardless of hue; otherwise avoid blue/tan.
+        if (s < 0.08 || (!isBlue && !isTan)) wallsMask[idx] = 1;
       }
     }
   }

@@ -218,6 +218,7 @@ A new Level Editor feature to rapidly bootstrap a level from a screenshot. Users
     - Added `showImportReview` to `EditorEnv` via `src/main.ts` (wired to `showUiImportReview`).
     - Overlay interactions: layer toggles (Walls/Sand/Water), threshold nudges (Looser/Stricter), Recompute preview, Accept/Cancel.
     - On Accept, returns `{ thresholds, polys }` to editor and applies to `wallsPoly/sandPoly/waterPoly`.
+  - [x] Importer bugfixes (2025-09-18): preserve wall thickness; robust cup detection with blob circularity scoring.
   - [ ] Unit tests with `level_screenshots/*` samples: segmentation thresholds, contour→geometry mapping, cup detection edge cases
   - [ ] Optional: hills/slope/specials detection pass; evaluate OpenCV.js only if Canvas approach proves insufficient
 

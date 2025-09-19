@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Admin Game Settings • Par Heuristics: added sliders for Baseline Shot (px), Turn Penalty, Hill Bump, and Bank Weight. Values persist via Firebase and are consumed by the editor’s Suggest Par. (`src/main.ts`, `src/firebase/database.ts`, `src/editor/levelEditor.ts`)
  - Level System • Cup position suggestions integration: File → “Suggest Cup Positions” proposes ranked markers; clicking applies cup, runs lint, and prompts to apply a par suggestion using admin-tuned coefficients. (`src/editor/levelHeuristics.ts`, `src/editor/levelEditor.ts`)
 
+### Fixed
+- Screenshot Importer: preserve full wall thickness when tracing. Removed an adjacency post-filter that collapsed walls to 1px outlines, causing thin walls and distorted polygons after import. (`src/editor/importScreenshot.ts`)
+- Screenshot Importer: improved cup detection. Switched to connected-components with circularity scoring and relaxed minimum cluster size; produces correct cup position and realistic radius. Updated unit test accordingly. (`src/editor/importScreenshot.ts`, `src/__tests__/ImportScreenshot.test.ts`)
+
 ### Changed
  - UI • Level Editor Menus: Menubar order updated to File → Edit → View → Objects → Decorations → Editor Tools. (`src/editor/levelEditor.ts`)
  - Level Editor • Alignment Aids UX: Alt temporarily disables guides during interactions; Ctrl forces grid‑only snapping (overrides alignment guides) for drag‑move, resize, and vertex drag. (`src/editor/levelEditor.ts`)

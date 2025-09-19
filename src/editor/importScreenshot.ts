@@ -232,27 +232,9 @@ export function segmentByColor(img: ImageData, fair: { x: number; y: number; w: 
     }
   }
   // Note: We already restrict feature detection (water/sand/walls) to the fairway bounding box
-  // via `insideFair(x,y)` above. Do NOT intersect with the green fairway mask here; features are
-  // not green themselves and would be zeroed out. Returning masks as-is preserves detections.
-  // Post-filter: keep only wall pixels that touch fairway (prevents filling interior non-green regions)
-  {
-    const keep = new Uint8Array(N);
-    const idx = (x: number, y: number) => y * width + x;
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const p = idx(x, y);
-        if (wallsMask[p] !== 1) continue;
-        // 4-neighborhood adjacency to fairway
-        const nearFair = (x > 0 && fairMask[p - 1] === 1) ||
-                         (x + 1 < width && fairMask[p + 1] === 1) ||
-                         (y > 0 && fairMask[p - width] === 1) ||
-                         (y + 1 < height && fairMask[p + width] === 1);
-        if (nearFair) keep[p] = 1;
-      }
-    }
-    wallsMask = keep;
-  }
-
+  // via `insideFair(x,y)` above. Do NOT intersect with the green fairway mask or require adjacency
+  // to fairway edges — that collapses thick wall bands to 1px outlines. Return masks as-is to
+  // preserve full wall thickness for contour tracing.
   return { fairway: fairMask, walls: wallsMask, sand: sandMask, water: waterMask };
 }
 
@@ -306,27 +288,84 @@ export function expandOrFallback(bb: { x: number; y: number; w: number; h: numbe
 }
 
 export function detectCup(imgData: ImageData, fair: { x: number; y: number; w: number; h: number }): { x: number; y: number; r: number } | null {
-  const { data, width } = imgData;
-  let sumX = 0, sumY = 0, count = 0;
+  const { data, width, height } = imgData;
+  const idx4 = (x: number, y: number) => (y * width + x) * 4;
+  const inside = (x: number, y: number) => x >= fair.x && x < fair.x + fair.w && y >= fair.y && y < fair.y + fair.h;
+
+  // Build a binary mask of dark, low-saturation pixels within the fairway rect
+  const mask = new Uint8Array(width * height);
   for (let y = fair.y; y < fair.y + fair.h; y++) {
     for (let x = fair.x; x < fair.x + fair.w; x++) {
-      const idx = (y * width + x) * 4;
-      const r = data[idx], g = data[idx + 1], b = data[idx + 2], a = data[idx + 3];
-      if (a < 10) continue;
+      const i = idx4(x, y);
+      const a = data[i + 3]; if (a < 10) continue;
+      const r = data[i + 0], g = data[i + 1], b = data[i + 2];
       const { s, v } = rgbToHsv(r, g, b);
-      // Dark, low-sat area is a cup candidate; avoid too-bright gray borders by v threshold
-      if (v < 0.18 && s < 0.35) {
-        sumX += x; sumY += y; count++;
-      }
+      if (v < 0.18 && s < 0.35) mask[y * width + x] = 1;
     }
   }
-  // Require a small but non-trivial cluster. Scale with fairway area so unit tests and small images pass.
-  const minCluster = Math.max(9, Math.round((fair.w * fair.h) / 400));
-  if (count < minCluster) return null; // too few pixels
-  const cx = Math.round(sumX / count);
-  const cy = Math.round(sumY / count);
-  const rEst = Math.max(8, Math.round(Math.sqrt(count / Math.PI)));
-  return { x: cx, y: cy, r: rEst };
+
+  // Connected-components (4-neighborhood) to find blobs; score by circularity and size
+  const visited = new Uint8Array(width * height);
+  type Blob = { cx: number; cy: number; count: number; minX: number; minY: number; maxX: number; maxY: number };
+  const blobs: Blob[] = [];
+  const qx = new Int32Array(width * height);
+  const qy = new Int32Array(width * height);
+
+  const pushBlob = (startX: number, startY: number) => {
+    let head = 0, tail = 0;
+    qx[tail] = startX; qy[tail] = startY; tail++;
+    visited[startY * width + startX] = 1;
+    let sumX = 0, sumY = 0, count = 0;
+    let minX = startX, minY = startY, maxX = startX, maxY = startY;
+    while (head < tail) {
+      const x = qx[head], y = qy[head]; head++;
+      sumX += x; sumY += y; count++;
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      // 4-neighbors
+      const nb = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]] as Array<[number, number]>;
+      for (let k = 0; k < 4; k++) {
+        const nx = nb[k][0], ny = nb[k][1];
+        if (!inside(nx, ny)) continue;
+        const p = ny * width + nx;
+        if (visited[p] || mask[p] !== 1) continue;
+        visited[p] = 1; qx[tail] = nx; qy[tail] = ny; tail++;
+      }
+    }
+    if (count > 0) blobs.push({ cx: Math.round(sumX / count), cy: Math.round(sumY / count), count, minX, minY, maxX, maxY });
+  };
+
+  for (let y = fair.y; y < fair.y + fair.h; y++) {
+    for (let x = fair.x; x < fair.x + fair.w; x++) {
+      const p = y * width + x;
+      if (mask[p] === 1 && !visited[p]) pushBlob(x, y);
+    }
+  }
+
+  if (blobs.length === 0) return null;
+
+  // Score blobs: prefer near-circular, reasonable size, away from edges
+  const fairMargin = Math.max(8, Math.round(Math.min(fair.w, fair.h) * 0.01));
+  const minCluster = Math.max(12, Math.round((fair.w * fair.h) / 8000));
+  let best: { score: number; cx: number; cy: number; r: number } | null = null;
+  for (const b of blobs) {
+    if (b.count < minCluster) continue;
+    const w = (b.maxX - b.minX + 1);
+    const h = (b.maxY - b.minY + 1);
+    const rEst = Math.sqrt(b.count / Math.PI);
+    const rBox = Math.max(w, h) / 2;
+    const roundness = Math.min(1, b.count / (Math.PI * rBox * rBox));
+    const aspect = Math.min(w, h) / Math.max(w, h);
+    const edgeDist = Math.min(b.cx - fair.x, fair.x + fair.w - b.cx, b.cy - fair.y, fair.y + fair.h - b.cy);
+    const edgeFactor = Math.max(0, Math.min(1, (edgeDist - fairMargin) / (fairMargin * 3 + 1e-6)));
+    const score = roundness * 0.7 + aspect * 0.2 + edgeFactor * 0.1;
+    // Consider plausible radius range
+    if (rEst < 4 || rEst > 20) continue;
+    if (!best || score > best.score) best = { score, cx: b.cx, cy: b.cy, r: rEst };
+  }
+
+  if (!best) return null;
+  return { x: Math.round(best.cx), y: Math.round(best.cy), r: Math.round(Math.max(6, Math.min(16, best.r))) };
 }
 
 // Contour tracing (Moore-Neighbor) for binary mask (1 = foreground)

@@ -230,7 +230,7 @@ A new Level Editor feature to rapidly bootstrap a level from a screenshot. Users
 
   Status: Phase 2 implemented in `src/editor/importScreenshot.ts`
   - Offscreen draw + green fairway bbox; HSV segmentation to masks (fairway, walls, sand, water); Moore-neighbor contour tracing; RDP polygon simplification; grid snapping; clamp to canvas; classification to `wallsPoly`/`sandPoly`/`waterPoly`; compose `LevelData` and open in editor with fixups applied. Post-import guidance prompts user to click Tee; Cup click is requested only if not confidently detected (metadata flag). Next: build review overlay with threshold sliders and layer toggles; add unit tests using `level_screenshots/*`.
-  - Recent fixes (2025-09-18): perimeter polygon filter; cropped processing; wall thickness preservation (expanded region + dilation + finer snap); Accept respects toggles.
+  - Recent fixes (2025-09-18): perimeter polygon filter; cropped processing; wall thickness preservation (expanded region + dilation + finer snap); Accept respects toggles; green-interior sampling filter removes misclassified giant wall fills.
 
 - **Risks & Mitigations**
   - Varying palettes and compression: expose threshold sliders in review overlay; seed from `PALETTE.md` presets.

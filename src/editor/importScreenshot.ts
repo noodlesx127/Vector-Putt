@@ -97,6 +97,9 @@ export function computePolysFromThresholds(
   let wallsPoly = toWallPolys(masksWalls.walls);
   // Drop the outer perimeter wall polygon that spans the entire fairway bbox (we don't support holes in polys)
   wallsPoly = wallsPoly.filter(p => !isPerimeterPoly(p.points, fairway));
+  // Additional guard: remove any "wall" polygon whose interior is mostly green (misclassified giant fill)
+  const greenDrop = (poly: { points: number[] }) => estimateGreenFractionInPolygon(imgData, poly.points, thresholds, Math.max(5, Math.round(Math.min(gridSize, 12))), 1800) >= 0.5;
+  wallsPoly = wallsPoly.filter(p => !greenDrop(p));
   // Sand/Water from fairway region only; then filter tiny fragments
   let sandPoly = toPolys(masksFW.sand);
   let waterPoly = toPolys(masksFW.water);
@@ -163,6 +166,9 @@ export async function importLevelFromScreenshot(file: File, opts: ScreenshotImpo
     let wallsPoly = toWallPolys(masksWalls.walls);
     // Drop the outer perimeter wall polygon that spans the entire fairway bbox (we don't support holes in polys)
     wallsPoly = wallsPoly.filter(p => !isPerimeterPoly(p.points, fairway));
+    // Remove misclassified giant fills: if interior samples are mostly green, it's not a wall
+    const greenDrop = (poly: { points: number[] }) => estimateGreenFractionInPolygon(imgData, poly.points, thresholds, Math.max(5, Math.round(Math.min(gridSize, 12))), 1800) >= 0.5;
+    wallsPoly = wallsPoly.filter(p => !greenDrop(p));
     let sandPoly = toPolys(masksFW.sand);
     let waterPoly = toPolys(masksFW.water);
     const minPolyArea = Math.max(100, Math.round(gridSize * gridSize * 0.8));
@@ -650,4 +656,68 @@ function isPerimeterPoly(flatPoints: number[], fair: { x: number; y: number; w: 
   // or hugs all 4 sides with moderately large area.
   if ((sidesNear >= 3 && areaFrac >= 0.35) || (sidesNear === 4 && areaFrac >= 0.20)) return true;
   return false;
+}
+
+// Ray-casting point-in-polygon for flat [x0,y0,x1,y1,...]
+function pointInPolygonFlat(px: number, py: number, flat: number[]): boolean {
+  let inside = false;
+  const n = flat.length;
+  for (let i = 0, j = (n - 2); i < n; i += 2) {
+    const xi = flat[i], yi = flat[i + 1];
+    const xj = flat[j], yj = flat[j + 1];
+    const intersect = ((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / ((yj - yi) || 1e-6) + xi);
+    if (intersect) inside = !inside;
+    j = i;
+  }
+  return inside;
+}
+
+// Estimate fraction of green pixels inside a polygon by uniform grid sampling
+function estimateGreenFractionInPolygon(
+  img: ImageData,
+  flatPoints: number[],
+  t: Thresholds,
+  baseStep: number,
+  sampleLimit: number
+): number {
+  if (!flatPoints || flatPoints.length < 6) return 0;
+  // BBox
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (let i = 0; i + 1 < flatPoints.length; i += 2) {
+    const x = flatPoints[i], y = flatPoints[i + 1];
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+  }
+  // Clamp bbox to image bounds
+  minX = Math.max(0, Math.floor(minX));
+  minY = Math.max(0, Math.floor(minY));
+  maxX = Math.min(img.width - 1, Math.ceil(maxX));
+  maxY = Math.min(img.height - 1, Math.ceil(maxY));
+
+  // Derive step from area to keep within sampleLimit
+  const area = polygonArea(flatPoints);
+  const targetSamples = Math.max(200, Math.min(sampleLimit, Math.round(area / Math.max(1, baseStep))));
+  const spanX = Math.max(1, maxX - minX + 1);
+  const spanY = Math.max(1, maxY - minY + 1);
+  const gridSide = Math.max(1, Math.sqrt((spanX * spanY) / Math.max(1, targetSamples)));
+  const step = Math.max(3, Math.round(Math.min( Math.max(baseStep, gridSide), 24)));
+
+  const data = img.data;
+  let total = 0, green = 0;
+  for (let y = minY; y <= maxY; y += step) {
+    for (let x = minX; x <= maxX; x += step) {
+      if (!pointInPolygonFlat(x + 0.5, y + 0.5, flatPoints)) continue;
+      const idx = (y * img.width + x) * 4;
+      const a = data[idx + 3]; if (a < 10) continue;
+      const r = data[idx + 0], g = data[idx + 1], b = data[idx + 2];
+      const { h, s, v } = rgbToHsv(r, g, b);
+      const isGreen = (v >= t.fairway.vMin && s >= t.fairway.sMin && inHueRange(h, t.fairway.hMin, t.fairway.hMax));
+      if (isGreen) green++;
+      total++;
+      if (total >= sampleLimit) {
+        return total ? (green / total) : 0;
+      }
+    }
+  }
+  return total ? (green / total) : 0;
 }

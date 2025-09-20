@@ -983,8 +983,10 @@ export function importLevelFromAnnotations(annotations: AnnotationData, opts: An
   };
   
   // Convert fairway
+  let fairwayPtsScaled: Array<{ x: number; y: number }> | null = null;
   if (annotations.fairway && annotations.fairway.points.length >= 3) {
     const points = snapPolygonToGrid(convertPoints(annotations.fairway.points), opts.gridSize);
+    fairwayPtsScaled = points;
     // Calculate bounding box for fairway
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const p of points) {
@@ -1014,7 +1016,7 @@ export function importLevelFromAnnotations(annotations: AnnotationData, opts: An
   // Helper: fairway bbox derived from level.fairway
   const fw = level.fairway;
   const fairwayBBox = fw ? { x: fw.x, y: fw.y, w: fw.w, h: fw.h } : { x: 80, y: 60, w: canvasW - 160, h: canvasH - 120 };
-  const hasFairwayPoly = !!annotations.fairway && annotations.fairway.points.length >= 3;
+  let hasFairwayShape = !!annotations.fairway && annotations.fairway.points.length >= 3;
 
   // Helper to make a rectangle polygon from x,y,w,h
   const rectPoly = (x: number, y: number, w: number, h: number) => [
@@ -1026,6 +1028,62 @@ export function importLevelFromAnnotations(annotations: AnnotationData, opts: An
     const snapped = snapPolygonToGrid(pts, opts.gridSize);
     arr.push({ points: flattenPoints(snapped) });
   };
+
+  // Helper: create a ring polygon band hugging the annotated fairway shape
+  const createRingPolysFromFairway = (thickness: number): Array<{ points: number[] }> => {
+    if (!fairwayPtsScaled || fairwayPtsScaled.length < 3) return [];
+    // Rasterize fairway polygon to a mask
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasW; canvas.height = canvasH;
+    const ctx = canvas.getContext('2d')!;
+    ctx.clearRect(0, 0, canvasW, canvasH);
+    ctx.beginPath();
+    ctx.moveTo(fairwayPtsScaled[0].x, fairwayPtsScaled[0].y);
+    for (let i = 1; i < fairwayPtsScaled.length; i++) ctx.lineTo(fairwayPtsScaled[i].x, fairwayPtsScaled[i].y);
+    ctx.closePath();
+    // Base fill mask (inside fairway)
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    let img = ctx.getImageData(0, 0, canvasW, canvasH);
+    const base = new Uint8Array(canvasW * canvasH);
+    for (let y = 0; y < canvasH; y++) {
+      for (let x = 0; x < canvasW; x++) {
+        const a = img.data[(y * canvasW + x) * 4 + 3];
+        if (a > 10) base[y * canvasW + x] = 1;
+      }
+    }
+    // Stroke-based ring outside the fairway only: draw stroke and subtract base
+    ctx.clearRect(0, 0, canvasW, canvasH);
+    ctx.beginPath();
+    ctx.moveTo(fairwayPtsScaled[0].x, fairwayPtsScaled[0].y);
+    for (let i = 1; i < fairwayPtsScaled.length; i++) ctx.lineTo(fairwayPtsScaled[i].x, fairwayPtsScaled[i].y);
+    ctx.closePath();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = Math.max(2, thickness * 2);
+    ctx.lineJoin = 'bevel';
+    ctx.lineCap = 'butt';
+    ctx.miterLimit = 8;
+    ctx.stroke();
+    img = ctx.getImageData(0, 0, canvasW, canvasH);
+    const band = new Uint8Array(canvasW * canvasH);
+    for (let y = 0; y < canvasH; y++) {
+      for (let x = 0; x < canvasW; x++) {
+        const a = img.data[(y * canvasW + x) * 4 + 3];
+        const onStroke = a > 10 ? 1 : 0;
+        const inside = base[y * canvasW + x] === 1 ? 1 : 0;
+        band[y * canvasW + x] = (onStroke && !inside) ? 1 : 0;
+      }
+    }
+    // Trace contours and convert to polys
+    const contours = traceContours(band, canvasW, canvasH, Math.max(30, Math.round((opts.gridSize || 20) * (opts.gridSize || 20) / 4)));
+    const eps = Math.max(1.0, Math.min(6, Math.round((opts.gridSize || 20) * 0.10)));
+    const polys = contours
+      .map((poly: Array<{ x: number; y: number }>) => simplifyPolygon(poly, eps))
+      .map((poly: Array<{ x: number; y: number }>) => clampPolygon(poly, canvasW, canvasH))
+      .map((poly: Array<{ x: number; y: number }>) => snapPolygonToGrid(poly, Math.max(2, Math.round((opts.gridSize || 20) / 2))))
+      .map((pts: Array<{ x: number; y: number }>) => ({ points: flattenPoints(pts) }));
+    return polys;
+  };
   
   // Convert wall polygons (filter giant outer fills, optional auto border)
   const wallFlats: Array<{ points: number[] }> = [];
@@ -1036,7 +1094,7 @@ export function importLevelFromAnnotations(annotations: AnnotationData, opts: An
       const pts = convertPoints(wall.points);
       // Detect outer wall fills (annotate flow): require ≥2 canvas corners inside AND a fairway polygon present
       const cornersInside = canvasCorners.reduce((n, c) => n + (pointInPolygon(c.x, c.y, pts) ? 1 : 0), 0);
-      if (hasFairwayPoly && cornersInside >= 2) {
+      if (hasFairwayShape && cornersInside >= 2) {
         hasOuterWallFill = true; // we will replace with border band if enabled
         continue;
       }
@@ -1051,7 +1109,7 @@ export function importLevelFromAnnotations(annotations: AnnotationData, opts: An
     if (water.points.length >= 3) {
       const pts = convertPoints(water.points);
       const cornersInside = canvasCorners.reduce((n, c) => n + (pointInPolygon(c.x, c.y, pts) ? 1 : 0), 0);
-      if (hasFairwayPoly && cornersInside >= 2) {
+      if (hasFairwayShape && cornersInside >= 2) {
         hasOuterWater = true; // treat as sea around fairway
         continue;
       }
@@ -1091,27 +1149,114 @@ export function importLevelFromAnnotations(annotations: AnnotationData, opts: An
     const y = Math.max(0, fairwayBBox.y);
     const r = Math.min(canvasW, fairwayBBox.x + fairwayBBox.w);
     const b = Math.min(canvasH, fairwayBBox.y + fairwayBBox.h);
-    // top strip
+    const overlap = Math.max(2, Math.round(thickness));
+    // top strip (full width)
     if (y > 0) pushPoly(target, rectPoly(0, Math.max(0, y - thickness), canvasW, Math.min(thickness, y)));
-    // bottom strip
+    // bottom strip (full width)
     if (b < canvasH) pushPoly(target, rectPoly(0, b, canvasW, Math.min(thickness, canvasH - b)));
-    // left strip
-    if (x > 0) pushPoly(target, rectPoly(Math.max(0, x - thickness), y, Math.min(thickness, x), Math.max(0, b - y)));
-    // right strip
-    if (r < canvasW) pushPoly(target, rectPoly(r, y, Math.min(thickness, canvasW - r), Math.max(0, b - y)));
+    // left strip (extend past top/bottom by overlap to avoid corner wedges)
+    if (x > 0) {
+      const yStart = Math.max(0, y - overlap);
+      const yEnd = Math.min(canvasH, b + overlap);
+      pushPoly(target, rectPoly(Math.max(0, x - thickness), yStart, Math.min(thickness, x), Math.max(0, yEnd - yStart)));
+    }
+    // right strip (extend past top/bottom by overlap)
+    if (r < canvasW) {
+      const yStart = Math.max(0, y - overlap);
+      const yEnd = Math.min(canvasH, b + overlap);
+      pushPoly(target, rectPoly(r, yStart, Math.min(thickness, canvasW - r), Math.max(0, yEnd - yStart)));
+    }
   };
+
+  // If no fairway was annotated but we have an outer Water/Wall fill, derive a fairway shape from annotations
+  if (!hasFairwayShape && (hasOuterWater || hasOuterWallFill)) {
+    // Rasterize walls and water
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasW; canvas.height = canvasH;
+    const ctx = canvas.getContext('2d')!;
+    const toPath = (ctx: CanvasRenderingContext2D, flat: number[]) => {
+      if (!flat || flat.length < 6) return;
+      ctx.beginPath();
+      ctx.moveTo(flat[0], flat[1]);
+      for (let i = 2; i + 1 < flat.length; i += 2) ctx.lineTo(flat[i], flat[i + 1]);
+      ctx.closePath();
+    };
+    // Walls mask (barriers)
+    ctx.clearRect(0, 0, canvasW, canvasH);
+    ctx.fillStyle = '#ffffff';
+    for (const p of wallFlats) { toPath(ctx, p.points); ctx.fill(); }
+    let img = ctx.getImageData(0, 0, canvasW, canvasH);
+    const wallsMask = new Uint8Array(canvasW * canvasH);
+    for (let i = 0; i < wallsMask.length; i++) wallsMask[i] = img.data[i * 4 + 3] > 10 ? 1 : 0;
+    // Water mask
+    ctx.clearRect(0, 0, canvasW, canvasH);
+    for (const p of waterFlats) { toPath(ctx, p.points); ctx.fill(); }
+    img = ctx.getImageData(0, 0, canvasW, canvasH);
+    const waterMask = new Uint8Array(canvasW * canvasH);
+    for (let i = 0; i < waterMask.length; i++) waterMask[i] = img.data[i * 4 + 3] > 10 ? 1 : 0;
+    // Open mask (not walls)
+    const open = new Uint8Array(canvasW * canvasH);
+    for (let i = 0; i < open.length; i++) open[i] = wallsMask[i] ? 0 : 1;
+    // Flood-fill from corners through open to mark outside
+    const outside = new Uint8Array(canvasW * canvasH);
+    const qx = new Int32Array(canvasW * canvasH);
+    const qy = new Int32Array(canvasW * canvasH);
+    const push = (sx: number, sy: number) => {
+      if (sx < 0 || sy < 0 || sx >= canvasW || sy >= canvasH) return;
+      let head = 0, tail = 0;
+      const idx = (x: number, y: number) => y * canvasW + x;
+      if (!open[idx(sx, sy)] || outside[idx(sx, sy)]) return;
+      qx[tail] = sx; qy[tail] = sy; tail++;
+      outside[idx(sx, sy)] = 1;
+      while (head < tail) {
+        const x = qx[head], y = qy[head]; head++;
+        const nb = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]] as Array<[number, number]>;
+        for (let k = 0; k < 4; k++) {
+          const nx = nb[k][0], ny = nb[k][1];
+          if (nx < 0 || ny < 0 || nx >= canvasW || ny >= canvasH) continue;
+          const p = idx(nx, ny);
+          if (outside[p] || !open[p]) continue;
+          outside[p] = 1; qx[tail] = nx; qy[tail] = ny; tail++;
+        }
+      }
+    };
+    push(0, 0); push(canvasW - 1, 0); push(canvasW - 1, canvasH - 1); push(0, canvasH - 1);
+    // Fairway = open AND not outside AND not water
+    const fairMask = new Uint8Array(canvasW * canvasH);
+    for (let i = 0; i < fairMask.length; i++) fairMask[i] = (open[i] && !outside[i] && !waterMask[i]) ? 1 : 0;
+    // Trace and take the largest polygon as fairway shape
+    const fairContours = traceContours(fairMask, canvasW, canvasH, Math.max(30, Math.round((opts.gridSize || 20) * (opts.gridSize || 20) / 4)));
+    if (fairContours.length > 0) {
+      let best = fairContours[0];
+      let bestArea = 0;
+      for (const c of fairContours) {
+        const flat: number[] = [];
+        for (const pt of c) { flat.push(pt.x, pt.y); }
+        const a = polygonArea(flat);
+        if (a > bestArea) { bestArea = a; best = c; }
+      }
+      fairwayPtsScaled = snapPolygonToGrid(best, opts.gridSize);
+      hasFairwayShape = true;
+      // Update fairway bbox on level
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of fairwayPtsScaled) { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); }
+      level.fairway = { x: Math.max(0, minX - 10), y: Math.max(0, minY - 10), w: Math.min(opts.targetWidth, maxX - minX + 20), h: Math.min(opts.targetHeight, maxY - minY + 20) };
+    }
+  }
 
   // Apply collected polys and optional borders
   // Walls
   for (const f of wallFlats) level.wallsPoly.push(f);
-  if (enableAutoWallBorder && hasFairwayPoly && hasOuterWallFill) {
-    addBorderStrips(wallThickness, level.wallsPoly);
+  if (enableAutoWallBorder && hasFairwayShape && hasOuterWallFill) {
+    const ring = createRingPolysFromFairway(wallThickness);
+    for (const p of ring) level.wallsPoly.push(p);
   }
 
   // Water
   for (const f of waterFlats) level.waterPoly.push(f);
-  if (enableAutoWaterBorder && hasFairwayPoly && (hasOuterWater || annotations.water.length === 0)) {
-    addBorderStrips(waterThickness, level.waterPoly);
+  if (enableAutoWaterBorder && hasFairwayShape && (hasOuterWater || annotations.water.length === 0)) {
+    const ring = createRingPolysFromFairway(waterThickness);
+    for (const p of ring) level.waterPoly.push(p);
   }
 
   // Sand

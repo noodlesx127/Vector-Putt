@@ -1,7 +1,7 @@
  import CHANGELOG_RAW from '../CHANGELOG.md?raw';
 import firebaseManager from './firebase';
 import { levelEditor } from './editor/levelEditor';
-import { computePolysFromThresholds, buildDefaultThresholds, importLevelFromAnnotations, AnnotationData, AnnotationOptions } from './editor/importScreenshot';
+import { computePolysFromThresholds, buildDefaultThresholds, importLevelFromAnnotations, AnnotationData, AnnotationOptions, findAnnotationAtPoint } from './editor/importScreenshot';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -899,78 +899,13 @@ function handleOverlayMouseDown(e: MouseEvent) {
           const data = uiOverlay.annotationData;
           
           if (tool === 'select') {
-            // Selection mode - find what was clicked
-            let found = false;
+            // Selection mode - use improved selection logic from importScreenshot module
+            const selected = findAnnotationAtPoint(data, canvasX, canvasY, 10);
             
-            // Helper function to check if point is near a circle
-            const nearCircle = (cx: number, cy: number, r: number) => {
-              const dist = Math.sqrt((canvasX - cx) ** 2 + (canvasY - cy) ** 2);
-              return dist <= r + 5; // 5px tolerance
-            };
-            
-            // Helper function to check if point is inside polygon
-            const insidePolygon = (points: Array<{ x: number; y: number }>) => {
-              let inside = false;
-              for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-                if (((points[i].y > canvasY) !== (points[j].y > canvasY)) &&
-                    (canvasX < (points[j].x - points[i].x) * (canvasY - points[i].y) / (points[j].y - points[i].y) + points[i].x)) {
-                  inside = !inside;
-                }
-              }
-              return inside;
-            };
-            
-            // Check posts
-            for (let i = 0; i < data.posts.length; i++) {
-              const post = data.posts[i];
-              if (nearCircle(post.x, post.y, post.r)) {
-                uiOverlay.selectedItem = { type: 'posts', index: i };
-                console.log(`Selected post ${i}`);
-                found = true;
-                break;
-              }
-            }
-            
-            // Check tee
-            if (!found && data.tee && nearCircle(data.tee.x, data.tee.y, data.tee.r)) {
-              uiOverlay.selectedItem = { type: 'tee', index: 0 };
-              console.log('Selected tee');
-              found = true;
-            }
-            
-            // Check cup
-            if (!found && data.cup && nearCircle(data.cup.x, data.cup.y, data.cup.r)) {
-              uiOverlay.selectedItem = { type: 'cup', index: 0 };
-              console.log('Selected cup');
-              found = true;
-            }
-            
-            // Check polygons
-            if (!found) {
-              const polygonTypes = ['walls', 'water', 'sand', 'hills'];
-              for (const type of polygonTypes) {
-                const items = (data as any)[type] || [];
-                for (let i = 0; i < items.length; i++) {
-                  const item = items[i];
-                  if (item.points && insidePolygon(item.points)) {
-                    uiOverlay.selectedItem = { type, index: i };
-                    console.log(`Selected ${type} ${i}`);
-                    found = true;
-                    break;
-                  }
-                }
-                if (found) break;
-              }
-            }
-            
-            // Check fairway
-            if (!found && data.fairway && insidePolygon(data.fairway.points)) {
-              uiOverlay.selectedItem = { type: 'fairway', index: 0 };
-              console.log('Selected fairway');
-              found = true;
-            }
-            
-            if (!found) {
+            if (selected) {
+              uiOverlay.selectedItem = selected;
+              console.log(`Selected ${selected.type} ${selected.index}`);
+            } else {
               uiOverlay.selectedItem = null;
               console.log('Nothing selected');
             }

@@ -1059,3 +1059,125 @@ export function importLevelFromAnnotations(annotations: AnnotationData, opts: An
   
   return level;
 }
+
+// Annotation selection utilities
+export function findAnnotationAtPoint(
+  annotations: AnnotationData, 
+  x: number, 
+  y: number, 
+  tolerance: number = 10
+): { type: string; index: number } | null {
+  
+  // Helper function to check if point is near a line segment
+  const nearLineSegment = (x1: number, y1: number, x2: number, y2: number, px: number, py: number, tolerance: number): boolean => {
+    const A = px - x1;
+    const B = py - y1;
+    const C = x2 - x1;
+    const D = y2 - y1;
+    
+    const dot = A * C + B * D;
+    const lenSq = C * C + D * D;
+    
+    if (lenSq === 0) return Math.sqrt(A * A + B * B) <= tolerance;
+    
+    let param = dot / lenSq;
+    param = Math.max(0, Math.min(1, param));
+    
+    const xx = x1 + param * C;
+    const yy = y1 + param * D;
+    
+    const dx = px - xx;
+    const dy = py - yy;
+    return Math.sqrt(dx * dx + dy * dy) <= tolerance;
+  };
+  
+  // Helper function to check if point is near polygon boundary
+  const nearPolygonBoundary = (points: Array<{ x: number; y: number }>, px: number, py: number, tolerance: number): boolean => {
+    if (points.length < 2) return false;
+    
+    for (let i = 0; i < points.length; i++) {
+      const p1 = points[i];
+      const p2 = points[(i + 1) % points.length];
+      
+      if (nearLineSegment(p1.x, p1.y, p2.x, p2.y, px, py, tolerance)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  
+  // Helper function to check if point is near a circle
+  const nearCircle = (cx: number, cy: number, r: number, px: number, py: number, tolerance: number): boolean => {
+    const dist = Math.sqrt((px - cx) ** 2 + (py - cy) ** 2);
+    return dist <= r + tolerance;
+  };
+  
+  // Check posts (circles)
+  for (let i = 0; i < annotations.posts.length; i++) {
+    const post = annotations.posts[i];
+    if (nearCircle(post.x, post.y, post.r, x, y, tolerance)) {
+      return { type: 'posts', index: i };
+    }
+  }
+  
+  // Check tee (circle)
+  if (annotations.tee && nearCircle(annotations.tee.x, annotations.tee.y, annotations.tee.r, x, y, tolerance)) {
+    return { type: 'tee', index: 0 };
+  }
+  
+  // Check cup (circle)
+  if (annotations.cup && nearCircle(annotations.cup.x, annotations.cup.y, annotations.cup.r, x, y, tolerance)) {
+    return { type: 'cup', index: 0 };
+  }
+  
+  // Check walls (boundary-based selection for better wall handling)
+  for (let i = 0; i < annotations.walls.length; i++) {
+    const wall = annotations.walls[i];
+    if (wall.points && nearPolygonBoundary(wall.points, x, y, tolerance)) {
+      return { type: 'walls', index: i };
+    }
+  }
+  
+  // Check water (boundary-based selection)
+  for (let i = 0; i < annotations.water.length; i++) {
+    const water = annotations.water[i];
+    if (water.points && nearPolygonBoundary(water.points, x, y, tolerance)) {
+      return { type: 'water', index: i };
+    }
+  }
+  
+  // Check sand (boundary-based selection)
+  for (let i = 0; i < annotations.sand.length; i++) {
+    const sand = annotations.sand[i];
+    if (sand.points && nearPolygonBoundary(sand.points, x, y, tolerance)) {
+      return { type: 'sand', index: i };
+    }
+  }
+  
+  // Check hills (boundary-based selection)
+  for (let i = 0; i < annotations.hills.length; i++) {
+    const hill = annotations.hills[i];
+    if (hill.points && nearPolygonBoundary(hill.points, x, y, tolerance)) {
+      return { type: 'hills', index: i };
+    }
+  }
+  
+  // Check fairway (boundary-based selection)
+  if (annotations.fairway && nearPolygonBoundary(annotations.fairway.points, x, y, tolerance)) {
+    return { type: 'fairway', index: 0 };
+  }
+  
+  return null;
+}
+
+// Helper function to check if point is inside polygon (fallback for area-based selection)
+export function pointInPolygon(x: number, y: number, points: Array<{ x: number; y: number }>): boolean {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    if (((points[i].y > y) !== (points[j].y > y)) &&
+        (x < (points[j].x - points[i].x) * (y - points[i].y) / (points[j].y - points[i].y) + points[i].x)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}

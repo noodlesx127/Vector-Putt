@@ -25,6 +25,11 @@ export interface AnnotationOptions {
   targetWidth: number;
   targetHeight: number;
   gridSize?: number;
+  // Import-time shaping options (no UI changes required)
+  waterBorderThickness?: number; // px, when a water polygon encloses the fairway
+  wallBorderThickness?: number;  // px, when a large wall fill encloses the fairway
+  enableAutoWaterBorder?: boolean; // default true
+  enableAutoWallBorder?: boolean;  // default true
 }
 
 // Expand a rectangle by margin and clamp to image bounds
@@ -983,28 +988,72 @@ export function importLevelFromAnnotations(annotations: AnnotationData, opts: An
       h: Math.min(opts.targetHeight, maxY - minY + 20)
     };
   }
+  const canvasW = opts.targetWidth;
+  const canvasH = opts.targetHeight;
+
+  // Helper: canvas corners (for detecting outer fills)
+  const canvasCorners = [
+    { x: 0, y: 0 },
+    { x: canvasW - 1, y: 0 },
+    { x: canvasW - 1, y: canvasH - 1 },
+    { x: 0, y: canvasH - 1 }
+  ];
+
+  // Helper: fairway bbox derived from level.fairway
+  const fw = level.fairway;
+  const fairwayBBox = fw ? { x: fw.x, y: fw.y, w: fw.w, h: fw.h } : { x: 80, y: 60, w: canvasW - 160, h: canvasH - 120 };
+
+  // Helper to make a rectangle polygon from x,y,w,h
+  const rectPoly = (x: number, y: number, w: number, h: number) => [
+    { x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }
+  ];
+
+  // Helper: convert and push polygon points to a target array
+  const pushPoly = (arr: number[][], pts: Array<{x:number;y:number}>) => {
+    const snapped = snapPolygonToGrid(pts, opts.gridSize);
+    arr.push(flattenPoints(snapped));
+  };
   
-  // Convert wall polygons
+  // Convert wall polygons (filter giant outer fills, optional auto border)
+  const wallFlats: number[][] = [];
+  let hasOuterWallFill = false;
+  const areaCanvas = canvasW * canvasH;
   for (const wall of annotations.walls) {
     if (wall.points.length >= 3) {
-      const points = snapPolygonToGrid(convertPoints(wall.points), opts.gridSize);
-      level.wallsPoly.push(flattenPoints(points));
+      const pts = convertPoints(wall.points);
+      // Detect outer wall fills: contains any canvas corner OR covers big area
+      const containsCorner = canvasCorners.some(c => pointInPolygon(c.x, c.y, pts));
+      const area = polygonArea(flattenPoints(pts));
+      if (containsCorner || area > areaCanvas * 0.3) {
+        hasOuterWallFill = true; // we will replace with border band if enabled
+        continue;
+      }
+      pushPoly(wallFlats, pts);
     }
   }
   
-  // Convert water polygons
+  // Convert water polygons (outer water detection -> border strips)
+  const waterFlats: number[][] = [];
+  let hasOuterWater = false;
   for (const water of annotations.water) {
     if (water.points.length >= 3) {
-      const points = snapPolygonToGrid(convertPoints(water.points), opts.gridSize);
-      level.waterPoly.push(flattenPoints(points));
+      const pts = convertPoints(water.points);
+      const containsCorner = canvasCorners.some(c => pointInPolygon(c.x, c.y, pts));
+      const area = polygonArea(flattenPoints(pts));
+      if (containsCorner || area > areaCanvas * 0.5) {
+        hasOuterWater = true; // treat as sea around fairway
+        continue;
+      }
+      pushPoly(waterFlats, pts);
     }
   }
   
-  // Convert sand polygons
+  // Convert sand polygons (keep as drawn; inner shapes preserved)
+  const sandFlats: number[][] = [];
   for (const sand of annotations.sand) {
     if (sand.points.length >= 3) {
-      const points = snapPolygonToGrid(convertPoints(sand.points), opts.gridSize);
-      level.sandPoly.push(flattenPoints(points));
+      const pts = convertPoints(sand.points);
+      pushPoly(sandFlats, pts);
     }
   }
   
@@ -1018,6 +1067,44 @@ export function importLevelFromAnnotations(annotations: AnnotationData, opts: An
       });
     }
   }
+
+  // Optional auto border generation using fairway bbox
+  const enableAutoWaterBorder = opts.enableAutoWaterBorder !== false;
+  const enableAutoWallBorder = opts.enableAutoWallBorder !== false;
+  const waterThickness = Math.max(1, Math.round(opts.waterBorderThickness ?? 24));
+  const wallThickness  = Math.max(1, Math.round(opts.wallBorderThickness  ?? 12));
+
+  // Generate border strips around fairway bbox against canvas edges
+  const addBorderStrips = (thickness: number, target: number[][]) => {
+    const x = Math.max(0, fairwayBBox.x);
+    const y = Math.max(0, fairwayBBox.y);
+    const r = Math.min(canvasW, fairwayBBox.x + fairwayBBox.w);
+    const b = Math.min(canvasH, fairwayBBox.y + fairwayBBox.h);
+    // top strip
+    if (y > 0) pushPoly(target, rectPoly(0, Math.max(0, y - thickness), canvasW, Math.min(thickness, y)));
+    // bottom strip
+    if (b < canvasH) pushPoly(target, rectPoly(0, b, canvasW, Math.min(thickness, canvasH - b)));
+    // left strip
+    if (x > 0) pushPoly(target, rectPoly(Math.max(0, x - thickness), y, Math.min(thickness, x), Math.max(0, b - y)));
+    // right strip
+    if (r < canvasW) pushPoly(target, rectPoly(r, y, Math.min(thickness, canvasW - r), Math.max(0, b - y)));
+  };
+
+  // Apply collected polys and optional borders
+  // Walls
+  for (const f of wallFlats) level.wallsPoly.push(f);
+  if (enableAutoWallBorder && (hasOuterWallFill)) {
+    addBorderStrips(wallThickness, level.wallsPoly);
+  }
+
+  // Water
+  for (const f of waterFlats) level.waterPoly.push(f);
+  if (enableAutoWaterBorder && (hasOuterWater || (annotations.water.length === 0 && annotations.fairway))) {
+    addBorderStrips(waterThickness, level.waterPoly);
+  }
+
+  // Sand
+  for (const f of sandFlats) level.sandPoly.push(f);
   
   // Convert posts
   for (const post of annotations.posts) {
@@ -1138,33 +1225,54 @@ export function findAnnotationAtPoint(
     }
   }
   
-  // Check water (boundary-based selection)
+  // Check water (boundary-first, with inside fallback)
   for (let i = 0; i < annotations.water.length; i++) {
     const water = annotations.water[i];
-    if (water.points && nearPolygonBoundary(water.points, x, y, tolerance)) {
-      return { type: 'water', index: i };
+    if (water.points) {
+      if (nearPolygonBoundary(water.points, x, y, tolerance)) {
+        return { type: 'water', index: i };
+      }
+      // Inside-area fallback for large filled regions like lakes/borders
+      if (pointInPolygon(x, y, water.points)) {
+        return { type: 'water', index: i };
+      }
     }
   }
   
-  // Check sand (boundary-based selection)
+  // Check sand (boundary-first, with inside fallback)
   for (let i = 0; i < annotations.sand.length; i++) {
     const sand = annotations.sand[i];
-    if (sand.points && nearPolygonBoundary(sand.points, x, y, tolerance)) {
-      return { type: 'sand', index: i };
+    if (sand.points) {
+      if (nearPolygonBoundary(sand.points, x, y, tolerance)) {
+        return { type: 'sand', index: i };
+      }
+      if (pointInPolygon(x, y, sand.points)) {
+        return { type: 'sand', index: i };
+      }
     }
   }
   
-  // Check hills (boundary-based selection)
+  // Check hills (boundary-first, with inside fallback)
   for (let i = 0; i < annotations.hills.length; i++) {
     const hill = annotations.hills[i];
-    if (hill.points && nearPolygonBoundary(hill.points, x, y, tolerance)) {
-      return { type: 'hills', index: i };
+    if (hill.points) {
+      if (nearPolygonBoundary(hill.points, x, y, tolerance)) {
+        return { type: 'hills', index: i };
+      }
+      if (pointInPolygon(x, y, hill.points)) {
+        return { type: 'hills', index: i };
+      }
     }
   }
   
-  // Check fairway (boundary-based selection)
-  if (annotations.fairway && nearPolygonBoundary(annotations.fairway.points, x, y, tolerance)) {
-    return { type: 'fairway', index: 0 };
+  // Check fairway (boundary-first, with inside fallback)
+  if (annotations.fairway && annotations.fairway.points) {
+    if (nearPolygonBoundary(annotations.fairway.points, x, y, tolerance)) {
+      return { type: 'fairway', index: 0 };
+    }
+    if (pointInPolygon(x, y, annotations.fairway.points)) {
+      return { type: 'fairway', index: 0 };
+    }
   }
   
   return null;

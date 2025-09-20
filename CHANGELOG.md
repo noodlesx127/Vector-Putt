@@ -35,14 +35,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Screenshot Importer: Complete manual annotation system for precise level creation. Added "Import from Screenshot (Annotate)..." menu option that opens an interactive overlay where users can manually trace level elements directly on screenshots. Features include:
-  - 8 annotation tools: Walls, Water, Sand, Hills, Posts, Fairway, Tee, Cup
-  - Real-time visual feedback with color-coded overlays
+  - 9 annotation tools: Select/Edit, Walls, Water, Sand, Hills, Posts, Fairway, Tee, Cup
+  - Real-time visual feedback with color-coded overlays and yellow selection highlights
   - Polygon drawing for areas (click to add points, Enter to complete, Esc to cancel)
   - Point placement for objects (single click for posts, tee, cup)
   - Live annotation counts and completion status in tool palette
-  - Clear All functionality to reset annotations
-  - Contextual instructions that update based on current tool and drawing state
-  - Full keyboard support (Enter/Esc) and mouse interaction
+  - **Selection and Editing**: Select tool allows clicking on any annotation to select it
+  - **Individual Item Deletion**: Delete key or Delete Selected button removes individual items
+  - **Complex Wall Support**: Draw multiple separate wall polygons for inner/outer boundaries
+  - Clear All functionality to reset all annotations
+  - Contextual instructions that update based on current tool, drawing state, and selection
+  - Full keyboard support (Enter/Esc/Delete) and mouse interaction
   This provides much higher accuracy than automatic detection and eliminates browser performance issues. (`src/editor/importScreenshot.ts`, `src/editor/levelEditor.ts`, `src/main.ts`)
 
 ### Fixed

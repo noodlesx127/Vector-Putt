@@ -9,6 +9,24 @@ export interface ScreenshotImportOptions {
   gridSize?: number;
 }
 
+// Manual annotation interfaces
+export interface AnnotationData {
+  walls: Array<{ points: Array<{ x: number; y: number }> }>;
+  water: Array<{ points: Array<{ x: number; y: number }> }>;
+  sand: Array<{ points: Array<{ x: number; y: number }> }>;
+  hills: Array<{ points: Array<{ x: number; y: number }>; direction: number }>;
+  posts: Array<{ x: number; y: number; r: number }>;
+  fairway?: { points: Array<{ x: number; y: number }> };
+  tee?: { x: number; y: number; r: number };
+  cup?: { x: number; y: number; r: number };
+}
+
+export interface AnnotationOptions {
+  targetWidth: number;
+  targetHeight: number;
+  gridSize?: number;
+}
+
 // Expand a rectangle by margin and clamp to image bounds
 function expandRect(rect: { x: number; y: number; w: number; h: number }, margin: number, bounds: { W: number; H: number }) {
   const x = Math.max(0, Math.floor(rect.x - margin));
@@ -150,119 +168,6 @@ function yieldToMain(): Promise<void> {
   });
 }
 
-// Annotation data structure for manual tracing
-export interface AnnotationData {
-  walls: Array<{ points: Array<{ x: number; y: number }> }>;
-  water: Array<{ points: Array<{ x: number; y: number }> }>;
-  sand: Array<{ points: Array<{ x: number; y: number }> }>;
-  hills: Array<{ points: Array<{ x: number; y: number }>; direction?: number }>;
-  posts: Array<{ x: number; y: number; r: number }>;
-  fairway?: { points: Array<{ x: number; y: number }> };
-  tee?: { x: number; y: number; r: number };
-  cup?: { x: number; y: number; r: number };
-}
-
-// New entry point for manual annotation workflow
-export async function importLevelFromAnnotations(file: File, annotations: AnnotationData, opts: ScreenshotImportOptions): Promise<LevelData | null> {
-  try {
-    console.log('Starting annotation-based import...');
-    
-    const img = await readImageFile(file);
-    const { canvas, ctx } = drawToOffscreen(img, opts.targetWidth, opts.targetHeight);
-    
-    // Convert user annotations to level data
-    const gridSize = Math.max(2, Math.min(100, Math.round(opts.gridSize || 20)));
-    
-    // Process annotations into polygons
-    const wallsPoly = annotations.walls.map(wall => ({
-      points: flattenPoints(snapPolygonToGrid(wall.points, gridSize))
-    }));
-    
-    const waterPoly = annotations.water.map(water => ({
-      points: flattenPoints(snapPolygonToGrid(water.points, gridSize))
-    }));
-    
-    const sandPoly = annotations.sand.map(sand => ({
-      points: flattenPoints(snapPolygonToGrid(sand.points, gridSize))
-    }));
-    
-    // Determine fairway bounds from annotation or fallback
-    const fairway = annotations.fairway 
-      ? {
-          x: Math.min(...annotations.fairway.points.map(p => p.x)),
-          y: Math.min(...annotations.fairway.points.map(p => p.y)),
-          w: Math.max(...annotations.fairway.points.map(p => p.x)) - Math.min(...annotations.fairway.points.map(p => p.x)),
-          h: Math.max(...annotations.fairway.points.map(p => p.y)) - Math.min(...annotations.fairway.points.map(p => p.y))
-        }
-      : { x: 0, y: 0, w: canvas.width, h: canvas.height };
-    
-    // Use annotated tee/cup or fallback positions
-    const tee = annotations.tee || {
-      x: fairway.x + Math.max(20, Math.round(fairway.w * 0.08)),
-      y: fairway.y + Math.round(fairway.h / 2),
-      r: 8
-    };
-    
-    const cup = annotations.cup || {
-      x: fairway.x + fairway.w - Math.max(20, Math.round(fairway.w * 0.08)),
-      y: fairway.y + Math.round(fairway.h / 2),
-      r: 12
-    };
-    
-    // Convert hills to level format
-    const hills = annotations.hills.map(hill => ({
-      points: flattenPoints(snapPolygonToGrid(hill.points, gridSize)),
-      direction: hill.direction || 0
-    }));
-    
-    // Convert posts to level format
-    const posts = annotations.posts.map(post => ({
-      x: Math.round(post.x),
-      y: Math.round(post.y),
-      r: Math.max(4, Math.min(12, Math.round(post.r || 6)))
-    }));
-    
-    // Compose LevelData
-    const level: LevelData = {
-      canvas: { width: canvas.width, height: canvas.height },
-      course: { index: 1, total: 1, title: 'Annotated Level' },
-      par: 3,
-      tee: { x: Math.round(tee.x), y: Math.round(tee.y), r: tee.r },
-      cup: { x: Math.round(cup.x), y: Math.round(cup.y), r: cup.r },
-      walls: [],
-      wallsPoly,
-      posts,
-      bridges: [],
-      water: [],
-      waterPoly,
-      sand: [],
-      sandPoly,
-      hills,
-      decorations: [],
-      meta: {
-        title: 'Annotated Level',
-        description: 'Level created from manual annotations',
-        tags: ['imported', 'annotated'],
-        importInfo: {
-          annotated: true,
-          elementsCount: {
-            walls: wallsPoly.length,
-            water: waterPoly.length,
-            sand: sandPoly.length,
-            hills: hills.length,
-            posts: posts.length
-          }
-        }
-      }
-    } as any;
-    
-    console.log('Annotation-based import completed successfully');
-    return level;
-  } catch (e) {
-    console.error('importLevelFromAnnotations: failed', e);
-    return null;
-  }
-}
 
 // Public entry point with progressive processing (legacy auto-detection)
 export async function importLevelFromScreenshot(file: File, opts: ScreenshotImportOptions): Promise<LevelData | null> {
@@ -1006,4 +911,151 @@ function estimateGreenFractionInPolygon(
     }
   }
   return total ? (green / total) : 0;
+}
+
+// Convert manual annotations to LevelData
+export function importLevelFromAnnotations(annotations: AnnotationData, opts: AnnotationOptions): LevelData {
+  console.log('Converting annotations to level data...');
+  
+  // Helper function to convert annotation points to level coordinates
+  const convertPoints = (points: Array<{ x: number; y: number }>) => {
+    return points.map(p => ({ x: Math.round(p.x), y: Math.round(p.y) }));
+  };
+  
+  // Helper function to snap polygon to grid if enabled
+  const snapPolygonToGrid = (points: Array<{ x: number; y: number }>, gridSize?: number) => {
+    if (!gridSize) return points;
+    return points.map(p => ({
+      x: Math.round(p.x / gridSize) * gridSize,
+      y: Math.round(p.y / gridSize) * gridSize
+    }));
+  };
+  
+  // Helper function to flatten points array
+  const flattenPoints = (points: Array<{ x: number; y: number }>) => {
+    const flat: number[] = [];
+    for (const p of points) {
+      flat.push(p.x, p.y);
+    }
+    return flat;
+  };
+  
+  // Create level data structure
+  const level: LevelData = {
+    fairway: { x: 50, y: 50, w: opts.targetWidth - 100, h: opts.targetHeight - 100 },
+    walls: [],
+    wallsPoly: [],
+    water: [],
+    waterPoly: [],
+    sand: [],
+    sandPoly: [],
+    hills: [],
+    posts: [],
+    tee: { x: 100, y: opts.targetHeight / 2, r: 8 },
+    cup: { x: opts.targetWidth - 100, y: opts.targetHeight / 2, r: 12 },
+    meta: {
+      title: 'Annotated Level',
+      authorName: 'User',
+      authorId: '',
+      par: 3,
+      description: 'Level created from screenshot annotation',
+      tags: ['imported', 'annotated'],
+      created: new Date().toISOString(),
+      modified: new Date().toISOString()
+    }
+  };
+  
+  // Convert fairway
+  if (annotations.fairway && annotations.fairway.points.length >= 3) {
+    const points = snapPolygonToGrid(convertPoints(annotations.fairway.points), opts.gridSize);
+    // Calculate bounding box for fairway
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of points) {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+    level.fairway = {
+      x: Math.max(0, minX - 10),
+      y: Math.max(0, minY - 10),
+      w: Math.min(opts.targetWidth, maxX - minX + 20),
+      h: Math.min(opts.targetHeight, maxY - minY + 20)
+    };
+  }
+  
+  // Convert wall polygons
+  for (const wall of annotations.walls) {
+    if (wall.points.length >= 3) {
+      const points = snapPolygonToGrid(convertPoints(wall.points), opts.gridSize);
+      level.wallsPoly.push(flattenPoints(points));
+    }
+  }
+  
+  // Convert water polygons
+  for (const water of annotations.water) {
+    if (water.points.length >= 3) {
+      const points = snapPolygonToGrid(convertPoints(water.points), opts.gridSize);
+      level.waterPoly.push(flattenPoints(points));
+    }
+  }
+  
+  // Convert sand polygons
+  for (const sand of annotations.sand) {
+    if (sand.points.length >= 3) {
+      const points = snapPolygonToGrid(convertPoints(sand.points), opts.gridSize);
+      level.sandPoly.push(flattenPoints(points));
+    }
+  }
+  
+  // Convert hills
+  for (const hill of annotations.hills) {
+    if (hill.points.length >= 3) {
+      const points = snapPolygonToGrid(convertPoints(hill.points), opts.gridSize);
+      level.hills.push({
+        points: flattenPoints(points),
+        direction: hill.direction || 0
+      });
+    }
+  }
+  
+  // Convert posts
+  for (const post of annotations.posts) {
+    level.posts.push({
+      x: Math.round(post.x),
+      y: Math.round(post.y),
+      r: post.r
+    });
+  }
+  
+  // Convert tee
+  if (annotations.tee) {
+    level.tee = {
+      x: Math.round(annotations.tee.x),
+      y: Math.round(annotations.tee.y),
+      r: annotations.tee.r
+    };
+  }
+  
+  // Convert cup
+  if (annotations.cup) {
+    level.cup = {
+      x: Math.round(annotations.cup.x),
+      y: Math.round(annotations.cup.y),
+      r: annotations.cup.r
+    };
+  }
+  
+  console.log('Annotation conversion complete:', {
+    walls: level.wallsPoly.length,
+    water: level.waterPoly.length,
+    sand: level.sandPoly.length,
+    hills: level.hills.length,
+    posts: level.posts.length,
+    hasTee: !!annotations.tee,
+    hasCup: !!annotations.cup,
+    hasFairway: !!annotations.fairway
+  });
+  
+  return level;
 }

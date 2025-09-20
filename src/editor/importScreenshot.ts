@@ -58,14 +58,14 @@ function totalPolyArea(polys: Array<{ points: number[] }>): number {
 }
 
 // Public helper: recompute polygons from thresholds (used by Import Review overlay)
-export function computePolysFromThresholds(
+export async function computePolysFromThresholds(
   imgData: ImageData,
   fairway: { x: number; y: number; w: number; h: number },
   thresholds: Thresholds,
   gridSize: number,
   canvasW: number,
   canvasH: number
-): { wallsPoly: Array<{ points: number[] }>; sandPoly: Array<{ points: number[] }>; waterPoly: Array<{ points: number[] }> } {
+): Promise<{ wallsPoly: Array<{ points: number[] }>; sandPoly: Array<{ points: number[] }>; waterPoly: Array<{ points: number[] }> }> {
   // Work on a cropped fairway sub-image for performance and lower memory
   const fairImg = cropImageData(imgData, fairway);
   const localFair = { x: 0, y: 0, w: fairway.w, h: fairway.h };
@@ -77,35 +77,46 @@ export function computePolysFromThresholds(
   const masksFW = segmentByColor(fairImg, localFair, thresholds);
   const masksWalls = segmentByColor(wallImg, localWallRect, thresholds);
   const simplifyEps = Math.max(1.5, Math.min(10, gridSize * 0.15));
-  const minPixels = Math.max(60, Math.round((gridSize * gridSize) / 2));
-  const toPolys = (mask: Uint8Array) =>
-    traceContours(mask, fairImg.width, fairImg.height, minPixels)
-      .map(poly => simplifyPolygon(poly, simplifyEps))
-      .map(poly => offsetPolygon(poly, fairway.x, fairway.y))
-      .map(poly => snapPolygonToGrid(poly, gridSize))
-      .map(poly => clampPolygon(poly, canvasW, canvasH))
-      .map(points => ({ points: flattenPoints(points) }));
+  const minPixels = Math.max(30, Math.round((gridSize * gridSize) / 4));
+  const toPolys = async (mask: Uint8Array, width: number, height: number, offsetX: number, offsetY: number) => {
+    const contours = await traceContoursAsync(mask, width, height, minPixels);
+    await yieldToMain();
+    
+    return contours
+      .map((poly: Array<{ x: number; y: number }>) => simplifyPolygon(poly, simplifyEps))
+      .map((poly: Array<{ x: number; y: number }>) => offsetPolygon(poly, offsetX, offsetY))
+      .map((poly: Array<{ x: number; y: number }>) => snapPolygonToGrid(poly, gridSize))
+      .map((poly: Array<{ x: number; y: number }>) => clampPolygon(poly, canvasW, canvasH))
+      .map((points: Array<{ x: number; y: number }>) => ({ points: flattenPoints(points) }));
+  };
   // Walls traced on the expanded wall image to preserve thickness near fairway borders
-  const toWallPolys = (mask: Uint8Array) =>
-    traceContours(dilateMask(mask, wallImg.width, wallImg.height, 1), wallImg.width, wallImg.height, minPixels)
-      .map(poly => simplifyPolygon(poly, simplifyEps))
-      .map(poly => offsetPolygon(poly, wallRect.x, wallRect.y))
+  const toWallPolys = async (mask: Uint8Array, width: number, height: number, offsetX: number, offsetY: number) => {
+    const dilatedMask = dilateMask(mask, width, height, 1);
+    await yieldToMain();
+    
+    const contours = await traceContoursAsync(dilatedMask, width, height, minPixels);
+    await yieldToMain();
+    
+    return contours
+      .map((poly: Array<{ x: number; y: number }>) => simplifyPolygon(poly, simplifyEps))
+      .map((poly: Array<{ x: number; y: number }>) => offsetPolygon(poly, offsetX, offsetY))
       // Use a finer snap for walls to avoid collapsing thickness to a single grid line
-      .map(poly => snapPolygonToGrid(poly, Math.max(2, Math.round(gridSize / 2))))
-      .map(poly => clampPolygon(poly, canvasW, canvasH))
-      .map(points => ({ points: flattenPoints(points) }));
-  let wallsPoly = toWallPolys(masksWalls.walls);
+      .map((poly: Array<{ x: number; y: number }>) => snapPolygonToGrid(poly, Math.max(2, Math.round(gridSize / 2))))
+      .map((poly: Array<{ x: number; y: number }>) => clampPolygon(poly, canvasW, canvasH))
+      .map((points: Array<{ x: number; y: number }>) => ({ points: flattenPoints(points) }));
+  };
+  let wallsPoly = await toWallPolys(masksWalls.walls, wallImg.width, wallImg.height, wallRect.x, wallRect.y);
   // Drop the outer perimeter wall polygon that spans the entire fairway bbox (we don't support holes in polys)
-  wallsPoly = wallsPoly.filter(p => !isPerimeterPoly(p.points, fairway));
+  wallsPoly = wallsPoly.filter((p: { points: number[] }) => !isPerimeterPoly(p.points, fairway));
   // Additional guard: remove any "wall" polygon whose interior is mostly green (misclassified giant fill)
-  const greenDrop = (poly: { points: number[] }) => estimateGreenFractionInPolygon(imgData, poly.points, thresholds, Math.max(5, Math.round(Math.min(gridSize, 12))), 1800) >= 0.5;
-  wallsPoly = wallsPoly.filter(p => !greenDrop(p));
+  const greenDrop = (poly: { points: number[] }) => estimateGreenFractionInPolygon(imgData, poly.points, thresholds, Math.max(5, Math.round(Math.min(gridSize, 12))), 1800) >= 0.8;
+  wallsPoly = wallsPoly.filter((p: { points: number[] }) => !greenDrop(p));
   // Sand/Water from fairway region only; then filter tiny fragments
-  let sandPoly = toPolys(masksFW.sand);
-  let waterPoly = toPolys(masksFW.water);
+  let sandPoly = await toPolys(masksFW.sand, fairImg.width, fairImg.height, fairway.x, fairway.y);
+  let waterPoly = await toPolys(masksFW.water, fairImg.width, fairImg.height, fairway.x, fairway.y);
   const minPolyArea = Math.max(100, Math.round(gridSize * gridSize * 0.8));
-  sandPoly = sandPoly.filter(p => polygonArea(p.points) >= minPolyArea);
-  waterPoly = waterPoly.filter(p => polygonArea(p.points) >= minPolyArea);
+  sandPoly = sandPoly.filter((p: { points: number[] }) => polygonArea(p.points) >= minPolyArea);
+  waterPoly = waterPoly.filter((p: { points: number[] }) => polygonArea(p.points) >= minPolyArea);
   // Safety: drop trivial sand/water if total area fraction is negligible (<0.5% of fairway)
   const fairArea = Math.max(1, fairway.w * fairway.h);
   const sandFrac = totalPolyArea(sandPoly) / fairArea;
@@ -117,20 +128,41 @@ export function computePolysFromThresholds(
 
 export type LevelData = any; // Uses the editor/runtime LevelData shape already in the project
 
-// Public entry point
+// Helper to yield control back to the browser
+function yieldToMain(): Promise<void> {
+  return new Promise(resolve => {
+    if (typeof requestAnimationFrame !== 'undefined') {
+      requestAnimationFrame(() => resolve());
+    } else {
+      setTimeout(() => resolve(), 0);
+    }
+  });
+}
+
+// Public entry point with progressive processing
 export async function importLevelFromScreenshot(file: File, opts: ScreenshotImportOptions): Promise<LevelData | null> {
   try {
+    console.log('Starting screenshot import...');
+    
     const img = await readImageFile(file);
+    console.log(`Original image: ${img.width}x${img.height}`);
+    
     const { canvas, ctx } = drawToOffscreen(img, opts.targetWidth, opts.targetHeight);
+    console.log(`Canvas size: ${canvas.width}x${canvas.height}`);
 
     // Read pixels
     const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    await yieldToMain(); // Yield after expensive getImageData
 
     // 1) Rough green (fairway) segmentation to find playfield bounds
+    console.log('Finding fairway bounds...');
     const fairBB = findGreenBoundingBox(imgData);
     const fairway = expandOrFallback(fairBB, canvas.width, canvas.height, 20);
+    console.log(`Fairway: ${fairway.w}x${fairway.h} at (${fairway.x}, ${fairway.y})`);
+    await yieldToMain();
 
     // 2) Segment colors (HSV) → binary masks within the fairway region
+    console.log('Segmenting colors...');
     const thresholds = buildDefaultThresholds();
     // Process on a cropped fairway image for performance
     const fairImg = cropImageData(imgData, fairway);
@@ -140,40 +172,70 @@ export async function importLevelFromScreenshot(file: File, opts: ScreenshotImpo
     const wallRect = expandRect(fairway, wallMargin, { W: canvas.width, H: canvas.height });
     const wallImg = cropImageData(imgData, wallRect);
     const localWallRect = { x: 0, y: 0, w: wallRect.w, h: wallRect.h };
+    await yieldToMain();
+
     const masksFW = segmentByColor(fairImg, localFair, thresholds);
+    await yieldToMain(); // Yield after fairway segmentation
+    
     const masksWalls = segmentByColor(wallImg, localWallRect, thresholds);
+    await yieldToMain(); // Yield after wall segmentation
 
     // 3) Contour tracing per mask → polygons
+    console.log('Tracing contours...');
     const gridSize = Math.max(2, Math.min(100, Math.round(opts.gridSize || 20)));
     const simplifyEps = Math.max(1.5, Math.min(10, gridSize * 0.15));
-    const minPixels = Math.max(60, Math.round((gridSize * gridSize) / 2)); // discard tiny noise
+    const minPixels = Math.max(30, Math.round((gridSize * gridSize) / 4)); // discard tiny noise
 
-    const toPolys = (mask: Uint8Array) =>
-      traceContours(mask, fairImg.width, fairImg.height, minPixels)
-        .map(poly => simplifyPolygon(poly, simplifyEps))
-        .map(poly => offsetPolygon(poly, fairway.x, fairway.y))
-        .map(poly => snapPolygonToGrid(poly, gridSize))
-        .map(poly => clampPolygon(poly, canvas.width, canvas.height))
-        .map(points => ({ points: flattenPoints(points) }));
-    const toWallPolys = (mask: Uint8Array) =>
-      traceContours(dilateMask(mask, wallImg.width, wallImg.height, 1), wallImg.width, wallImg.height, minPixels)
-        .map(poly => simplifyPolygon(poly, simplifyEps))
-        .map(poly => offsetPolygon(poly, wallRect.x, wallRect.y))
-        .map(poly => snapPolygonToGrid(poly, gridSize))
-        .map(poly => clampPolygon(poly, canvas.width, canvas.height))
-        .map(points => ({ points: flattenPoints(points) }));
+    const toPolys = async (mask: Uint8Array, width: number, height: number, offsetX: number, offsetY: number) => {
+      const contours = await traceContoursAsync(mask, width, height, minPixels);
+      await yieldToMain();
+      
+      return contours
+        .map((poly: Array<{ x: number; y: number }>) => simplifyPolygon(poly, simplifyEps))
+        .map((poly: Array<{ x: number; y: number }>) => offsetPolygon(poly, offsetX, offsetY))
+        .map((poly: Array<{ x: number; y: number }>) => snapPolygonToGrid(poly, gridSize))
+        .map((poly: Array<{ x: number; y: number }>) => clampPolygon(poly, canvas.width, canvas.height))
+        .map((points: Array<{ x: number; y: number }>) => ({ points: flattenPoints(points) }));
+    };
 
-    let wallsPoly = toWallPolys(masksWalls.walls);
+    const toWallPolys = async (mask: Uint8Array, width: number, height: number, offsetX: number, offsetY: number) => {
+      const dilatedMask = dilateMask(mask, width, height, 1);
+      await yieldToMain();
+      
+      const contours = await traceContoursAsync(dilatedMask, width, height, minPixels);
+      await yieldToMain();
+      
+      return contours
+        .map((poly: Array<{ x: number; y: number }>) => simplifyPolygon(poly, simplifyEps))
+        .map((poly: Array<{ x: number; y: number }>) => offsetPolygon(poly, offsetX, offsetY))
+        .map((poly: Array<{ x: number; y: number }>) => snapPolygonToGrid(poly, gridSize))
+        .map((poly: Array<{ x: number; y: number }>) => clampPolygon(poly, canvas.width, canvas.height))
+        .map((points: Array<{ x: number; y: number }>) => ({ points: flattenPoints(points) }));
+    };
+
+    let wallsPoly = await toWallPolys(masksWalls.walls, wallImg.width, wallImg.height, wallRect.x, wallRect.y);
+    console.log(`Found ${wallsPoly.length} wall polygons`);
+    await yieldToMain();
+
     // Drop the outer perimeter wall polygon that spans the entire fairway bbox (we don't support holes in polys)
-    wallsPoly = wallsPoly.filter(p => !isPerimeterPoly(p.points, fairway));
+    wallsPoly = wallsPoly.filter((p: { points: number[] }) => !isPerimeterPoly(p.points, fairway));
     // Remove misclassified giant fills: if interior samples are mostly green, it's not a wall
-    const greenDrop = (poly: { points: number[] }) => estimateGreenFractionInPolygon(imgData, poly.points, thresholds, Math.max(5, Math.round(Math.min(gridSize, 12))), 1800) >= 0.5;
-    wallsPoly = wallsPoly.filter(p => !greenDrop(p));
-    let sandPoly = toPolys(masksFW.sand);
-    let waterPoly = toPolys(masksFW.water);
+    const greenDrop = (poly: { points: number[] }) => estimateGreenFractionInPolygon(imgData, poly.points, thresholds, Math.max(5, Math.round(Math.min(gridSize, 12))), 1800) >= 0.8;
+    wallsPoly = wallsPoly.filter((p: { points: number[] }) => !greenDrop(p));
+    console.log(`After filtering: ${wallsPoly.length} wall polygons`);
+    await yieldToMain();
+
+    let sandPoly = await toPolys(masksFW.sand, fairImg.width, fairImg.height, fairway.x, fairway.y);
+    console.log(`Found ${sandPoly.length} sand polygons`);
+    await yieldToMain();
+
+    let waterPoly = await toPolys(masksFW.water, fairImg.width, fairImg.height, fairway.x, fairway.y);
+    console.log(`Found ${waterPoly.length} water polygons`);
+    await yieldToMain();
+
     const minPolyArea = Math.max(100, Math.round(gridSize * gridSize * 0.8));
-    sandPoly = sandPoly.filter(p => polygonArea(p.points) >= minPolyArea);
-    waterPoly = waterPoly.filter(p => polygonArea(p.points) >= minPolyArea);
+    sandPoly = sandPoly.filter((p: { points: number[] }) => polygonArea(p.points) >= minPolyArea);
+    waterPoly = waterPoly.filter((p: { points: number[] }) => polygonArea(p.points) >= minPolyArea);
     const fairArea = Math.max(1, fairway.w * fairway.h);
     const sandFrac = totalPolyArea(sandPoly) / fairArea;
     const waterFrac = totalPolyArea(waterPoly) / fairArea;
@@ -181,6 +243,7 @@ export async function importLevelFromScreenshot(file: File, opts: ScreenshotImpo
     if (waterFrac < 0.005) waterPoly = [];
 
     // 4) Cup detection (dark circular blob) inside fairway with simple fallback
+    console.log('Detecting cup...');
     // Run cup detection on cropped image to reduce memory/CPU, then offset back
     const cupLocal = detectCup(fairImg, localFair);
     const cupDetectedCandidate = cupLocal ? { x: cupLocal.x + fairway.x, y: cupLocal.y + fairway.y, r: cupLocal.r } : null;
@@ -189,6 +252,7 @@ export async function importLevelFromScreenshot(file: File, opts: ScreenshotImpo
       y: fairway.y + Math.round(fairway.h / 2),
       r: 12
     };
+    await yieldToMain();
 
     // 5) Tee placement (fallback left-center)
     const tee = {
@@ -198,6 +262,7 @@ export async function importLevelFromScreenshot(file: File, opts: ScreenshotImpo
     };
 
     // Compose LevelData draft
+    console.log('Composing level data...');
     const level: LevelData = {
       canvas: { width: canvas.width, height: canvas.height },
       course: { index: 1, total: 1, title: 'Imported Level' },
@@ -231,6 +296,7 @@ export async function importLevelFromScreenshot(file: File, opts: ScreenshotImpo
       fairway
     };
 
+    console.log('Screenshot import completed successfully');
     return level;
   } catch (e) {
     console.error('importLevelFromScreenshot: failed', e);
@@ -251,8 +317,30 @@ async function readImageFile(file: File): Promise<HTMLImageElement> {
 
 function drawToOffscreen(img: HTMLImageElement, targetW: number, targetH: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
   const canvas = document.createElement('canvas');
-  canvas.width = Math.max(400, Math.round(targetW || img.naturalWidth || 800));
-  canvas.height = Math.max(300, Math.round(targetH || img.naturalHeight || 600));
+  
+  // Performance optimization: limit maximum canvas size to prevent browser crashes
+  const MAX_CANVAS_SIZE = 2048; // Maximum dimension in pixels
+  const MAX_PIXELS = 2048 * 1536; // Maximum total pixels (~3MP)
+  
+  let canvasW = Math.max(400, Math.round(targetW || img.naturalWidth || 800));
+  let canvasH = Math.max(300, Math.round(targetH || img.naturalHeight || 600));
+  
+  // Enforce maximum size constraints
+  if (canvasW > MAX_CANVAS_SIZE || canvasH > MAX_CANVAS_SIZE) {
+    const scale = Math.min(MAX_CANVAS_SIZE / canvasW, MAX_CANVAS_SIZE / canvasH);
+    canvasW = Math.round(canvasW * scale);
+    canvasH = Math.round(canvasH * scale);
+  }
+  
+  // Enforce maximum pixel count
+  if (canvasW * canvasH > MAX_PIXELS) {
+    const scale = Math.sqrt(MAX_PIXELS / (canvasW * canvasH));
+    canvasW = Math.round(canvasW * scale);
+    canvasH = Math.round(canvasH * scale);
+  }
+  
+  canvas.width = canvasW;
+  canvas.height = canvasH;
   const ctx = canvas.getContext('2d')!;
 
   // Fit image preserving aspect into target canvas with letterboxing
@@ -307,7 +395,7 @@ export function buildDefaultThresholds() {
     water:   { hMin: Math.max(0, wh - 25), hMax: Math.min(360, wh + 25), sMin: 0.35, vMin: 0.25 },
     sand:    { hMin: Math.max(0, sh - 25), hMax: Math.min(360, sh + 25), sMin: 0.20, vMin: 0.30 },
     // light gray walls: low saturation, high value, and not green/water/sand hues
-    walls:   { sMax: 0.20, vMin: 0.65 }
+    walls:   { sMax: 0.30, vMin: 0.50 }
   } as const;
 }
 
@@ -342,8 +430,8 @@ export function segmentByColor(img: ImageData, fair: { x: number; y: number; w: 
       if (s <= t.walls.sMax && v >= t.walls.vMin && !isFair) {
         const isBlue = inHueRange(h, t.water.hMin, t.water.hMax) && s >= t.water.sMin;
         const isTan = inHueRange(h, t.sand.hMin, t.sand.hMax) && s >= t.sand.sMin;
-        // If saturation is extremely low (<0.08), accept as wall regardless of hue; otherwise avoid blue/tan.
-        if (s < 0.08 || (!isBlue && !isTan)) wallsMask[idx] = 1;
+        // If saturation is low (<0.15), accept as wall regardless of hue; otherwise avoid blue/tan.
+        if (s < 0.15 || (!isBlue && !isTan)) wallsMask[idx] = 1;
       }
     }
   }
@@ -482,6 +570,68 @@ export function detectCup(imgData: ImageData, fair: { x: number; y: number; w: n
 
   if (!best) return null;
   return { x: Math.round(best.cx), y: Math.round(best.cy), r: Math.round(Math.max(6, Math.min(16, best.r))) };
+}
+
+// Async contour tracing with periodic yielding to prevent UI blocking
+export async function traceContoursAsync(mask: Uint8Array, width: number, height: number, minPixels: number): Promise<Array<Array<{ x: number; y: number }>>> {
+  const visited = new Uint8Array(width * height);
+  const contours: Array<Array<{ x: number; y: number }>> = [];
+  const idx = (x: number, y: number) => y * width + x;
+  const isOn = (x: number, y: number) => x >= 0 && y >= 0 && x < width && y < height && mask[idx(x, y)] === 1;
+  const isEdge = (x: number, y: number) => isOn(x, y) && (
+    !isOn(x - 1, y) || !isOn(x + 1, y) || !isOn(x, y - 1) || !isOn(x, y + 1)
+  );
+
+  // 8-neighborhood directions clockwise starting from E
+  const dirs = [
+    { dx: 1, dy: 0 }, { dx: 1, dy: 1 }, { dx: 0, dy: 1 }, { dx: -1, dy: 1 },
+    { dx: -1, dy: 0 }, { dx: -1, dy: -1 }, { dx: 0, dy: -1 }, { dx: 1, dy: -1 }
+  ];
+
+  let processedPixels = 0;
+  const YIELD_INTERVAL = 10000; // Yield every 10k pixels processed
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      processedPixels++;
+      if (processedPixels % YIELD_INTERVAL === 0) {
+        await yieldToMain(); // Yield periodically to prevent UI blocking
+      }
+
+      const p = idx(x, y);
+      if (visited[p] || mask[p] !== 1 || !isEdge(x, y)) continue;
+
+      // Border following from (x, y)
+      let cx = x, cy = y;
+      let prevDir = 0; // previous direction index
+      const contour: Array<{ x: number; y: number }> = [];
+      let safety = width * height; // prevent infinite loops
+      while (safety-- > 0) {
+        contour.push({ x: cx, y: cy });
+        visited[idx(cx, cy)] = 1;
+        // find next neighbor starting from prevDir-2 (Moore neighborhood rule)
+        let found = false;
+        for (let k = 0; k < 8; k++) {
+          const dirIndex = (prevDir + 6 + k) % 8; // turn right relative to previous
+          const nx = cx + dirs[dirIndex].dx;
+          const ny = cy + dirs[dirIndex].dy;
+          if (isOn(nx, ny) && isEdge(nx, ny)) {
+            prevDir = dirIndex;
+            cx = nx; cy = ny; found = true; break;
+          }
+        }
+        if (!found) break;
+        if (cx === x && cy === y) {
+          // closed loop
+          break;
+        }
+      }
+      if (contour.length >= 4 && contour.length >= Math.sqrt(minPixels)) {
+        contours.push(contour);
+      }
+    }
+  }
+  return contours;
 }
 
 // Contour tracing (Moore-Neighbor) for binary mask (1 = foreground)

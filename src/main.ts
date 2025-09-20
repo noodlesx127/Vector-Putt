@@ -210,7 +210,7 @@ function showUiConfirm(message: string, title = 'Confirm'): Promise<boolean> {
 }
 
 // Import Review overlay: allows reviewing detected polys and optionally clearing categories.
-function showUiImportReview(init: {
+async function showUiImportReview(init: {
   imageData: ImageData;
   thresholds: any;
   fairway: { x: number; y: number; w: number; h: number };
@@ -218,7 +218,7 @@ function showUiImportReview(init: {
   canvas: { width: number; height: number };
   currentPolys: { wallsPoly: Array<{ points: number[] }>; sandPoly: Array<{ points: number[] }>; waterPoly: Array<{ points: number[] }> };
 }): Promise<{ thresholds: any; polys: { wallsPoly: Array<{ points: number[] }>; sandPoly: Array<{ points: number[] }>; waterPoly: Array<{ points: number[] }> } } | null> {
-  return new Promise((resolve) => {
+  return new Promise(async (resolve) => {
     // Seed overlay state and eagerly compute an initial preview so Accept works even if user never hits Recompute
     const state: any = {
       kind: 'importReview',
@@ -232,7 +232,7 @@ function showUiImportReview(init: {
     };
     try {
       if (!state.previewPolys && state.imageData && state.thresholds && state.fairway) {
-        state.previewPolys = computePolysFromThresholds(
+        state.previewPolys = await computePolysFromThresholds(
           state.imageData,
           state.fairway,
           state.thresholds,
@@ -598,7 +598,7 @@ function handleOverlayMouseDown(e: MouseEvent) {
             t.walls.vMin = clamp01(t.walls.vMin - dV);
             o.thresholds = t;
           };
-          const recompute = () => {
+          const recompute = async () => {
             try {
               const img: ImageData | undefined = o.imageData;
               if (!img) return;
@@ -607,7 +607,7 @@ function handleOverlayMouseDown(e: MouseEvent) {
               const cw = o.canvas?.width || img.width;
               const ch = o.canvas?.height || img.height;
               if (o.thresholds) {
-                o.previewPolys = computePolysFromThresholds(img, fair, o.thresholds, grid, cw, ch);
+                o.previewPolys = await computePolysFromThresholds(img, fair, o.thresholds, grid, cw, ch);
               }
               o.lastRecomputeAt = (typeof performance !== 'undefined') ? performance.now() : Date.now();
             } catch {}
@@ -615,9 +615,9 @@ function handleOverlayMouseDown(e: MouseEvent) {
           if (a === 'toggle_walls') { applyToggle('showWalls'); return; }
           if (a === 'toggle_sand') { applyToggle('showSand'); return; }
           if (a === 'toggle_water') { applyToggle('showWater'); return; }
-          if (a === 'looser') { nudgeThresholds(true); recompute(); return; }
-          if (a === 'stricter') { nudgeThresholds(false); recompute(); return; }
-          if (a === 'recompute') { recompute(); return; }
+          if (a === 'looser') { nudgeThresholds(true); recompute().catch(console.error); return; }
+          if (a === 'stricter') { nudgeThresholds(false); recompute().catch(console.error); return; }
+          if (a === 'recompute') { recompute().catch(console.error); return; }
           if (a === 'accept') {
             const polys0 = (o.previewPolys || o.currentPolys) || { wallsPoly: [], sandPoly: [], waterPoly: [] };
             // Honor visibility toggles: if a layer is hidden in the review, exclude it on Accept

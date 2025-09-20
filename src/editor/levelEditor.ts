@@ -66,7 +66,7 @@ export type EditorTool =
   | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'walls45' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'water45' | 'sand' | 'sandPoly' | 'sand45' | 'hill' | 'decoration' | 'measure';
 
 export type EditorAction =
-  | 'save' | 'saveAs' | 'load' | 'import' | 'importScreenshot' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'previewFillOnClose' | 'previewDashedNext' | 'alignmentGuides' | 'guideDetailsToggle' | 'rulersToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'chamfer' | 'angledCorridor' | 'courseCreator'
+  | 'save' | 'saveAs' | 'load' | 'import' | 'importScreenshot' | 'importAnnotate' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'previewFillOnClose' | 'previewDashedNext' | 'alignmentGuides' | 'guideDetailsToggle' | 'rulersToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'chamfer' | 'angledCorridor' | 'courseCreator'
   | 'alignLeft' | 'alignRight' | 'alignTop' | 'alignBottom' | 'alignCenterH' | 'alignCenterV' | 'distributeH' | 'distributeV';
 
 export type EditorMenuId = 'file' | 'edit' | 'view' | 'objects' | 'decorations' | 'tools';
@@ -150,6 +150,8 @@ export interface EditorEnv {
     canvas: { width: number; height: number };
     currentPolys: { wallsPoly: Array<{ points: number[] }>; sandPoly: Array<{ points: number[] }>; waterPoly: Array<{ points: number[] }> };
   }): Promise<{ thresholds: any; polys: { wallsPoly: Array<{ points: number[] }>; sandPoly: Array<{ points: number[] }>; waterPoly: Array<{ points: number[] }> } } | null>;
+  // Annotation overlay (optional)
+  showAnnotateScreenshot?(file: File, opts: any): Promise<any | null>;
   renderGlobalOverlays(): void;
   isOverlayActive?(): boolean;
   migrateSingleSlotIfNeeded?(): void;
@@ -1196,7 +1198,8 @@ class LevelEditorImpl implements LevelEditor {
         { label: 'Save As', item: { kind: 'action', action: 'saveAs' } },
         { label: 'Level Load', item: { kind: 'action', action: 'load' } },
         { label: 'Import (JSON)', item: { kind: 'action', action: 'import' } },
-        { label: 'Import from Screenshot…', item: { kind: 'action', action: 'importScreenshot' } },
+        { label: 'Import from Screenshot (Auto)…', item: { kind: 'action', action: 'importScreenshot' } },
+        { label: 'Import from Screenshot (Annotate)…', item: { kind: 'action', action: 'importAnnotate' } },
         { label: 'Export', item: { kind: 'action', action: 'export' } },
         { label: 'Delete', item: { kind: 'action', action: 'delete' } },
         { label: 'Back/Exit', item: { kind: 'action', action: 'back' }, separator: true }
@@ -2809,6 +2812,8 @@ class LevelEditorImpl implements LevelEditor {
               void this.importLevel();
             } else if (item.action === 'importScreenshot') {
               void this.importFromScreenshot();
+            } else if (item.action === 'importAnnotate') {
+              void this.importFromScreenshotAnnotate();
             } else if (item.action === 'export') {
               void this.exportLevel();
             } else if (item.action === 'metadata') {
@@ -4616,6 +4621,60 @@ class LevelEditorImpl implements LevelEditor {
       env.showToast('Click to set Tee');
       if (this.pendingCupConfirm) env.showToast('Then click to set Cup');
     } catch {}
+  }
+
+  async importFromScreenshotAnnotate(): Promise<void> {
+    if (!this.env) return;
+    const env = this.env;
+    
+    // File picker for screenshot
+    const file = await new Promise<File | null>((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = () => {
+        const f = input.files?.[0];
+        resolve(f || null);
+      };
+      input.click();
+    });
+    
+    if (!file) return;
+    
+    try {
+      env.showToast('Opening annotation overlay...');
+      
+      // Use annotation overlay if available
+      if (typeof env.showAnnotateScreenshot === 'function') {
+        const gridSize = (() => { try { return env.getGridSize(); } catch { return 20; } })();
+        const level = await env.showAnnotateScreenshot(file, {
+          targetWidth: 800,
+          targetHeight: 600,
+          gridSize
+        });
+        
+        if (level) {
+          // Apply fixups and import
+          const fixed = applyLevelDataFixups(level);
+          if (!fixed.meta.authorId) fixed.meta.authorId = env.getUserId();
+          if (!fixed.meta.authorName) fixed.meta.authorName = this.resolveDisplayName(env);
+          fixed.meta.modified = new Date().toISOString();
+          if (!fixed.meta.created) fixed.meta.created = fixed.meta.modified;
+          
+          this.editorCurrentSavedId = null; // new imported draft
+          this.applyLevelToEnv(fixed, env);
+          
+          env.showToast('Annotated level imported successfully!');
+        } else {
+          env.showToast('Annotation cancelled');
+        }
+      } else {
+        env.showToast('Annotation overlay not available');
+      }
+    } catch (e) {
+      console.error('importFromScreenshotAnnotate failed:', e);
+      env.showToast('Import failed');
+    }
   }
 
   async exportLevel(): Promise<void> {

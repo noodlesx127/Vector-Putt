@@ -150,7 +150,121 @@ function yieldToMain(): Promise<void> {
   });
 }
 
-// Public entry point with progressive processing
+// Annotation data structure for manual tracing
+export interface AnnotationData {
+  walls: Array<{ points: Array<{ x: number; y: number }> }>;
+  water: Array<{ points: Array<{ x: number; y: number }> }>;
+  sand: Array<{ points: Array<{ x: number; y: number }> }>;
+  hills: Array<{ points: Array<{ x: number; y: number }>; direction?: number }>;
+  posts: Array<{ x: number; y: number; r: number }>;
+  fairway?: { points: Array<{ x: number; y: number }> };
+  tee?: { x: number; y: number; r: number };
+  cup?: { x: number; y: number; r: number };
+}
+
+// New entry point for manual annotation workflow
+export async function importLevelFromAnnotations(file: File, annotations: AnnotationData, opts: ScreenshotImportOptions): Promise<LevelData | null> {
+  try {
+    console.log('Starting annotation-based import...');
+    
+    const img = await readImageFile(file);
+    const { canvas, ctx } = drawToOffscreen(img, opts.targetWidth, opts.targetHeight);
+    
+    // Convert user annotations to level data
+    const gridSize = Math.max(2, Math.min(100, Math.round(opts.gridSize || 20)));
+    
+    // Process annotations into polygons
+    const wallsPoly = annotations.walls.map(wall => ({
+      points: flattenPoints(snapPolygonToGrid(wall.points, gridSize))
+    }));
+    
+    const waterPoly = annotations.water.map(water => ({
+      points: flattenPoints(snapPolygonToGrid(water.points, gridSize))
+    }));
+    
+    const sandPoly = annotations.sand.map(sand => ({
+      points: flattenPoints(snapPolygonToGrid(sand.points, gridSize))
+    }));
+    
+    // Determine fairway bounds from annotation or fallback
+    const fairway = annotations.fairway 
+      ? {
+          x: Math.min(...annotations.fairway.points.map(p => p.x)),
+          y: Math.min(...annotations.fairway.points.map(p => p.y)),
+          w: Math.max(...annotations.fairway.points.map(p => p.x)) - Math.min(...annotations.fairway.points.map(p => p.x)),
+          h: Math.max(...annotations.fairway.points.map(p => p.y)) - Math.min(...annotations.fairway.points.map(p => p.y))
+        }
+      : { x: 0, y: 0, w: canvas.width, h: canvas.height };
+    
+    // Use annotated tee/cup or fallback positions
+    const tee = annotations.tee || {
+      x: fairway.x + Math.max(20, Math.round(fairway.w * 0.08)),
+      y: fairway.y + Math.round(fairway.h / 2),
+      r: 8
+    };
+    
+    const cup = annotations.cup || {
+      x: fairway.x + fairway.w - Math.max(20, Math.round(fairway.w * 0.08)),
+      y: fairway.y + Math.round(fairway.h / 2),
+      r: 12
+    };
+    
+    // Convert hills to level format
+    const hills = annotations.hills.map(hill => ({
+      points: flattenPoints(snapPolygonToGrid(hill.points, gridSize)),
+      direction: hill.direction || 0
+    }));
+    
+    // Convert posts to level format
+    const posts = annotations.posts.map(post => ({
+      x: Math.round(post.x),
+      y: Math.round(post.y),
+      r: Math.max(4, Math.min(12, Math.round(post.r || 6)))
+    }));
+    
+    // Compose LevelData
+    const level: LevelData = {
+      canvas: { width: canvas.width, height: canvas.height },
+      course: { index: 1, total: 1, title: 'Annotated Level' },
+      par: 3,
+      tee: { x: Math.round(tee.x), y: Math.round(tee.y), r: tee.r },
+      cup: { x: Math.round(cup.x), y: Math.round(cup.y), r: cup.r },
+      walls: [],
+      wallsPoly,
+      posts,
+      bridges: [],
+      water: [],
+      waterPoly,
+      sand: [],
+      sandPoly,
+      hills,
+      decorations: [],
+      meta: {
+        title: 'Annotated Level',
+        description: 'Level created from manual annotations',
+        tags: ['imported', 'annotated'],
+        importInfo: {
+          annotated: true,
+          elementsCount: {
+            walls: wallsPoly.length,
+            water: waterPoly.length,
+            sand: sandPoly.length,
+            hills: hills.length,
+            posts: posts.length
+          }
+        }
+      }
+    } as any;
+    
+    console.log('Annotation-based import completed successfully');
+    return level;
+  } catch (e) {
+    console.error('importLevelFromAnnotations: failed', e);
+    return null;
+  }
+}
+
+// Public entry point with progressive processing (legacy auto-detection)
 export async function importLevelFromScreenshot(file: File, opts: ScreenshotImportOptions): Promise<LevelData | null> {
   try {
     console.log('Starting screenshot import...');

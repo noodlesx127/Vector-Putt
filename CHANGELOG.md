@@ -33,6 +33,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Admin Game Settings • Par Heuristics: added sliders for Baseline Shot (px), Turn Penalty, Hill Bump, and Bank Weight. Values persist via Firebase and are consumed by the editor’s Suggest Par. (`src/main.ts`, `src/firebase/database.ts`, `src/editor/levelEditor.ts`)
  - Level System • Cup position suggestions integration: File → “Suggest Cup Positions” proposes ranked markers; clicking applies cup, runs lint, and prompts to apply a par suggestion using admin-tuned coefficients. (`src/editor/levelHeuristics.ts`, `src/editor/levelEditor.ts`)
 
+### Added
+- Screenshot Importer: Complete manual annotation system for precise level creation. Added "Import from Screenshot (Annotate)..." menu option that opens an interactive overlay where users can manually trace level elements directly on screenshots. Features include:
+  - 8 annotation tools: Walls, Water, Sand, Hills, Posts, Fairway, Tee, Cup
+  - Real-time visual feedback with color-coded overlays
+  - Polygon drawing for areas (click to add points, Enter to complete, Esc to cancel)
+  - Point placement for objects (single click for posts, tee, cup)
+  - Live annotation counts and completion status in tool palette
+  - Clear All functionality to reset annotations
+  - Contextual instructions that update based on current tool and drawing state
+  - Full keyboard support (Enter/Esc) and mouse interaction
+  This provides much higher accuracy than automatic detection and eliminates browser performance issues. (`src/editor/importScreenshot.ts`, `src/editor/levelEditor.ts`, `src/main.ts`)
+
 ### Fixed
 - Screenshot Importer: Fixed large filled wall polygons being created instead of boundary walls. Added area-based filter to remove wall polygons that cover more than 25% of fairway area, preventing misclassified large regions from being imported as walls. (`src/editor/importScreenshot.ts`)
 - Screenshot Importer: Major performance optimizations to prevent browser crashes with large screenshots. Added intelligent image size limits (max 2048px dimension, ~3MP total), implemented progressive processing with `requestAnimationFrame` yielding, created async contour tracing with periodic UI yielding (every 10k pixels), and added console logging for progress feedback. These changes prevent UI blocking and browser tab crashes while maintaining import quality. (`src/editor/importScreenshot.ts`, `src/main.ts`)

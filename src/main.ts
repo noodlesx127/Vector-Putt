@@ -1,7 +1,7 @@
  import CHANGELOG_RAW from '../CHANGELOG.md?raw';
 import firebaseManager from './firebase';
 import { levelEditor } from './editor/levelEditor';
-import { computePolysFromThresholds, buildDefaultThresholds } from './editor/importScreenshot';
+import { computePolysFromThresholds, buildDefaultThresholds, importLevelFromAnnotations, AnnotationData } from './editor/importScreenshot';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -108,7 +108,7 @@ function newLevelId(): string {
 // ------------------------------
 // In-Game Modal Overlay System
 // ------------------------------
-type UiOverlayKind = 'none' | 'toast' | 'confirm' | 'prompt' | 'list' | 'dndList' | 'courseEditor' | 'courseCreator' | 'metadata' | 'loadLevels' | 'importReview';
+type UiOverlayKind = 'none' | 'toast' | 'confirm' | 'prompt' | 'list' | 'dndList' | 'courseEditor' | 'courseCreator' | 'metadata' | 'loadLevels' | 'importReview' | 'annotateScreenshot';
 type UiToast = { id: number; message: string; expiresAt: number };
 type UiListItem = { id?: string; label: string; value?: any; disabled?: boolean };
 type UiOverlayState = {
@@ -190,6 +190,14 @@ type UiOverlayState = {
   metaDescription?: string;
   metaTags?: string; // comma-separated while editing
   metaFocus?: 'title' | 'author' | 'par' | 'description' | 'tags' | 'none';
+  // Annotation overlay
+  annotationImage?: HTMLImageElement;
+  annotationCanvas?: HTMLCanvasElement;
+  annotationData?: AnnotationData;
+  currentTool?: 'walls' | 'water' | 'sand' | 'hills' | 'posts' | 'fairway' | 'tee' | 'cup';
+  isDrawing?: boolean;
+  currentPath?: Array<{ x: number; y: number }>;
+  undoStack?: AnnotationData[];
 };
 
 let uiOverlay: UiOverlayState = { kind: 'none' };
@@ -206,6 +214,79 @@ function showUiToast(message: string, durationMs = 2200): void {
 function showUiConfirm(message: string, title = 'Confirm'): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     uiOverlay = { kind: 'confirm', title, message, resolve, cancelable: true };
+  });
+}
+
+// Annotation overlay: allows manual tracing of level elements
+async function showUiAnnotateScreenshot(file: File, opts: any): Promise<any | null> {
+  return new Promise(async (resolve) => {
+    try {
+      // Load and prepare image
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        
+        // Create annotation canvas
+        const canvas = document.createElement('canvas');
+        const maxSize = Math.min(window.innerWidth * 0.8, window.innerHeight * 0.8);
+        const scale = Math.min(maxSize / img.width, maxSize / img.height);
+        
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        // Initialize annotation state
+        const annotationData: AnnotationData = {
+          walls: [],
+          water: [],
+          sand: [],
+          hills: [],
+          posts: [],
+          fairway: undefined,
+          tee: undefined,
+          cup: undefined
+        };
+        
+        uiOverlay = {
+          kind: 'annotateScreenshot',
+          title: 'Annotate Screenshot',
+          annotationImage: img,
+          annotationCanvas: canvas,
+          annotationData,
+          currentTool: 'walls',
+          isDrawing: false,
+          currentPath: [],
+          undoStack: [],
+          resolve: (result) => {
+            if (result) {
+              // Convert annotations to level using new import function
+              importLevelFromAnnotations(file, result, opts).then(level => {
+                resolve(level);
+              }).catch(err => {
+                console.error('Failed to import from annotations:', err);
+                resolve(null);
+              });
+            } else {
+              resolve(null);
+            }
+          }
+        } as UiOverlayState;
+      };
+      
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(null);
+      };
+      
+      img.src = url;
+    } catch (e) {
+      console.error('Failed to show annotation overlay:', e);
+      resolve(null);
+    }
   });
 }
 
@@ -340,6 +421,49 @@ function handleOverlayKey(e: KeyboardEvent) {
     if (e.code === 'Backspace') {
       const t = (uiOverlay.inputText ?? '');
       uiOverlay.inputText = t.slice(0, Math.max(0, t.length - 1));
+      return;
+    }
+  } else if (k === 'annotateScreenshot') {
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+      // Complete current polygon
+      if (uiOverlay.isDrawing && uiOverlay.currentPath && uiOverlay.currentPath.length >= 3) {
+        const tool = uiOverlay.currentTool || 'walls';
+        const data = uiOverlay.annotationData;
+        if (data) {
+          const polygon = { points: [...uiOverlay.currentPath] };
+          
+          if (tool === 'walls') {
+            data.walls.push(polygon);
+          } else if (tool === 'water') {
+            data.water.push(polygon);
+          } else if (tool === 'sand') {
+            data.sand.push(polygon);
+          } else if (tool === 'hills') {
+            data.hills.push({ ...polygon, direction: 0 });
+          } else if (tool === 'fairway') {
+            data.fairway = polygon;
+          }
+          
+          console.log(`Completed ${tool} polygon with ${uiOverlay.currentPath.length} points`);
+        }
+        
+        // Reset drawing state
+        uiOverlay.isDrawing = false;
+        uiOverlay.currentPath = [];
+      }
+      return;
+    }
+    if (e.code === 'Escape') {
+      if (uiOverlay.isDrawing) {
+        // Cancel current polygon
+        console.log('Cancelled current polygon');
+        uiOverlay.isDrawing = false;
+        uiOverlay.currentPath = [];
+      } else {
+        // Cancel entire annotation
+        uiOverlay.resolve?.(null);
+        uiOverlay = { kind: 'none' };
+      }
       return;
     }
   } else if (k === 'list') {
@@ -532,7 +656,7 @@ window.addEventListener('keypress', swallowOverlayKey as any, true);
 document.addEventListener('keypress', swallowOverlayKey as any, true);
 try { canvas.addEventListener('keypress', swallowOverlayKey as any, true); } catch {}
 
-type OverlayHotspot = { kind: 'btn' | 'listItem' | 'input' | 'drag' | 'levelItem'; index?: number; action?: string; id?: string; x: number; y: number; w: number; h: number };
+type OverlayHotspot = { kind: 'btn' | 'listItem' | 'input' | 'drag' | 'levelItem' | 'canvas'; index?: number; action?: string; id?: string; x: number; y: number; w: number; h: number };
 let overlayHotspots: OverlayHotspot[] = [];
 
 // Course Select hotspots
@@ -635,6 +759,99 @@ function handleOverlayMouseDown(e: MouseEvent) {
             uiOverlay = { kind: 'none' } as any;
             return;
           }
+        }
+        return;
+      }
+      if (uiOverlay.kind === 'annotateScreenshot') {
+        if (hs.kind === 'btn') {
+          const action = hs.action || '';
+          if (action.startsWith('tool_')) {
+            // Tool selection
+            const tool = action.replace('tool_', '') as any;
+            uiOverlay.currentTool = tool;
+            return;
+          }
+          if (action === 'clear_all') {
+            // Clear all annotations
+            if (uiOverlay.annotationData) {
+              uiOverlay.annotationData = {
+                walls: [], water: [], sand: [], hills: [], posts: [],
+                fairway: undefined, tee: undefined, cup: undefined
+              };
+            }
+            // Also cancel any current drawing
+            uiOverlay.isDrawing = false;
+            uiOverlay.currentPath = [];
+            console.log('Cleared all annotations');
+            return;
+          }
+          if (action === 'accept') {
+            // Accept annotations and create level
+            const annotationData = uiOverlay.annotationData || {
+              walls: [], water: [], sand: [], hills: [], posts: [],
+              fairway: undefined, tee: undefined, cup: undefined
+            };
+            uiOverlay.resolve?.(annotationData);
+            uiOverlay = { kind: 'none' };
+            return;
+          }
+          if (action === 'cancel') {
+            // Cancel annotation
+            uiOverlay.resolve?.(null);
+            uiOverlay = { kind: 'none' };
+            return;
+          }
+        }
+        if (hs.kind === 'canvas') {
+          // Canvas drawing functionality
+          const tool = uiOverlay.currentTool || 'walls';
+          const canvasInfo = (uiOverlay as any).canvasInfo;
+          if (!canvasInfo) return;
+          
+          // Convert screen coordinates to image coordinates
+          const p = worldFromEvent(e);
+          const canvasX = (p.x - canvasInfo.x) / canvasInfo.scale;
+          const canvasY = (p.y - canvasInfo.y) / canvasInfo.scale;
+          
+          // Ensure we have annotation data
+          if (!uiOverlay.annotationData) {
+            uiOverlay.annotationData = {
+              walls: [], water: [], sand: [], hills: [], posts: [],
+              fairway: undefined, tee: undefined, cup: undefined
+            };
+          }
+          
+          const data = uiOverlay.annotationData;
+          
+          // Handle different tool types
+          if (tool === 'tee') {
+            // Single click to place tee
+            data.tee = { x: canvasX, y: canvasY, r: 8 };
+            console.log(`Placed tee at (${Math.round(canvasX)}, ${Math.round(canvasY)})`);
+          } else if (tool === 'cup') {
+            // Single click to place cup
+            data.cup = { x: canvasX, y: canvasY, r: 12 };
+            console.log(`Placed cup at (${Math.round(canvasX)}, ${Math.round(canvasY)})`);
+          } else if (tool === 'posts') {
+            // Single click to place post
+            data.posts.push({ x: canvasX, y: canvasY, r: 6 });
+            console.log(`Added post at (${Math.round(canvasX)}, ${Math.round(canvasY)})`);
+          } else {
+            // Polygon tools (walls, water, sand, hills, fairway)
+            if (!uiOverlay.isDrawing) {
+              // Start new polygon
+              uiOverlay.isDrawing = true;
+              uiOverlay.currentPath = [{ x: canvasX, y: canvasY }];
+              console.log(`Started drawing ${tool} polygon`);
+            } else {
+              // Add point to current polygon
+              if (uiOverlay.currentPath) {
+                uiOverlay.currentPath.push({ x: canvasX, y: canvasY });
+                console.log(`Added point to ${tool} polygon: (${Math.round(canvasX)}, ${Math.round(canvasY)})`);
+              }
+            }
+          }
+          return;
         }
         return;
       }
@@ -3066,6 +3283,7 @@ canvas.addEventListener('mousedown', (e) => {
               return res ? res.map(it => ({ label: it.label, value: (it as any).value })) : null;
             },
             showImportReview: (init: any) => showUiImportReview(init),
+            showAnnotateScreenshot: (file: File, opts: any) => showUiAnnotateScreenshot(file, opts),
             showCourseEditor: (courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] }) => showUiCourseEditor(courseData),
             showUiCourseCreator: (courseList: Array<{ id: string; title: string; levelIds: string[]; levelTitles: string[] }>) => showUiCourseCreator(courseList),
             getGlobalState: () => ({
@@ -3294,6 +3512,7 @@ canvas.addEventListener('mousedown', (e) => {
       },
       showLoadLevels: (levels: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>) => showUiLoadLevels(levels),
       showImportReview: (init: any) => showUiImportReview(init),
+      showAnnotateScreenshot: (file: File, opts: any) => showUiAnnotateScreenshot(file, opts),
       showCourseEditor: (courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] }) => showUiCourseEditor(courseData),
       showUiCourseCreator: (courseList: Array<{ id: string; title: string; levelIds: string[]; levelTitles: string[] }>) => showUiCourseCreator(courseList),
       getGlobalState: () => ({
@@ -3743,6 +3962,7 @@ canvas.addEventListener('mousemove', (e) => {
       },
       showLoadLevels: (levels: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>) => showUiLoadLevels(levels),
       showImportReview: (init: any) => showUiImportReview(init),
+      showAnnotateScreenshot: (file: File, opts: any) => showUiAnnotateScreenshot(file, opts),
       showCourseEditor: (courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] }) => showUiCourseEditor(courseData),
       showUiCourseCreator: (courseList: Array<{ id: string; title: string; levelIds: string[]; levelTitles: string[] }>) => showUiCourseCreator(courseList),
       getGlobalState: () => ({
@@ -4002,6 +4222,7 @@ canvas.addEventListener('mouseup', (e) => {
       },
       showLoadLevels: (levels: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>) => showUiLoadLevels(levels),
       showImportReview: (init: any) => showUiImportReview(init),
+      showAnnotateScreenshot: (file: File, opts: any) => showUiAnnotateScreenshot(file, opts),
       showCourseEditor: (courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] }) => showUiCourseEditor(courseData),
       showUiCourseCreator: (courseList: Array<{ id: string; title: string; levelIds: string[]; levelTitles: string[] }>) => showUiCourseCreator(courseList),
       getGlobalState: () => ({
@@ -5288,6 +5509,7 @@ function draw() {
       showPrompt: (msg: string, def?: string, title?: string) => showUiPrompt(msg, def, title),
       showMetadataForm: (init: any, title?: string) => showUiMetadataForm(init, title),
       showImportReview: (init: any) => showUiImportReview(init),
+      showAnnotateScreenshot: (file: File, opts: any) => showUiAnnotateScreenshot(file, opts),
       showList: (title: string, items: Array<{label: string; value: any}>, startIndex?: number) => showUiList(title, items, startIndex),
       getGlobalState: () => ({
         WIDTH,
@@ -7173,6 +7395,10 @@ function renderGlobalOverlays(): void {
     if (uiOverlay.kind === 'loadLevels') { panelW = standardW; panelH = standardH; }
     if (uiOverlay.kind === 'metadata') { panelW = standardW; panelH = standardH; }
     if (uiOverlay.kind === 'importReview') { panelW = standardW; panelH = standardH; }
+    if (uiOverlay.kind === 'annotateScreenshot') { 
+      panelW = Math.min(WIDTH - 40, 1200); 
+      panelH = Math.min(HEIGHT - 40, 800); 
+    }
     if (uiOverlay.kind === 'dndList') {
       const items = uiOverlay.listItems ?? [];
       const visible = Math.min(items.length, 10);
@@ -8163,6 +8389,307 @@ function renderGlobalOverlays(): void {
       ctx.font = '14px system-ui, sans-serif';
       ctx.fillText('Cancel', cancelX + cancelBtnW / 2, cancelBtnY + buttonH / 2);
       overlayHotspots.push({ kind: 'btn', action: 'cancel', x: cancelX, y: cancelBtnY, w: cancelBtnW, h: buttonH });
+    } else if (uiOverlay.kind === 'annotateScreenshot') {
+      // Annotation overlay for manual screenshot tracing
+      const pad = 20;
+      
+      // Tool palette on the left
+      const toolsW = 150;
+      const toolsX = px + pad;
+      const toolsY = py + titleH + pad;
+      const toolsH = panelH - titleH - pad * 3 - 40; // Leave space for buttons
+      
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.fillRect(toolsX, toolsY, toolsW, toolsH);
+      ctx.strokeStyle = '#cfd2cf';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(toolsX + 0.5, toolsY + 0.5, toolsW - 1, toolsH - 1);
+      
+      // Tool buttons with counts
+      const data = uiOverlay.annotationData;
+      const tools = [
+        { id: 'walls', label: `🧱 Walls (${data?.walls?.length || 0})`, color: '#888888' },
+        { id: 'water', label: `💧 Water (${data?.water?.length || 0})`, color: '#4169E1' },
+        { id: 'sand', label: `🏖️ Sand (${data?.sand?.length || 0})`, color: '#F4A460' },
+        { id: 'hills', label: `⛰️ Hills (${data?.hills?.length || 0})`, color: '#8B4513' },
+        { id: 'posts', label: `📍 Posts (${data?.posts?.length || 0})`, color: '#FFD700' },
+        { id: 'fairway', label: `🟢 Fairway ${data?.fairway ? '✓' : ''}`, color: '#228B22' },
+        { id: 'tee', label: `🏌️ Tee ${data?.tee ? '✓' : ''}`, color: '#00FF00' },
+        { id: 'cup', label: `🕳️ Cup ${data?.cup ? '✓' : ''}`, color: '#000000' }
+      ];
+      
+      let toolY = toolsY + 10;
+      const toolH = 30;
+      const currentTool = uiOverlay.currentTool || 'walls';
+      
+      for (const tool of tools) {
+        const isSelected = currentTool === tool.id;
+        ctx.fillStyle = isSelected ? 'rgba(100,150,200,0.4)' : 'rgba(255,255,255,0.1)';
+        ctx.fillRect(toolsX + 5, toolY, toolsW - 10, toolH);
+        ctx.strokeStyle = isSelected ? '#64a8c8' : '#666666';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(toolsX + 5.5, toolY + 0.5, toolsW - 11, toolH - 1);
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '12px system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(tool.label, toolsX + 10, toolY + toolH / 2);
+        
+        overlayHotspots.push({ kind: 'btn', action: `tool_${tool.id}`, x: toolsX + 5, y: toolY, w: toolsW - 10, h: toolH });
+        toolY += toolH + 5;
+      }
+      
+      // Clear/Undo button
+      toolY += 10; // Add some spacing
+      const clearH = 25;
+      ctx.fillStyle = 'rgba(255,100,100,0.3)';
+      ctx.fillRect(toolsX + 5, toolY, toolsW - 10, clearH);
+      ctx.strokeStyle = '#ff6464';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(toolsX + 5.5, toolY + 0.5, toolsW - 11, clearH - 1);
+      
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '11px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🗑️ Clear All', toolsX + toolsW / 2, toolY + clearH / 2);
+      
+      overlayHotspots.push({ kind: 'btn', action: 'clear_all', x: toolsX + 5, y: toolY, w: toolsW - 10, h: clearH });
+      
+      // Canvas area on the right
+      const canvasX = toolsX + toolsW + pad;
+      const canvasY = toolsY;
+      const canvasW = panelW - toolsW - pad * 3;
+      const canvasH = toolsH;
+      
+      // Draw the screenshot image if available
+      if (uiOverlay.annotationCanvas) {
+        const canvas = uiOverlay.annotationCanvas;
+        const scale = Math.min(canvasW / canvas.width, canvasH / canvas.height);
+        const drawW = canvas.width * scale;
+        const drawH = canvas.height * scale;
+        const drawX = canvasX + (canvasW - drawW) / 2;
+        const drawY = canvasY + (canvasH - drawH) / 2;
+        
+        ctx.drawImage(canvas, drawX, drawY, drawW, drawH);
+        
+        // Store canvas info for mouse handling
+        (uiOverlay as any).canvasInfo = { x: drawX, y: drawY, w: drawW, h: drawH, scale };
+        
+        // Draw annotations on top of the image
+        if (uiOverlay.annotationData) {
+          const data = uiOverlay.annotationData;
+          const scale = (uiOverlay as any).canvasInfo.scale;
+          
+          // Helper function to convert image coordinates to screen coordinates
+          const toScreen = (x: number, y: number) => ({
+            x: drawX + x * scale,
+            y: drawY + y * scale
+          });
+          
+          // Draw completed polygons
+          const drawPolygon = (points: Array<{ x: number; y: number }>, color: string, alpha: number = 0.3) => {
+            if (points.length < 2) return;
+            
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = color;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            
+            ctx.beginPath();
+            const first = toScreen(points[0].x, points[0].y);
+            ctx.moveTo(first.x, first.y);
+            
+            for (let i = 1; i < points.length; i++) {
+              const p = toScreen(points[i].x, points[i].y);
+              ctx.lineTo(p.x, p.y);
+            }
+            
+            if (points.length >= 3) {
+              ctx.closePath();
+              ctx.fill();
+            }
+            ctx.stroke();
+            ctx.restore();
+          };
+          
+          // Draw walls (gray)
+          for (const wall of data.walls) {
+            drawPolygon(wall.points, '#888888', 0.4);
+          }
+          
+          // Draw water (blue)
+          for (const water of data.water) {
+            drawPolygon(water.points, '#4169E1', 0.4);
+          }
+          
+          // Draw sand (tan)
+          for (const sand of data.sand) {
+            drawPolygon(sand.points, '#F4A460', 0.4);
+          }
+          
+          // Draw hills (brown)
+          for (const hill of data.hills) {
+            drawPolygon(hill.points, '#8B4513', 0.4);
+          }
+          
+          // Draw fairway (green)
+          if (data.fairway) {
+            drawPolygon(data.fairway.points, '#228B22', 0.2);
+          }
+          
+          // Draw posts (yellow circles)
+          ctx.fillStyle = '#FFD700';
+          ctx.strokeStyle = '#FFD700';
+          ctx.lineWidth = 2;
+          for (const post of data.posts) {
+            const p = toScreen(post.x, post.y);
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, post.r * scale, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+          }
+          
+          // Draw tee (bright green circle)
+          if (data.tee) {
+            const p = toScreen(data.tee.x, data.tee.y);
+            ctx.fillStyle = '#00FF00';
+            ctx.strokeStyle = '#00FF00';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, data.tee.r * scale, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+          }
+          
+          // Draw cup (black circle)
+          if (data.cup) {
+            const p = toScreen(data.cup.x, data.cup.y);
+            ctx.fillStyle = '#000000';
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, data.cup.r * scale, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+          }
+          
+          // Draw current path being drawn
+          if (uiOverlay.isDrawing && uiOverlay.currentPath && uiOverlay.currentPath.length > 0) {
+            const currentTool = uiOverlay.currentTool || 'walls';
+            const toolColors: Record<string, string> = {
+              walls: '#888888',
+              water: '#4169E1',
+              sand: '#F4A460',
+              hills: '#8B4513',
+              fairway: '#228B22'
+            };
+            
+            const color = toolColors[currentTool] || '#888888';
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
+            ctx.setLineDash([5, 5]); // Dashed line for current path
+            
+            ctx.beginPath();
+            const first = toScreen(uiOverlay.currentPath[0].x, uiOverlay.currentPath[0].y);
+            ctx.moveTo(first.x, first.y);
+            
+            for (let i = 1; i < uiOverlay.currentPath.length; i++) {
+              const p = toScreen(uiOverlay.currentPath[i].x, uiOverlay.currentPath[i].y);
+              ctx.lineTo(p.x, p.y);
+            }
+            ctx.stroke();
+            ctx.setLineDash([]); // Reset line dash
+            
+            // Draw points
+            ctx.fillStyle = color;
+            for (const point of uiOverlay.currentPath) {
+              const p = toScreen(point.x, point.y);
+              ctx.beginPath();
+              ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+        }
+        
+        // Canvas border
+        ctx.strokeStyle = '#cfd2cf';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(drawX - 1, drawY - 1, drawW + 2, drawH + 2);
+        
+        // Add canvas as hotspot for drawing
+        overlayHotspots.push({ kind: 'canvas', x: drawX, y: drawY, w: drawW, h: drawH });
+      } else {
+        // Placeholder
+        ctx.fillStyle = 'rgba(100,100,100,0.3)';
+        ctx.fillRect(canvasX, canvasY, canvasW, canvasH);
+        ctx.strokeStyle = '#666666';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(canvasX + 0.5, canvasY + 0.5, canvasW - 1, canvasH - 1);
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '16px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('Loading image...', canvasX + canvasW / 2, canvasY + canvasH / 2);
+      }
+      
+      // Instructions
+      ctx.fillStyle = '#aaaaaa';
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      const instrY = py + panelH - 75;
+      
+      const selectedTool = uiOverlay.currentTool || 'walls';
+      const isDrawing = uiOverlay.isDrawing;
+      
+      if (isDrawing) {
+        ctx.fillText(`Drawing ${selectedTool} polygon... Click to add points, Enter to complete, Esc to cancel`, px + pad, instrY);
+        const pointCount = uiOverlay.currentPath?.length || 0;
+        ctx.fillText(`Current polygon: ${pointCount} points (minimum 3 needed to complete)`, px + pad, instrY + 15);
+      } else {
+        if (selectedTool === 'tee' || selectedTool === 'cup' || selectedTool === 'posts') {
+          ctx.fillText(`${selectedTool.toUpperCase()} tool: Click once on the image to place`, px + pad, instrY);
+        } else {
+          ctx.fillText(`${selectedTool.toUpperCase()} tool: Click to start drawing polygon, Enter to complete, Esc to cancel`, px + pad, instrY);
+        }
+        ctx.fillText('Select different tools from the left panel • Accept when done • Esc to cancel', px + pad, instrY + 15);
+      }
+      
+      // Bottom buttons
+      const buttonY = py + panelH - 35;
+      const buttonH = 25;
+      const buttonGap = 10;
+      
+      // Accept button
+      const acceptW = 80;
+      const acceptX = px + panelW - pad - acceptW - buttonGap - 80; // Leave space for Cancel
+      ctx.fillStyle = 'rgba(0,128,0,0.3)';
+      ctx.fillRect(acceptX, buttonY, acceptW, buttonH);
+      ctx.strokeStyle = '#008000';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(acceptX + 0.5, buttonY + 0.5, acceptW - 1, buttonH - 1);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '13px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Accept', acceptX + acceptW / 2, buttonY + buttonH / 2);
+      overlayHotspots.push({ kind: 'btn', action: 'accept', x: acceptX, y: buttonY, w: acceptW, h: buttonH });
+      
+      // Cancel button
+      const cancelW = 80;
+      const cancelX = px + panelW - pad - cancelW;
+      ctx.fillStyle = 'rgba(128,0,0,0.3)';
+      ctx.fillRect(cancelX, buttonY, cancelW, buttonH);
+      ctx.strokeStyle = '#800000';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(cancelX + 0.5, buttonY + 0.5, cancelW - 1, buttonH - 1);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('Cancel', cancelX + cancelW / 2, buttonY + buttonH / 2);
+      overlayHotspots.push({ kind: 'btn', action: 'cancel', x: cancelX, y: buttonY, w: cancelW, h: buttonH });
     }
   }
 }

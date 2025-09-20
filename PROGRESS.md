@@ -5,6 +5,7 @@
    - [x] Import Review UX: Accept now honors layer toggles (Walls/Sand/Water). If Sand is off in the preview, it will not be applied. (`src/main.ts`)
    - [x] **2025-09-19**: Fixed wall detection failure by relaxing thresholds (saturation ≤30%, brightness ≥50%), reducing minimum pixel threshold, and relaxing green interior filter (≥80% vs ≥50%). (`src/editor/importScreenshot.ts`)
    - [x] **2025-09-19**: Major performance optimizations to prevent browser crashes: intelligent image size limits (max 2048px, ~3MP), progressive processing with requestAnimationFrame yielding, async contour tracing with periodic UI yielding, and console progress logging. (`src/editor/importScreenshot.ts`, `src/main.ts`)
+   - [x] **2025-09-19**: Fixed large filled wall polygons by adding area-based filter to remove wall polygons covering >25% of fairway area, preventing misclassified regions from being imported as walls. (`src/editor/importScreenshot.ts`)
    - [ ] Further guardrails: Debounce Recompute for rapid threshold adjustments.
 
  * This file tracks current focus, next steps, decisions, and open questions. Keep it short and living. Completed items have been moved to `COMPLETED.md`. Always follow the format of this file.

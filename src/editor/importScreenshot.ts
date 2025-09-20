@@ -108,6 +108,17 @@ export async function computePolysFromThresholds(
   let wallsPoly = await toWallPolys(masksWalls.walls, wallImg.width, wallImg.height, wallRect.x, wallRect.y);
   // Drop the outer perimeter wall polygon that spans the entire fairway bbox (we don't support holes in polys)
   wallsPoly = wallsPoly.filter((p: { points: number[] }) => !isPerimeterPoly(p.points, fairway));
+  
+  // Remove large filled areas that are likely misclassified fairway regions
+  const fairwayAreaCompute = Math.max(1, fairway.w * fairway.h);
+  const isLargeFillCompute = (poly: { points: number[] }) => {
+    const polyArea = polygonArea(poly.points);
+    const areaFrac = polyArea / fairwayAreaCompute;
+    // If polygon covers more than 25% of fairway area, it's likely a misclassified fill
+    return areaFrac > 0.25;
+  };
+  wallsPoly = wallsPoly.filter((p: { points: number[] }) => !isLargeFillCompute(p));
+  
   // Additional guard: remove any "wall" polygon whose interior is mostly green (misclassified giant fill)
   const greenDrop = (poly: { points: number[] }) => estimateGreenFractionInPolygon(imgData, poly.points, thresholds, Math.max(5, Math.round(Math.min(gridSize, 12))), 1800) >= 0.8;
   wallsPoly = wallsPoly.filter((p: { points: number[] }) => !greenDrop(p));
@@ -219,6 +230,17 @@ export async function importLevelFromScreenshot(file: File, opts: ScreenshotImpo
 
     // Drop the outer perimeter wall polygon that spans the entire fairway bbox (we don't support holes in polys)
     wallsPoly = wallsPoly.filter((p: { points: number[] }) => !isPerimeterPoly(p.points, fairway));
+    
+    // Remove large filled areas that are likely misclassified fairway regions
+    const fairwayArea = Math.max(1, fairway.w * fairway.h);
+    const isLargeFill = (poly: { points: number[] }) => {
+      const polyArea = polygonArea(poly.points);
+      const areaFrac = polyArea / fairwayArea;
+      // If polygon covers more than 25% of fairway area, it's likely a misclassified fill
+      return areaFrac > 0.25;
+    };
+    wallsPoly = wallsPoly.filter((p: { points: number[] }) => !isLargeFill(p));
+    
     // Remove misclassified giant fills: if interior samples are mostly green, it's not a wall
     const greenDrop = (poly: { points: number[] }) => estimateGreenFractionInPolygon(imgData, poly.points, thresholds, Math.max(5, Math.round(Math.min(gridSize, 12))), 1800) >= 0.8;
     wallsPoly = wallsPoly.filter((p: { points: number[] }) => !greenDrop(p));

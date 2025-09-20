@@ -1,4 +1,7 @@
 ### Fixed
+- Screenshot Importer (Annotate): `importLevelFromAnnotations()` now emits polygon arrays with the correct shape `{ points: number[] }` for `wallsPoly`, `waterPoly`, and `sandPoly`. Previously raw `number[]` were pushed which prevented polygons from rendering after Accept. (`src/editor/importScreenshot.ts`)
+- Screenshot Importer (Annotate): Selection robustness in the overlay — boundary-first hit test with inside-area fallback for all polygons (including Walls), tolerance increased to 14px, and iteration order reversed to prioritize the most recently drawn item. (`src/editor/importScreenshot.ts`)
+- Screenshot Importer (Annotate): Large outer Water/Wall fills are converted on Accept into four border strips around the fairway; interior fills and posts/cup are preserved (no more disappearing inner features). Thickness tunable via `AnnotationOptions`. (`src/editor/importScreenshot.ts`)
 - Level Editor • Measure Tool: releasing the mouse now pins the current measurement automatically; right-click clears current and pinned measurements reliably and does not resume measuring on mouse move. Also clear alignment guide labels after placements/commits to avoid lingering readouts. (`src/editor/levelEditor.ts`)
  - UI • Level Editor Menus: Added new Edit and View menus.
    - Edit: Undo, Redo, Copy, Cut, Paste, Duplicate.
@@ -58,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Import Review performance/stability: processing is now cropped to the fairway region and cup detection runs on the cropped image; reduces memory and CPU usage which mitigates browser tab hangs on Recompute for some screenshots. (`src/editor/importScreenshot.ts`)
 
 ### Changed
+- Screenshot Importer (Annotate): Scale normalization — annotations created on the overlay are normalized to target output size by passing `sourceWidth`/`sourceHeight` into `importLevelFromAnnotations()`. Coordinates scale per-axis; radii scale by average. (`src/main.ts`, `src/editor/importScreenshot.ts`)
  - UI • Level Editor Menus: Menubar order updated to File → Edit → View → Objects → Decorations → Editor Tools. (`src/editor/levelEditor.ts`)
  - Level Editor • Alignment Aids UX: Alt temporarily disables guides during interactions; Ctrl forces grid‑only snapping (overrides alignment guides) for drag‑move, resize, and vertex drag. (`src/editor/levelEditor.ts`)
  - UI • Level Editor Menus: Moved Metadata, Suggest Par, Suggest Cup Positions, and Test Level under Editor Tools for better grouping. (`src/editor/levelEditor.ts`)

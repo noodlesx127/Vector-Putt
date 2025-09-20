@@ -266,7 +266,12 @@ export async function showAnnotateScreenshot(file: File, opts: AnnotationOptions
             if (result) {
               // Convert annotations to level using new import function
               try {
-                const level = importLevelFromAnnotations(result, opts);
+                const normOpts = {
+                  ...opts,
+                  sourceWidth: canvas.width,
+                  sourceHeight: canvas.height
+                } as any;
+                const level = importLevelFromAnnotations(result, normOpts);
                 resolve(level);
               } catch (err) {
                 console.error('Failed to import from annotations:', err);

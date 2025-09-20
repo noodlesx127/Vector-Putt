@@ -30,6 +30,9 @@ export interface AnnotationOptions {
   wallBorderThickness?: number;  // px, when a large wall fill encloses the fairway
   enableAutoWaterBorder?: boolean; // default true
   enableAutoWallBorder?: boolean;  // default true
+  // Source annotation canvas size (for scale normalization)
+  sourceWidth?: number;
+  sourceHeight?: number;
 }
 
 // Expand a rectangle by margin and clamp to image bounds
@@ -921,10 +924,16 @@ function estimateGreenFractionInPolygon(
 // Convert manual annotations to LevelData
 export function importLevelFromAnnotations(annotations: AnnotationData, opts: AnnotationOptions): LevelData {
   console.log('Converting annotations to level data...');
+  // Compute scale from source (annotation canvas) to target level size
+  const srcW = Math.max(1, Math.round(opts.sourceWidth || opts.targetWidth));
+  const srcH = Math.max(1, Math.round(opts.sourceHeight || opts.targetHeight));
+  const scaleX = (opts.targetWidth && srcW) ? (opts.targetWidth / srcW) : 1;
+  const scaleY = (opts.targetHeight && srcH) ? (opts.targetHeight / srcH) : 1;
+  const scaleR = (scaleX + scaleY) * 0.5;
   
   // Helper function to convert annotation points to level coordinates
   const convertPoints = (points: Array<{ x: number; y: number }>) => {
-    return points.map(p => ({ x: Math.round(p.x), y: Math.round(p.y) }));
+    return points.map(p => ({ x: Math.round(p.x * scaleX), y: Math.round(p.y * scaleY) }));
   };
   
   // Helper function to snap polygon to grid if enabled
@@ -1008,14 +1017,14 @@ export function importLevelFromAnnotations(annotations: AnnotationData, opts: An
     { x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }
   ];
 
-  // Helper: convert and push polygon points to a target array
-  const pushPoly = (arr: number[][], pts: Array<{x:number;y:number}>) => {
+  // Helper: convert and push polygon points to a target array as { points: number[] }
+  const pushPoly = (arr: Array<{ points: number[] }>, pts: Array<{x:number;y:number}>) => {
     const snapped = snapPolygonToGrid(pts, opts.gridSize);
-    arr.push(flattenPoints(snapped));
+    arr.push({ points: flattenPoints(snapped) });
   };
   
   // Convert wall polygons (filter giant outer fills, optional auto border)
-  const wallFlats: number[][] = [];
+  const wallFlats: Array<{ points: number[] }> = [];
   let hasOuterWallFill = false;
   const areaCanvas = canvasW * canvasH;
   for (const wall of annotations.walls) {
@@ -1033,7 +1042,7 @@ export function importLevelFromAnnotations(annotations: AnnotationData, opts: An
   }
   
   // Convert water polygons (outer water detection -> border strips)
-  const waterFlats: number[][] = [];
+  const waterFlats: Array<{ points: number[] }> = [];
   let hasOuterWater = false;
   for (const water of annotations.water) {
     if (water.points.length >= 3) {
@@ -1049,7 +1058,7 @@ export function importLevelFromAnnotations(annotations: AnnotationData, opts: An
   }
   
   // Convert sand polygons (keep as drawn; inner shapes preserved)
-  const sandFlats: number[][] = [];
+  const sandFlats: Array<{ points: number[] }> = [];
   for (const sand of annotations.sand) {
     if (sand.points.length >= 3) {
       const pts = convertPoints(sand.points);
@@ -1075,7 +1084,7 @@ export function importLevelFromAnnotations(annotations: AnnotationData, opts: An
   const wallThickness  = Math.max(1, Math.round(opts.wallBorderThickness  ?? 12));
 
   // Generate border strips around fairway bbox against canvas edges
-  const addBorderStrips = (thickness: number, target: number[][]) => {
+  const addBorderStrips = (thickness: number, target: Array<{ points: number[] }>) => {
     const x = Math.max(0, fairwayBBox.x);
     const y = Math.max(0, fairwayBBox.y);
     const r = Math.min(canvasW, fairwayBBox.x + fairwayBBox.w);
@@ -1109,27 +1118,27 @@ export function importLevelFromAnnotations(annotations: AnnotationData, opts: An
   // Convert posts
   for (const post of annotations.posts) {
     level.posts.push({
-      x: Math.round(post.x),
-      y: Math.round(post.y),
-      r: post.r
+      x: Math.round(post.x * scaleX),
+      y: Math.round(post.y * scaleY),
+      r: Math.max(1, Math.round(post.r * scaleR))
     });
   }
   
   // Convert tee
   if (annotations.tee) {
     level.tee = {
-      x: Math.round(annotations.tee.x),
-      y: Math.round(annotations.tee.y),
-      r: annotations.tee.r
+      x: Math.round(annotations.tee.x * scaleX),
+      y: Math.round(annotations.tee.y * scaleY),
+      r: Math.max(1, Math.round(annotations.tee.r * scaleR))
     };
   }
   
   // Convert cup
   if (annotations.cup) {
     level.cup = {
-      x: Math.round(annotations.cup.x),
-      y: Math.round(annotations.cup.y),
-      r: annotations.cup.r
+      x: Math.round(annotations.cup.x * scaleX),
+      y: Math.round(annotations.cup.y * scaleY),
+      r: Math.max(1, Math.round(annotations.cup.r * scaleR))
     };
   }
   
@@ -1152,7 +1161,7 @@ export function findAnnotationAtPoint(
   annotations: AnnotationData, 
   x: number, 
   y: number, 
-  tolerance: number = 10
+  tolerance: number = 14
 ): { type: string; index: number } | null {
   
   // Helper function to check if point is near a line segment
@@ -1218,15 +1227,21 @@ export function findAnnotationAtPoint(
   }
   
   // Check walls (boundary-based selection for better wall handling)
-  for (let i = 0; i < annotations.walls.length; i++) {
+  for (let i = annotations.walls.length - 1; i >= 0; i--) {
     const wall = annotations.walls[i];
-    if (wall.points && nearPolygonBoundary(wall.points, x, y, tolerance)) {
-      return { type: 'walls', index: i };
+    if (wall.points) {
+      if (nearPolygonBoundary(wall.points, x, y, tolerance)) {
+        return { type: 'walls', index: i };
+      }
+      // Inside-area fallback too: many users click inside the thick wall fill
+      if (pointInPolygon(x, y, wall.points)) {
+        return { type: 'walls', index: i };
+      }
     }
   }
   
   // Check water (boundary-first, with inside fallback)
-  for (let i = 0; i < annotations.water.length; i++) {
+  for (let i = annotations.water.length - 1; i >= 0; i--) {
     const water = annotations.water[i];
     if (water.points) {
       if (nearPolygonBoundary(water.points, x, y, tolerance)) {
@@ -1240,7 +1255,7 @@ export function findAnnotationAtPoint(
   }
   
   // Check sand (boundary-first, with inside fallback)
-  for (let i = 0; i < annotations.sand.length; i++) {
+  for (let i = annotations.sand.length - 1; i >= 0; i--) {
     const sand = annotations.sand[i];
     if (sand.points) {
       if (nearPolygonBoundary(sand.points, x, y, tolerance)) {
@@ -1253,7 +1268,7 @@ export function findAnnotationAtPoint(
   }
   
   // Check hills (boundary-first, with inside fallback)
-  for (let i = 0; i < annotations.hills.length; i++) {
+  for (let i = annotations.hills.length - 1; i >= 0; i--) {
     const hill = annotations.hills[i];
     if (hill.points) {
       if (nearPolygonBoundary(hill.points, x, y, tolerance)) {

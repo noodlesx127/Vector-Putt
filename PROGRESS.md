@@ -1,24 +1,8 @@
-  /**
- - **Screenshot → Level Importer (stability/accuracy)**
-   - [x] Performance: crop processing to fairway sub-image; run cup detection on cropped data; expanded wall region by a margin to preserve thickness near fairway borders. (`src/editor/importScreenshot.ts`)
-   - [x] Correctness: filter perimeter-hugging wall polygon that would flood-fill the fairway on Accept; relax wall hue gating for very low saturation to avoid missing gray walls; light mask dilation and finer wall snapping to keep wall bands thick. (`src/editor/importScreenshot.ts`)
-   - [x] Import Review UX: Accept now honors layer toggles (Walls/Sand/Water). If Sand is off in the preview, it will not be applied. (`src/main.ts`)
-   - [x] **2025-09-19**: Fixed wall detection failure by relaxing thresholds (saturation ≤30%, brightness ≥50%), reducing minimum pixel threshold, and relaxing green interior filter (≥80% vs ≥50%). (`src/editor/importScreenshot.ts`)
-   - [x] **2025-09-19**: Major performance optimizations to prevent browser crashes: intelligent image size limits (max 2048px, ~3MP), progressive processing with requestAnimationFrame yielding, async contour tracing with periodic UI yielding, and console progress logging. (`src/editor/importScreenshot.ts`, `src/main.ts`)
-   - [x] **2025-09-19**: Fixed large filled wall polygons by adding area-based filter to remove wall polygons covering >25% of fairway area, preventing misclassified regions from being imported as walls. (`src/editor/importScreenshot.ts`)
-   - [x] **2025-09-19**: Completed enhanced manual annotation system for Screenshot Importer. Full interactive overlay with 9 tools (including Select/Edit), real-time visual feedback with selection highlights, individual item deletion, complex wall support for inner/outer boundaries, keyboard shortcuts (Delete key), and contextual instructions. Eliminates browser performance issues while providing superior accuracy and full editing control. (`src/editor/importScreenshot.ts`, `src/editor/levelEditor.ts`, `src/main.ts`)
-   - [ ] Further guardrails: Debounce Recompute for rapid threshold adjustments.
-
- * This file tracks current focus, next steps, decisions, and open questions. Keep it short and living. Completed items have been moved to `COMPLETED.md`. Always follow the format of this file.
- */
-
 # Project Progress — Vector Putt
 
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 
-## Now (Current Focus)
-As of 2025-09-03, focus these open items migrated from `TODO.md`:
 
 - **Physics & Interactions**
   - [x] Velocity affects terrain (e.g., hard shot may skim sand)
@@ -231,6 +215,19 @@ A new Level Editor feature to rapidly bootstrap a level from a screenshot. Users
   - [x] Importer bugfixes (2025-09-18): preserve wall thickness; robust cup detection with blob circularity scoring.
   - [ ] Unit tests with `level_screenshots/*` samples: segmentation thresholds, contour→geometry mapping, cup detection edge cases
   - [ ] Optional: hills/slope/specials detection pass; evaluate OpenCV.js only if Canvas approach proves insufficient
+- [x] Performance: crop processing to fairway sub-image; run cup detection on cropped data; expanded wall region by a margin to preserve thickness near fairway borders. (`src/editor/importScreenshot.ts`)
+   - [x] Correctness: filter perimeter-hugging wall polygon that would flood-fill the fairway on Accept; relax wall hue gating for very low saturation to avoid missing gray walls; light mask dilation and finer wall snapping to keep wall bands thick. (`src/editor/importScreenshot.ts`)
+   - [x] Import Review UX: Accept now honors layer toggles (Walls/Sand/Water). If Sand is off in the preview, it will not be applied. (`src/main.ts`)
+   - [x] **2025-09-19**: Fixed wall detection failure by relaxing thresholds (saturation ≤30%, brightness ≥50%), reducing minimum pixel threshold, and relaxing green interior filter (≥80% vs ≥50%). (`src/editor/importScreenshot.ts`)
+   - [x] **2025-09-19**: Major performance optimizations to prevent browser crashes: intelligent image size limits (max 2048px, ~3MP), progressive processing with requestAnimationFrame yielding, async contour tracing with periodic UI yielding, and console progress logging. (`src/editor/importScreenshot.ts`, `src/main.ts`)
+   - [x] **2025-09-19**: Fixed large filled wall polygons by adding area-based filter to remove wall polygons covering >25% of fairway area, preventing misclassified regions from being imported as walls. (`src/editor/importScreenshot.ts`)
+   - [x] **2025-09-19**: Completed enhanced manual annotation system for Screenshot Importer. Full interactive overlay with 9 tools (including Select/Edit), real-time visual feedback with selection highlights, individual item deletion, complex wall support for inner/outer boundaries, keyboard shortcuts (Delete key), and contextual instructions. Eliminates browser performance issues while providing superior accuracy and full editing control. (`src/editor/importScreenshot.ts`, `src/editor/levelEditor.ts`, `src/main.ts`)
+   - [ ] Further guardrails: Debounce Recompute for rapid threshold adjustments.
+  - [x] Selection robustness in overlay: boundary-first hit-test with inside-area fallback for all polygons (Walls/Water/Sand/Hills/Fairway); iterate arrays in reverse to prioritize most-recent items; increased tolerance to 14px. (`src/editor/importScreenshot.ts`)
+  - [x] Import-time shaping: if the user draws a large outer Water/Wall fill (covering canvas corners), convert it on Accept into four border strips around the fairway bounding box; preserve all interior fills (no more disappearing inner features). Thickness configurable via `AnnotationOptions` (`waterBorderThickness`, `wallBorderThickness`, defaults enabled by `enableAutoWaterBorder`/`enableAutoWallBorder`). (`src/editor/importScreenshot.ts`)
+  - [x] BUG: Annotated walls not rendered after Accept — Fixed 2025-09-20. Root cause: `importLevelFromAnnotations()` pushed raw `number[]` arrays instead of `{ points:number[] }` objects. Now `wallsPoly`/`waterPoly`/`sandPoly` use the correct shape consistently, so polygons render in the editor after Accept. (`src/editor/importScreenshot.ts`)
+  - [x] BUG: Large fills suppress inner annotations (posts/cup/walls) — Fixed 2025-09-20 (importer-side). Importer detects large outer Water/Wall fills and converts them into four border strips around the fairway; all interior fills (and posts/cup) are preserved and no longer occluded/dropped. Overlay remains simple-polygons (no holes) for now; composite ring editing is a separate enhancement. (`src/editor/importScreenshot.ts`)
+  - [x] Scale normalization: annotations are scaled from source overlay canvas size to target dimensions; coordinates scale by X/Y, radii by average scale. Wired `sourceWidth`/`sourceHeight` from overlay canvas in `showAnnotateScreenshot()` so it is automatic. (`src/editor/importScreenshot.ts`, `src/main.ts`)
 
   Status: Phase 2 implemented in `src/editor/importScreenshot.ts`
   - Offscreen draw + green fairway bbox; HSV segmentation to masks (fairway, walls, sand, water); Moore-neighbor contour tracing; RDP polygon simplification; grid snapping; clamp to canvas; classification to `wallsPoly`/`sandPoly`/`waterPoly`; compose `LevelData` and open in editor with fixups applied. Post-import guidance prompts user to click Tee; Cup click is requested only if not confidently detected (metadata flag). Next: build review overlay with threshold sliders and layer toggles; add unit tests using `level_screenshots/*`.

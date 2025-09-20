@@ -222,6 +222,8 @@ export async function importLevelFromScreenshot(file: File, opts: ScreenshotImpo
     console.log('Tracing contours...');
     const gridSize = Math.max(2, Math.min(100, Math.round(opts.gridSize || 20)));
     const simplifyEps = Math.max(1.5, Math.min(10, gridSize * 0.15));
+    // Walls need gentler simplification and finer snap to preserve beveled/rounded shapes
+    const simplifyEpsWalls = Math.max(1.0, Math.min(6, gridSize * 0.10));
     const minPixels = Math.max(30, Math.round((gridSize * gridSize) / 4)); // discard tiny noise
 
     const toPolys = async (mask: Uint8Array, width: number, height: number, offsetX: number, offsetY: number) => {
@@ -244,9 +246,10 @@ export async function importLevelFromScreenshot(file: File, opts: ScreenshotImpo
       await yieldToMain();
       
       return contours
-        .map((poly: Array<{ x: number; y: number }>) => simplifyPolygon(poly, simplifyEps))
+        .map((poly: Array<{ x: number; y: number }>) => simplifyPolygon(poly, simplifyEpsWalls))
         .map((poly: Array<{ x: number; y: number }>) => offsetPolygon(poly, offsetX, offsetY))
-        .map((poly: Array<{ x: number; y: number }>) => snapPolygonToGrid(poly, gridSize))
+        // Use a finer snap for walls to avoid collapsing beveled corners
+        .map((poly: Array<{ x: number; y: number }>) => snapPolygonToGrid(poly, Math.max(2, Math.round(gridSize / 2))))
         .map((poly: Array<{ x: number; y: number }>) => clampPolygon(poly, canvas.width, canvas.height))
         .map((points: Array<{ x: number; y: number }>) => ({ points: flattenPoints(points) }));
     };
@@ -1011,6 +1014,7 @@ export function importLevelFromAnnotations(annotations: AnnotationData, opts: An
   // Helper: fairway bbox derived from level.fairway
   const fw = level.fairway;
   const fairwayBBox = fw ? { x: fw.x, y: fw.y, w: fw.w, h: fw.h } : { x: 80, y: 60, w: canvasW - 160, h: canvasH - 120 };
+  const hasFairwayPoly = !!annotations.fairway && annotations.fairway.points.length >= 3;
 
   // Helper to make a rectangle polygon from x,y,w,h
   const rectPoly = (x: number, y: number, w: number, h: number) => [
@@ -1030,10 +1034,9 @@ export function importLevelFromAnnotations(annotations: AnnotationData, opts: An
   for (const wall of annotations.walls) {
     if (wall.points.length >= 3) {
       const pts = convertPoints(wall.points);
-      // Detect outer wall fills: contains any canvas corner OR covers big area
-      const containsCorner = canvasCorners.some(c => pointInPolygon(c.x, c.y, pts));
-      const area = polygonArea(flattenPoints(pts));
-      if (containsCorner || area > areaCanvas * 0.3) {
+      // Detect outer wall fills (annotate flow): require ≥2 canvas corners inside AND a fairway polygon present
+      const cornersInside = canvasCorners.reduce((n, c) => n + (pointInPolygon(c.x, c.y, pts) ? 1 : 0), 0);
+      if (hasFairwayPoly && cornersInside >= 2) {
         hasOuterWallFill = true; // we will replace with border band if enabled
         continue;
       }
@@ -1047,9 +1050,8 @@ export function importLevelFromAnnotations(annotations: AnnotationData, opts: An
   for (const water of annotations.water) {
     if (water.points.length >= 3) {
       const pts = convertPoints(water.points);
-      const containsCorner = canvasCorners.some(c => pointInPolygon(c.x, c.y, pts));
-      const area = polygonArea(flattenPoints(pts));
-      if (containsCorner || area > areaCanvas * 0.5) {
+      const cornersInside = canvasCorners.reduce((n, c) => n + (pointInPolygon(c.x, c.y, pts) ? 1 : 0), 0);
+      if (hasFairwayPoly && cornersInside >= 2) {
         hasOuterWater = true; // treat as sea around fairway
         continue;
       }
@@ -1102,13 +1104,13 @@ export function importLevelFromAnnotations(annotations: AnnotationData, opts: An
   // Apply collected polys and optional borders
   // Walls
   for (const f of wallFlats) level.wallsPoly.push(f);
-  if (enableAutoWallBorder && (hasOuterWallFill)) {
+  if (enableAutoWallBorder && hasFairwayPoly && hasOuterWallFill) {
     addBorderStrips(wallThickness, level.wallsPoly);
   }
 
   // Water
   for (const f of waterFlats) level.waterPoly.push(f);
-  if (enableAutoWaterBorder && (hasOuterWater || (annotations.water.length === 0 && annotations.fairway))) {
+  if (enableAutoWaterBorder && hasFairwayPoly && (hasOuterWater || annotations.water.length === 0)) {
     addBorderStrips(waterThickness, level.waterPoly);
   }
 

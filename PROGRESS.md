@@ -181,6 +181,14 @@ Bugfix (2025-09-20):
 
 Notes: This complements the `Screenshot → Level Importer` (automatic extraction) by providing a manual tracing workflow. Use images from `level_screenshots/` as typical sources. Align visuals and interactions to `UI_Design.md`.
 
+Refactor (2025-09-21):
+- Overlay Screenshot tools simplified — removed dedicated Overlay Transform Modes (Move/Resize/Rotate) and their menu items.
+- The Select Tool now controls the overlay like any other object when it is unlocked:
+  - Single‑selecting the overlay shows its own resize/rotate handles (when no menu is open). Drag inside to move.
+  - Quick keys `=`/`-` (scale) and `,`/`.` (rotate) apply when the overlay is selected.
+  - Arrow keys nudge selection uniformly (including the overlay when selected).
+- Updated label logic and menu rendering accordingly. Documented in `CHANGELOG.md`.
+
 ## Next Up (Short Horizon)
 - Seeded from `TODO.md` backlog:
 

@@ -56,14 +56,15 @@ Notes:
 - [ ] Ramps/Hills (slope affects speed/direction; phase 2)
   - Overlay Screenshot (tracing aid)
     - [x] Phase 1: Tools → "Overlay Screenshot…" picker; View options (Show/Hide, Opacity +/-, Z‑Order Above/Below, Lock, Snap to Grid, Fit to Fairway, Reset Transform, Transform Mode → Move); render pass below/above geometry; keyboard controls for opacity/nudge/scale/rotate (`,`/`.`/`=`/`-`).
-    - [ ] Phase 2 (in progress): Transform handles (Move/Resize/Rotate) with aspect lock and Flip H/V; Fit to Canvas; Calibrate Scale; Through‑click option when overlay is above; tests for enable/disable and transform math.
-      - [x] Transform Modes → Resize/Rotate with on‑canvas handles (BR resize; top‑mid rotate with Shift=15°)
+    - [ ] Phase 2 (in progress): Transform handles (Resize/Rotate) with aspect lock and Flip H/V; Fit to Canvas; Calibrate Scale; Through‑click option when overlay is above; tests for enable/disable and transform math.
+      - [x] Transform handles → Resize/Rotate with on‑canvas handles (BR resize; top‑mid rotate with Shift=15°)
       - [x] Fit to Canvas
       - [x] Preserve Aspect toggle
       - [x] Flip Horizontal / Flip Vertical
       - [x] Through‑click option (when Overlay is Above)
       - [ ] Tests for enable/disable states and transform math
       - [x] Bugfix: overlay drag release continued after mouseup — finalize in `handleMouseUp()` and add `e.buttons===0` safety in `handleMouseMove()` (2025‑09‑20)
+    - [x] Refactor: Remove dedicated Overlay Transform Modes; Select Tool moves/resizes/rotates the overlay when unlocked (2025‑09‑21)
   - [x] Hills (prototype): directional acceleration zones with visual gradient
 - [ ] Moving obstacles (timed collisions; phase 2)
 - [ ] Boosters/Accelerators (apply impulse; phase 2)

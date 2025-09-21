@@ -9,10 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Level Editor • Overlay Screenshot (Phase 2): Interactive transform handles and additional view actions.
-  - Handles: resize from all corners and edges with axis constraints; rotate from top‑mid handle with Shift=15° snap; move by dragging inside when in Move mode.
-  - View menu items: Fit to Canvas, Preserve Aspect toggle, Flip Horizontal/Vertical, Through‑click (Above), Transform Modes → Move/Resize/Rotate, Calibrate Scale…
+  - Handles: resize from all corners and edges with axis constraints; rotate from top‑mid handle with Shift=15° snap; move by dragging inside when selected.
+  - View menu items: Fit to Canvas, Preserve Aspect toggle, Flip Horizontal/Vertical, Through‑click (Above), Calibrate Scale…
   - Input routing: when Overlay is Above and Through‑click is OFF, clicks inside the overlay are swallowed (do not affect underlying tools); when ON, clicks pass through.
   - Note: Overlay remains session‑only and excluded from saves/exports/thumbnails.
+
+### Changed
+- Level Editor • Overlay Screenshot: Refactored to treat the overlay like a normal selectable object.
+  - The Select tool now moves, resizes, and rotates the overlay when it is unlocked. Resize/rotate handles render when the overlay is selected and no menu is open.
+  - Quick keys for overlay scale (`=`/`-`) and rotate (`,`/`.`) apply when the overlay is selected.
+  - Arrow keys now exclusively nudge the current selection; overlay nudges are performed via selection.
+
+### Removed
+- Level Editor • Overlay Screenshot: Removed dedicated transform modes and their View menu items:
+  - Removed: “Overlay: Transform Mode → Move/Resize/Rotate”.
 
 ### Fixed
 - Level Editor • Overlay Screenshot: fixed a drag release bug where, after adding an overlay image and moving it, the image continued to move because mouseup did not clear the drag state. Finalization now occurs in `handleMouseUp()` and a safety check in `handleMouseMove()` ends overlay interactions if `e.buttons === 0`. (`src/editor/levelEditor.ts`)

@@ -14,6 +14,8 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
     - Users admin (`gameState === 'users'`): freeform cards and buttons; convert to panelized layout with standard button fills/borders and header.
     - Changelog (`gameState === 'changelog'`): dimmed background with ad-hoc content area; migrate to standard centered panel with header and consistent scrollbar visuals.
     - Main Menu: inputs and buttons mostly aligned, but audit borders/fills/hover to ensure parity with standard button spec.
+    - Main Play Area (in-game UI): align HUD overlays, text, and controls to `UI_Design.md` (typography/colors), and ensure any in-game dialogs/overlays follow the standard panel style.
+    - Pause / Esc Menu: convert to a standard 800×600 overlay panel with dim backdrop, header, and standard button styles per `UI_Design.md`.
   - New Requirement: User Made Levels browser and Course Select should mirror the Users Admin panel layout:
     - Left panel: scrollable list of levels/courses.
     - Right panel: large preview thumbnail/screenshot and metadata (Title, Author, Creator, Date Created, Last Edited, Description, etc.).
@@ -26,6 +28,8 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
      - [x] Audit Main Menu input/buttons for style parity (borders, fills, fonts). Updated default fill to rgba(255,255,255,0.10), hover rgba(255,255,255,0.15), borders #cfd2cf, and aligned username input styling. (`src/main.ts`)
     - [x] Redesign User Made Levels to Users-like left-list/right-preview layout with metadata panel and thumbnail preview; added Play/Edit/Duplicate/Delete actions on the right pane. (`src/main.ts`)
     - [x] Redesign Course Select to Users-like left-list/right-preview layout with metadata pane and Play Course action on the right pane. (`src/main.ts`)
+    - [x] Main Play Area — HUD refresh to standardized strip with border and white text per `UI_Design.md`. (`src/main.ts`)
+    - [x] Pause / Esc Menu — redesigned to centered 800×600 panel with dim backdrop, panel border `#cfd2cf`, and standardized button styles/positions. (`src/main.ts`)
      - Level Editor — Menus & Dialogs (must follow standard panel/button styles and typography; see `UI_Design.md`):
        - Findings: Menubar and dialogs exist but styling/spacing varies from standard panel spec. Ensure 800x600 overlay panels for modal flows, consistent header, borders `#cfd2cf`, background `rgba(0,0,0,0.85)`, padding/margins, and button hover states.
        - Tasks:

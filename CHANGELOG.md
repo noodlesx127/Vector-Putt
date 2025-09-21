@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The Select tool now moves, resizes, and rotates the overlay when it is unlocked. Resize/rotate handles render when the overlay is selected and no menu is open.
   - Quick keys for overlay scale (`=`/`-`) and rotate (`,`/`.`) apply when the overlay is selected.
   - Arrow keys now exclusively nudge the current selection; overlay nudges are performed via selection.
+ - Play • HUD: Standardized the main play HUD to a dark top strip with a bottom border and white text per `UI_Design.md`. (`src/main.ts`)
+ - Play • Pause/Esc Menu: Redesigned to a centered 800×600 panel with dim backdrop, `#cfd2cf` border, and standardized button styles/positions (Options, Replay, Back to Main Menu, Close). (`src/main.ts`)
 
 ### Removed
 - Level Editor • Overlay Screenshot: Removed dedicated transform modes and their View menu items:

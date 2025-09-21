@@ -2223,37 +2223,53 @@ function getMenuRect() {
   const y = 5;  // within HUD strip
   return { x, y, w, h };
 }
+
+// UI: Pause panel rectangle
+function getPausePanelRect() {
+  // Standard 800x600 panel centered with safe margins (per UI_Design.md)
+  const panelW = Math.min(800, WIDTH - 80);
+  const panelH = Math.min(600, HEIGHT - 120);
+  let px = Math.floor(WIDTH / 2 - panelW / 2);
+  let py = Math.floor(HEIGHT / 2 - panelH / 2);
+  px = Math.max(20, Math.min(WIDTH - panelW - 20, px));
+  py = Math.max(20, Math.min(HEIGHT - panelH - 20, py));
+  return { x: px, y: py, w: panelW, h: panelH };
+}
+
 // UI: Replay button on Pause overlay
 function getPauseReplayRect() {
+  const { x: px, y: py, w: pw, h: ph } = getPausePanelRect();
   const w = 120, h = 28;
-  // Positioned near bottom center (left of close button)
   const gap = 16;
-  const totalW = w * 2 + gap;
-  const x = WIDTH / 2 - totalW / 2;
-  const y = HEIGHT - 90;
+  const close = getPauseCloseRect();
+  const x = close.x - w - gap;
+  const y = py + ph - 60; // bottom row inside panel
   return { x, y, w, h };
 }
+
 // UI: Close button on Pause overlay
 function getPauseCloseRect() {
+  const { x: px, y: py, w: pw, h: ph } = getPausePanelRect();
   const w = 120, h = 28;
-  const gap = 16;
-  const pr = getPauseReplayRect();
-  const x = pr.x + pr.w + gap;
-  const y = pr.y;
+  const x = px + pw / 2 + 8; // right of center in bottom row
+  const y = py + ph - 60;
   return { x, y, w, h };
 }
+
 // UI: Back to Main Menu button on Pause overlay (centered above bottom buttons)
 function getPauseBackRect() {
+  const { x: px, y: py, w: pw, h: ph } = getPausePanelRect();
   const w = 180, h = 28;
-  const x = WIDTH / 2 - w / 2;
-  const y = HEIGHT - 130;
+  const x = px + pw / 2 - w / 2;
+  const y = py + ph - 100; // anchored above bottom row
   return { x, y, w, h };
 }
 // UI: Options button on Pause overlay (above bottom row)
 function getPauseOptionsRect() {
+  const { x: px, y: py, w: pw, h: ph } = getPausePanelRect();
   const w = 140, h = 28;
-  const x = WIDTH / 2 - w / 2;
-  const y = HEIGHT - 160;
+  const x = px + pw / 2 - w / 2;
+  const y = py + ph - 130;
   return { x, y, w, h };
 }
 let hoverMenu = false;
@@ -7197,8 +7213,18 @@ function draw() {
   // end translation for level content; HUD is drawn in canvas coords
   ctx.restore();
 
-  // HUD (single row across the top on mustard background)
-  ctx.fillStyle = COLORS.hudText;
+  // HUD (single row across the top with standardized dark strip)
+  // Background strip + bottom border per UI_Design.md
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, WIDTH, HUD_HEIGHT);
+  ctx.strokeStyle = '#cfd2cf';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, HUD_HEIGHT + 0.5);
+  ctx.lineTo(WIDTH, HUD_HEIGHT + 0.5);
+  ctx.stroke();
+  // HUD text styling
+  ctx.fillStyle = '#ffffff';
   ctx.font = '16px system-ui, sans-serif';
   ctx.textBaseline = 'top';
   const rrHUD = getMenuRect();
@@ -7363,15 +7389,23 @@ function draw() {
   
   // Pause overlay (render last so it sits on top)
   if (paused) {
+    // Dim background
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    // Centered panel per UI_Design.md
+    const pr = getPausePanelRect();
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(pr.x, pr.y, pr.w, pr.h);
+    ctx.strokeStyle = '#cfd2cf';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(pr.x + 0.5, pr.y + 0.5, pr.w - 1, pr.h - 1);
+    // Title
     ctx.fillStyle = '#ffffff';
-    // Title near top center
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.font = '28px system-ui, sans-serif';
-    ctx.fillText('Pause Menu', WIDTH/2, 60);
-    // Controls list in middle
+    ctx.fillText('Pause Menu', pr.x + pr.w/2, pr.y + 20);
+    // Info + shortcuts
     ctx.font = '16px system-ui, sans-serif';
     const lines = [
       `Hole ${courseInfo.index}/${courseInfo.total}  Par ${courseInfo.par}  Strokes ${strokes}`,
@@ -7381,13 +7415,13 @@ function draw() {
       '  N Next (from banner)   Space Replay',
       '  Enter Summary→Restart'
     ];
-    let y = 110;
-    for (const line of lines) { ctx.fillText(line, WIDTH/2, y); y += 22; }
+    let y = pr.y + 70;
+    for (const line of lines) { ctx.fillText(line, pr.x + pr.w/2, y); y += 22; }
     // Pause overlay Options button (above bottom row)
     const po = getPauseOptionsRect();
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = hoverPauseOptions ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = hoverPauseOptions ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillStyle = hoverPauseOptions ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.10)';
     ctx.fillRect(po.x, po.y, po.w, po.h);
     ctx.strokeRect(po.x, po.y, po.w, po.h);
     ctx.fillStyle = '#ffffff';
@@ -7395,22 +7429,22 @@ function draw() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('Options', po.x + po.w/2, po.y + po.h/2 + 0.5);
     // Pause overlay Replay button
-    const pr = getPauseReplayRect();
+    const prb = getPauseReplayRect();
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = hoverPauseReplay ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = hoverPauseReplay ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
-    ctx.fillRect(pr.x, pr.y, pr.w, pr.h);
-    ctx.strokeRect(pr.x, pr.y, pr.w, pr.h);
+    ctx.fillStyle = hoverPauseReplay ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.10)';
+    ctx.fillRect(prb.x, prb.y, prb.w, prb.h);
+    ctx.strokeRect(prb.x, prb.y, prb.w, prb.h);
     ctx.fillStyle = '#ffffff';
     ctx.font = '16px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('Replay', pr.x + pr.w/2, pr.y + pr.h/2 + 0.5);
+    ctx.fillText('Replay', prb.x + prb.w/2, prb.y + prb.h/2 + 0.5);
     // Pause overlay Back to Main Menu
     const pb = getPauseBackRect();
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = hoverPauseBack ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = hoverPauseBack ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillStyle = hoverPauseBack ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.10)';
     ctx.fillRect(pb.x, pb.y, pb.w, pb.h);
     ctx.strokeRect(pb.x, pb.y, pb.w, pb.h);
     ctx.fillStyle = '#ffffff';
@@ -7421,7 +7455,7 @@ function draw() {
     const pc = getPauseCloseRect();
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = hoverPauseClose ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = hoverPauseClose ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillStyle = hoverPauseClose ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.10)';
     ctx.fillRect(pc.x, pc.y, pc.w, pc.h);
     ctx.strokeRect(pc.x, pc.y, pc.w, pc.h);
     ctx.fillStyle = '#ffffff';
@@ -7429,11 +7463,11 @@ function draw() {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('Close', pc.x + pc.w/2, pc.y + pc.h/2 + 0.5);
-    // Version bottom-left small
+    // Version inside panel bottom-left
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
     ctx.font = '12px system-ui, sans-serif';
-    ctx.fillText(`v${APP_VERSION}`, 12, HEIGHT - 12);
+    ctx.fillText(`v${APP_VERSION}`, pr.x + 12, pr.y + pr.h - 12);
     // restore defaults
     ctx.textAlign = 'start';
     ctx.textBaseline = 'top';

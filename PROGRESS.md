@@ -205,6 +205,11 @@ Refactor (2025-09-21):
 - [ ] Overlay Screenshot resize handles bug — in progress
   - Improved hit-testing to choose the nearest handle and prioritize edge handles so center edges reliably enter axis-only resize; axis mapping already constrains to H/V for edges and both for corners. Tests for handle detection and transform deltas are still pending. (`src/editor/levelEditor.ts`: overlay handle hit-testing in `handleMouseDown()`)
 
+### Fixes (2025-09-21)
+
+- [x] Posts movement parity rework
+  - Posts now move/nudge exactly like tees/cups. On drag‑move commit, post centers are clamped and grid‑snapped like tee/cup instead of using edge‑aligned radius snapping (which could cancel small moves). Arrow‑key nudges clamp within fairway and no longer re‑snap to edges, allowing 1px or grid‑sized steps as expected. Movement remains gated by View → "Object: Snap to Grid". (`src/editor/levelEditor.ts`: `handleMouseUp()`, `nudgeSelectedObjects()`)
+
 ## Next Up (Short Horizon)
 
 - **Physics & Interactions (Phase 2 features)**

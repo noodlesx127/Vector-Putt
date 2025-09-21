@@ -4297,13 +4297,15 @@ class LevelEditorImpl implements LevelEditor {
             ny = clampY(snap(ny));
             o.x = nx; o.y = ny;
             gs.hole.x = nx; gs.hole.y = ny;
-          } else if (t === 'post' || t === 'wall' || t === 'water' || t === 'sand' || t === 'bridge' || t === 'hill' || t === 'decoration') {
+          } else if (t === 'post') {
+            // Posts should move like tees/cups: grid-quantized center when grid is ON
+            let nx = o.x + dx, ny = o.y + dy;
+            nx = clampX(snap(nx));
+            ny = clampY(snap(ny));
+            o.x = nx; o.y = ny;
+          } else if (t === 'wall' || t === 'water' || t === 'sand' || t === 'bridge' || t === 'hill' || t === 'decoration') {
             if (typeof o.x === 'number') o.x += dx;
             if (typeof o.y === 'number') o.y += dy;
-            if (t === 'post' && this.objectSnapToGrid) {
-              const snapped = this.snapPostPosition(o.x, o.y, o.r ?? 12, env);
-              o.x = snapped.x; o.y = snapped.y;
-            }
           }
         }
         env.setGlobalState(gs);
@@ -4722,13 +4724,12 @@ class LevelEditorImpl implements LevelEditor {
       } else if (t === 'cup') {
         const nx = clampX(o.x + dx), ny = clampY(o.y + dy);
         o.x = nx; o.y = ny; gs.hole.x = nx; gs.hole.y = ny;
-      } else if (t === 'post' || t === 'wall' || t === 'water' || t === 'sand' || t === 'bridge' || t === 'hill' || t === 'decoration') {
+      } else if (t === 'post') {
+        const nx = clampX(o.x + dx), ny = clampY(o.y + dy);
+        o.x = nx; o.y = ny;
+      } else if (t === 'wall' || t === 'water' || t === 'sand' || t === 'bridge' || t === 'hill' || t === 'decoration') {
         if (typeof o.x === 'number') o.x = clampX(o.x + dx);
         if (typeof o.y === 'number') o.y = clampY(o.y + dy);
-        if (t === 'post' && this.objectSnapToGrid) {
-          const snapped = this.snapPostPosition(o.x, o.y, o.r ?? 12, env);
-          o.x = snapped.x; o.y = snapped.y;
-        }
       }
     }
     env.setGlobalState(gs);

@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Level Editor • Overlay Screenshot: fixed a drag release bug where, after adding an overlay image and moving it, the image continued to move because mouseup did not clear the drag state. Finalization now occurs in `handleMouseUp()` and a safety check in `handleMouseMove()` ends overlay interactions if `e.buttons === 0`. (`src/editor/levelEditor.ts`)
 - Level Editor • Overlay Screenshot: fixed menu items not clickable when Overlay was Above. Overlay now does not swallow clicks over menu hotspots, and overlay interactions do not start when clicking menus. (`src/editor/levelEditor.ts` `handleMouseDown()`)
+- Level Editor • Posts movement parity: fixed an issue where posts could not be moved like tees/cups via drag or arrow keys. Drag‑move commit now clamps/snaps the post center like tee/cup, and arrow key nudges no longer apply radius edge‑aligned snapping that cancelled small steps. Movement respects the View → "Object: Snap to Grid" toggle. (`src/editor/levelEditor.ts`)
 
 ## v0.3.29 — 2025-09-20
 

@@ -54,6 +54,15 @@ Notes:
 - [ ] Velocity affects terrain (e.g., hard shot may skim sand)
 - [x] Velocity affects terrain (e.g., hard shot may skim sand)
 - [ ] Ramps/Hills (slope affects speed/direction; phase 2)
+  - Overlay Screenshot (tracing aid)
+    - [x] Phase 1: Tools → "Overlay Screenshot…" picker; View options (Show/Hide, Opacity +/-, Z‑Order Above/Below, Lock, Snap to Grid, Fit to Fairway, Reset Transform, Transform Mode → Move); render pass below/above geometry; keyboard controls for opacity/nudge/scale/rotate (`,`/`.`/`=`/`-`).
+    - [ ] Phase 2 (in progress): Transform handles (Move/Resize/Rotate) with aspect lock and Flip H/V; Fit to Canvas; Calibrate Scale; Through‑click option when overlay is above; tests for enable/disable and transform math.
+      - [x] Transform Modes → Resize/Rotate with on‑canvas handles (BR resize; top‑mid rotate with Shift=15°)
+      - [x] Fit to Canvas
+      - [x] Preserve Aspect toggle
+      - [x] Flip Horizontal / Flip Vertical
+      - [x] Through‑click option (when Overlay is Above)
+      - [ ] Tests for enable/disable states and transform math
   - [x] Hills (prototype): directional acceleration zones with visual gradient
 - [ ] Moving obstacles (timed collisions; phase 2)
 - [ ] Boosters/Accelerators (apply impulse; phase 2)
@@ -139,30 +148,6 @@ Notes:
     - [x] Three save options: LocalStorage, Filesystem (File System Access API/download), User Directory structure
     - Note: Per policy, LocalStorage Save As is disabled in dev/admin builds; use Filesystem or `User_Levels/<Username>/`. Browser-only builds should use explicit Import/Export instead of LocalStorage persistence.
     - [x] Schema validation with detailed error reporting for level files
-    - [x] Filesystem cache with invalidation for performance
-    - [x] Support editing existing bundled levels from `levels/*.json`
-    - [x] User directory structure: `User_Levels/Username/levelname.json` for organized user content
-    - [x] Overlay migration complete: replaced browser dialogs with in-game overlays across Editor and Users Admin UI (Confirm, Prompt, List, Toast); keyboard-friendly (Enter/Esc/Arrows)
-      - [x] Rendering integration complete: overlays and toasts render at the end of `draw()` above all UI; `overlayHotspots` rebuilt each frame; overlay mouse events swallowed to prevent click-through; toasts displayed as a top-right stack with auto-expire.
-      - [x] Keyboard input swallowing: added stopPropagation/stopImmediatePropagation and capture-phase keydown/keyup/keypress so underlying UI/gameplay cannot react while a modal is open
-  - [x] Consistency: define local `COLORS` and `SelectableObject` in `src/editor/levelEditor.ts`; standardize naming to `wallsPoly` in `getObjectBounds()`.
-      - [x] Course/Options/Changelog now render overlays too (added inline `renderGlobalOverlays()` before early returns in `draw()`).
-  - [x] Consistency: fix `generateLevelThumbnail()` to use editor-level keys `water`, `waterPoly`, `sand`, `sandPoly`, and `wallsPoly` for correct thumbnail rendering (`src/main.ts`).
-  - [x] Interactive placement: Posts (click); Walls/Bridges/Water/Sand/Hills (click-drag rectangles) with grid snapping, fairway clamping, and minimum drag threshold
-  - [x] Drag outline preview while dragging rectangle tools (grid-snapped, clamped to fairway bounds)
-  - [x] Editor UI: Menubar with pull-down menus (replaces compact toolbar)
-  - File menu: New, Save, Save As, Level Load, Delete, Back/Exit
-  - Objects menu: Tee, Cup, Post, Wall, WallsPoly, Bridge, Water, WaterPoly, Sand, SandPoly, Hill
-  - Decorations menu: Flowers
-  - Editor Tools menu: Select Tool, Grid -, Grid +, Grid On/Off
-  - Hotspots & rendering: build dropdowns into `editorUiHotspots`; manage open/close state, hover, and click routing; keyboard navigation for menus/items
-  - Layout: top menubar with pulldown panels; render above preview; ensure readability and spacing; maintain current preview layering
-  - Shortcuts: preserved existing shortcuts (G, -, +); mnemonics (Alt+F/O/D/E), arrow keys navigate, Enter selects, Esc closes
-  - Docs: updated `PROGRESS.md` and `CHANGELOG.md`
-  - Back/Exit wiring: File→Back/Exit prompts via in-game Confirm and calls `env.exitToMenu()`; Escape key path uses the same confirm-and-exit flow and is disabled while overlays/menus are open
-  - Tests: hover/click open-close behavior; action dispatch correctness
-  - [x] Refactor: delegate all Level Editor keyboard handling from `src/main.ts` to `levelEditor.handleKeyDown(editorEnv)`; remove legacy unreachable code in `main.ts` referencing old editor globals.
-  - [x] Standardize level schema: keep both rectangular and polygon variants (walls/water/sand). Ensure Editor supports full selection/move/delete on both; no migration of existing levels.
   - [x] Undo/Redo in Level Editor: toolbar buttons and shortcuts (Ctrl+Z/Ctrl+Y); snapshot editor state on placements and actions (Save/Load/New/Delete)
   - [x] Tool palette: Tee, Cup, Walls, WallsPoly, Posts, Bridges, Water, WaterPoly, Sand, SandPoly, Hill, decorations
  - [x] Selection tools: select/move/duplicate/delete; vertex edit for polygons; rotate/scale where applicable

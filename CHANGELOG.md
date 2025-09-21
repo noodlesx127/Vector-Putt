@@ -1,14 +1,3 @@
-### Fixed
-- Screenshot Importer (Annotate): Safer auto-border generation — only create Water/Wall border strips when a Fairway polygon is annotated and the outer fill contains ≥2 canvas corners. Prevents misaligned long bands and corner artifacts when no fairway was drawn. (`src/editor/importScreenshot.ts`)
-- Screenshot Importer (Annotate): `importLevelFromAnnotations()` now emits polygon arrays with the correct shape `{ points: number[] }` for `wallsPoly`, `waterPoly`, and `sandPoly`. Previously raw `number[]` were pushed which prevented polygons from rendering after Accept. (`src/editor/importScreenshot.ts`)
-- Screenshot Importer (Annotate): Selection robustness in the overlay — boundary-first hit test with inside-area fallback for all polygons (including Walls), tolerance increased to 14px, and iteration order reversed to prioritize the most recently drawn item. (`src/editor/importScreenshot.ts`)
-- Screenshot Importer (Annotate): Large outer Water/Wall fills are converted on Accept into four border strips around the fairway; interior fills and posts/cup are preserved (no more disappearing inner features). Thickness tunable via `AnnotationOptions`. (`src/editor/importScreenshot.ts`)
-- Level Editor • Measure Tool: releasing the mouse now pins the current measurement automatically; right-click clears current and pinned measurements reliably and does not resume measuring on mouse move. Also clear alignment guide labels after placements/commits to avoid lingering readouts. (`src/editor/levelEditor.ts`)
- - UI • Level Editor Menus: Added new Edit and View menus.
-   - Edit: Undo, Redo, Copy, Cut, Paste, Duplicate.
-   - View: Grid Toggle, Preview Fill Only On Close, Dashed Next Segment.
-   - Preview Fill Only On Close toggles whether in-progress polygon tools fill before closure. (`src/editor/levelEditor.ts`)
- - Level Editor • Drafting hint overlay while drawing polygons: on-canvas hint near cursor shows “Enter: Close • Esc: Cancel”. (`src/editor/levelEditor.ts`)
 # Changelog
 
 All notable changes to this project will be documented in this file.
@@ -17,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+
+### Added
+- Level Editor • Overlay Screenshot (Phase 2): Interactive transform handles and additional view actions.
+  - Handles: resize from all corners and edges with axis constraints; rotate from top‑mid handle with Shift=15° snap; move by dragging inside when in Move mode.
+  - View menu items: Fit to Canvas, Preserve Aspect toggle, Flip Horizontal/Vertical, Through‑click (Above), Transform Modes → Move/Resize/Rotate, Calibrate Scale…
+  - Input routing: when Overlay is Above and Through‑click is OFF, clicks inside the overlay are swallowed (do not affect underlying tools); when ON, clicks pass through.
+  - Note: Overlay remains session‑only and excluded from saves/exports/thumbnails.
+
+## v0.3.29 — 2025-09-20
 
 ### Added
 - Level Editor • Import Review overlay: Integrated `uiOverlay.kind = 'importReview'` with full rendering and interaction flow. Added `EditorEnv.showImportReview()` wired to `showUiImportReview()` in `src/main.ts`. Overlay supports toggling layer visibility (Walls/Sand/Water), threshold nudges (Looser/Stricter), Recompute preview, and Accept/Cancel. On Accept, editor applies returned polygons (`wallsPoly`/`sandPoly`/`waterPoly`) and updated thresholds. (`src/main.ts`, `src/editor/levelEditor.ts`, `src/editor/importScreenshot.ts`)
@@ -33,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Level Editor • Diagonal Geometry: 45°-constrained polygon drawing tools `Walls45`, `Water45`, `Sand45`. Segments snap to 0/45/90°; Enter closes, Esc cancels; Ctrl temporarily disables constraint (free angle). Normal poly tools accept Shift to temporarily constrain to 45°. Persist to existing `wallsPoly`/`waterPoly`/`sandPoly` arrays. (`src/editor/levelEditor.ts`)
  - Level Editor • Tools: Chamfer/Bevel conversion for rectangles (Walls/Water/Sand). One-click converts selected rect-like objects into beveled octagonal polygons, respecting rotation; prompts for bevel amount (pixels); snaps to grid when enabled; inserts into `wallsPoly`/`waterPoly`/`sandPoly` and removes originals; updates selection to new polys. (`src/editor/levelEditor.ts`)
 - Level Editor • Align/Distribute: Edit menu actions Align Left/Right/Top/Bottom/Center (H/V) and Distribute (H/V) for multi-selection. Alignment snaps objects to shared edges or centers; distribution computes even spacing across the selection span. (`src/editor/levelEditor.ts`)
+- Level Editor • Overlay Screenshot (Phase 1): Session-only tracing aid to place a screenshot over the editor grid. Tools → “Overlay Screenshot…” opens a file picker; View menu adds Overlay options (Show/Hide, Opacity +/- with `[`/`]`, Z‑Order Above/Below, Lock, Snap to Grid, Fit to Fairway, Reset Transform, Transform Mode → Move). Renders below geometry by default or above when toggled; keyboard supports nudges (Arrows, Shift multiplier), scale (`=`/`-`), and rotate (`,`/`.`). Excluded from saves/exports/thumbnails and gameplay. (`src/editor/levelEditor.ts`)
  - Options • Slope arrows toggle: `showSlopeArrows` added to Options panel to show/hide hill direction arrows during play. (`src/main.ts`)
  - Admin Game Settings • Par Heuristics: added sliders for Baseline Shot (px), Turn Penalty, Hill Bump, and Bank Weight. Values persist via Firebase and are consumed by the editor’s Suggest Par. (`src/main.ts`, `src/firebase/database.ts`, `src/editor/levelEditor.ts`)
  - Level System • Cup position suggestions integration: File → “Suggest Cup Positions” proposes ranked markers; clicking applies cup, runs lint, and prompts to apply a par suggestion using admin-tuned coefficients. (`src/editor/levelHeuristics.ts`, `src/editor/levelEditor.ts`)
@@ -53,6 +52,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   This provides much higher accuracy than automatic detection and eliminates browser performance issues. (`src/editor/importScreenshot.ts`, `src/editor/levelEditor.ts`, `src/main.ts`)
 
 ### Fixed
+- Screenshot Importer (Annotate): Safer auto-border generation — only create Water/Wall border strips when a Fairway polygon is annotated and the outer fill contains ≥2 canvas corners. Prevents misaligned long bands and corner artifacts when no fairway was drawn. (`src/editor/importScreenshot.ts`)
+- Screenshot Importer (Annotate): `importLevelFromAnnotations()` now emits polygon arrays with the correct shape `{ points: number[] }` for `wallsPoly`, `waterPoly`, and `sandPoly`. Previously raw `number[]` were pushed which prevented polygons from rendering after Accept. (`src/editor/importScreenshot.ts`)
+- Screenshot Importer (Annotate): Selection robustness in the overlay — boundary-first hit test with inside-area fallback for all polygons (including Walls), tolerance increased to 14px, and iteration order reversed to prioritize the most recently drawn item. (`src/editor/importScreenshot.ts`)
+- Screenshot Importer (Annotate): Large outer Water/Wall fills are converted on Accept into four border strips around the fairway; interior fills and posts/cup are preserved (no more disappearing inner features). Thickness tunable via `AnnotationOptions`. (`src/editor/importScreenshot.ts`)
+- Level Editor • Measure Tool: releasing the mouse now pins the current measurement automatically; right-click clears current and pinned measurements reliably and does not resume measuring on mouse move. Also clear alignment guide labels after placements/commits to avoid lingering readouts. (`src/editor/levelEditor.ts`)
+ - UI • Level Editor Menus: Added new Edit and View menus.
+   - Edit: Undo, Redo, Copy, Cut, Paste, Duplicate.
+   - View: Grid Toggle, Preview Fill Only On Close, Dashed Next Segment.
+   - Preview Fill Only On Close toggles whether in-progress polygon tools fill before closure. (`src/editor/levelEditor.ts`)
+ - Level Editor • Drafting hint overlay while drawing polygons: on-canvas hint near cursor shows “Enter: Close • Esc: Cancel”. (`src/editor/levelEditor.ts`)
+
 - Screenshot Importer: Fixed large filled wall polygons being created instead of boundary walls. Added area-based filter to remove wall polygons that cover more than 25% of fairway area, preventing misclassified large regions from being imported as walls. (`src/editor/importScreenshot.ts`)
 - Screenshot Importer: Major performance optimizations to prevent browser crashes with large screenshots. Added intelligent image size limits (max 2048px dimension, ~3MP total), implemented progressive processing with `requestAnimationFrame` yielding, created async contour tracing with periodic UI yielding (every 10k pixels), and added console logging for progress feedback. These changes prevent UI blocking and browser tab crashes while maintaining import quality. (`src/editor/importScreenshot.ts`, `src/main.ts`)
 - Screenshot Importer: Fixed wall detection failure by relaxing wall detection thresholds (saturation ≤30%, brightness ≥50%), reducing minimum pixel threshold for contour tracing, relaxing green interior filter (≥80% vs ≥50%), and increasing saturation threshold for hue-agnostic wall detection (≤15% vs ≤8%). These changes restore wall detection capability that was lost after previous adjacency filter removal. (`src/editor/importScreenshot.ts`)
@@ -82,7 +92,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - UI • Panels: standardized panel border stroke width to 1.5px with color `#cfd2cf` across Main Menu, Admin Menu, Users, Options, Course Select, Changelog, and User Levels. (`src/main.ts`)
 
 ## v0.3.28 — 2025-09-06
-{{ ... }}
 
 ### Added
 - UI • Users Admin: Converted to standard 800×600 centered panel with header, search box, scrollable user list (keyboard + wheel), right-side action column. Hotspots and keyboard handling implemented for selection and actions. (`src/main.ts`)

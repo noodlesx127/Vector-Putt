@@ -35,7 +35,6 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
    - [x] Course Select UI redesign: Redesigned to match Course Editor visual design (centered panel, scrollable list, mouse wheel support)
    - [x] Course Select integration: Firebase course loading, Course Creator button for admins, User Made Levels separation
    - [x] Firebase course playback fixes: Level progression, UI display, optimized loading
-  - [ ] Test pass: end-to-end Course Creator UI interactions (mouse/keyboard, scrolling, buttons, cancel)
   
  - **UI Consistency — Refresh to match `UI_Design.md`**
   - Findings: Recent panels (Course Select, Course Editor/Creator overlays) adhere to the new centered 800x600 panel style with `rgba(0,0,0,0.85)` backgrounds and `#cfd2cf` borders. The following screens diverge and need refresh:
@@ -115,8 +114,6 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
     - Implemented new sliders under Admin → Game Settings for Baseline Shot (px), Turn Penalty, Hill Bump, and Bank Weight (alongside existing Slope Accel, Friction K, Sand Multiplier). Values persist to Firebase via `FirebaseDatabase.getGameSettings()/updateGameSettings()`. Editor `Suggest Par` consumes these coefficients from `env.getGlobalState()` when calling `estimatePar()`. (`src/main.ts`, `src/firebase/database.ts` `FirebaseGameSettings`, `src/editor/levelEditor.ts`)
   - [x] Cup position suggestions integration
     - Wired `suggestCupPositions()` (File → "Suggest Cup Positions") to propose 3–5 ranked candidate cup pins. Clicking a marker clamps and applies the cup, runs `lintCupPath()` for quick warnings, then computes a Par suggestion using the admin-tuned coefficients (Baseline Shot, Turn Penalty, Hill Bump, Bank Weight, Friction K, Sand Multiplier) and offers to apply it. Markers clear on apply/cancel. (`src/editor/levelHeuristics.ts`, `src/editor/levelEditor.ts`)
-  - [ ] Unit tests for heuristic sanity
-    - Add tests to ensure suggested par increases with obstacle density/path length and that removal of blockers lowers par accordingly.
 
 - **Level Editor & Browser**
   - [x] Selection tools: select/move/duplicate/delete; vertex edit for polygons; rotate/scale where applicable
@@ -144,8 +141,6 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
     - [ ] Menu wiring and shortcuts
       - [x] Objects menu: add `Walls45`, `Water45`, `Sand45`
       - [x] Tools menu: `Chamfer Bevel…` and `Angled Corridor…` wired
-    - [ ] Tests
-      - Unit tests for polygon winding, closure, and collision against 45° edges; snapshot tests for render
 
   - **Alignment Aids — Plan**
     - [x] Smart Alignment Guides (drag-move/resize/vertex drag/polygon drafting)
@@ -170,6 +165,73 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
       - Implemented: drag out guides from rulers (top/left). Guides persist and render; snapping includes these guides; double-click the ruler band clears guides for that axis.
     - [x] Grid compliance
       - When grid is enabled, alignment snap results and guide line positions are quantized to the grid; ruler‑dragged guides snap to grid during drag and on finalize; rulers adjust tick spacing to the grid and the ruler cursor crosshair snaps to grid. (`src/editor/levelEditor.ts`)
+
+## Overlay Screenshot — Plan (2025-09-20)
+
+A tracing aid for the Level Editor that lets you place a level screenshot over the editor grid (light‑table style) and trace geometry with existing tools.
+
+- **Menu placement**
+  - Editor Tools → `Overlay Screenshot…` (choose/replace image, opens options panel on first add)
+  - View → `Overlay Screenshot` (options group)
+
+- **Core capabilities**
+  - Turn Overlay On/Off at any time (toggle in View → Overlay Screenshot)
+  - Opacity control (0–100% slider; fine‑grained +/-)
+  - Move/Resize/Rotate the overlay to fit the fairway bounds; preserve aspect ratio by default
+
+- **View → Overlay Screenshot options**
+  - Show Overlay [toggle]
+  - Opacity [slider 0–100%] (Hotkeys: `[` / `]` ±5%, Shift+`[` / `]` ±10%)
+  - Transform Mode: Move / Resize / Rotate; handles on corners/edges; preserve aspect [toggle]
+  - Fit / Reset: Fit to Fairway, Fit to Canvas, Reset Transform
+  - Lock Overlay (prevents transform changes)
+  - Snap to Grid [toggle]; Arrow keys nudge (1 grid unit); Shift=10 units; Ctrl forces 1px nudge when grid is off
+  - Z‑Order: Below Geometry (default) / Above Geometry; “Through‑click” [toggle] to pass clicks to editor tools when above
+  - Calibrate Scale…: click two points on the overlay and enter distance (grid units) to auto‑scale
+  - Flip H / Flip V
+  - Optional: Auto‑fade overlay slightly while dragging objects (“x‑ray while dragging”) [toggle]
+
+- **Persistence & scope**
+  - Overlay image and its transform are editor‑only and NOT saved to level JSON or Firebase. They reset on reload unless we later add an editor‑session persistence. Excluded from exports, thumbnails, physics, and selection.
+
+- **Performance**
+  - Large images are auto‑downscaled/cached (e.g., max dimension ~2048px) to keep UI smooth. Reuse existing overlay rendering pass and input swallowing already integrated in `src/main.ts`.
+
+- **Keyboard**
+  - Arrow keys: nudge; Shift=10×; Ctrl=1px when grid off
+  - `=` / `-`: scale ±2%; Shift for ±5%
+  - `,` / `.`: rotate ±1°; Shift for ±15°
+  - Quick toggle via View menu; consider `Alt+O` (TBD to avoid conflicts)
+
+- **UI/UX**
+  - Options panel follows `UI_Design.md` (standard 800×600 overlay panel, header, buttons). Cursor/handles match transform affordances used elsewhere. Grid remains visible; Z‑order option controls whether the overlay sits above/below geometry.
+
+- **Tasks**
+  - [x] Editor Tools: add `Overlay Screenshot…` action and file picker; store image as an editor session asset
+  - [ ] View menu: add `Overlay Screenshot` group — Show/Hide, Opacity slider, Lock, Snap to Grid, Z‑Order (Above/Below), Fit to Fairway, Fit to Canvas, Reset Transform, Calibrate Scale, Flip H/V
+    - Phase 1: implemented Show/Hide, Opacity +/- (hotkeys `[`/`]`), Z‑Order (Above/Below), Lock, Snap to Grid, Fit to Fairway, Reset Transform, and Transform Mode → Move.
+    - Phase 2: added Fit to Canvas, Preserve Aspect toggle, Flip H/V, Through‑click (when Above), Calibrate Scale…, and Transform Modes → Resize/Rotate.
+  - [ ] Implement overlay transform handles and keyboard nudge; preserve aspect by default; grid snapping when enabled (`src/editor/levelEditor.ts`)
+    - Phase 1: keyboard nudges (Arrows, Shift multiplier), scale (`=`/`-`), rotate (`,`/`.`); handles pending.
+    - Phase 2: on‑canvas transform handles implemented — Move via drag inside, Resize via corners and edges (axis constraints; aspect lock option), Rotate via top‑mid rotation handle with Shift=15° snap.
+  - [ ] Input routing: when Above and Through‑click is off, overlay consumes input; otherwise pass to editor tools; ensure overlays swallow events consistently (`src/main.ts`)
+    - Implemented: overlay swallows clicks when Above + Through‑click is OFF; allows interactions with overlay handles/move.
+  - [x] Exclude overlay from all saves/exports/thumbnails and gameplay; keep as editor‑session state only
+  - [ ] Tests: transform math and hit‑testing; menu enable/disable; performance with large images
+
+Progress (2025-09-20):
+- Implemented Phase 1 of Overlay Screenshot in the editor preview (`src/editor/levelEditor.ts`): session state (image + transform), Tools → Overlay Screenshot… file picker, View options (Show/Hide, Opacity +/-, Z‑Order Above/Below, Lock, Snap to Grid, Fit to Fairway, Reset Transform, Transform Mode → Move), render pass below or above geometry, and keyboard controls for opacity/nudge/scale/rotate.
+
+Phase 2 (2025-09-20):
+- Added View actions: Fit to Canvas, Preserve Aspect, Flip Horizontal/Vertical, Through‑click (when Above), Calibrate Scale…, and Transform Modes → Resize/Rotate.
+- Implemented overlay interactions:
+  - Drag‑move inside overlay (Move mode), grid‑snap aware.
+  - Resize from all corners and edges with axis constraints and optional Preserve Aspect.
+  - Rotate from top‑mid rotation handle with Shift=15° snap.
+- Implemented input routing: clicks inside overlay are swallowed when Above and Through‑click is OFF; otherwise they pass through to the editor.
+- Next: optional auto‑fade while dragging, fine‑tune hit‑areas, and unit tests for transform math and menu enable/disable.
+
+Notes: This complements the `Screenshot → Level Importer` (automatic extraction) by providing a manual tracing workflow. Use images from `level_screenshots/` as typical sources. Align visuals and interactions to `UI_Design.md`.
 
 ## Screenshot → Level Importer — Plan (2025-09-16)
 A new Level Editor feature to rapidly bootstrap a level from a screenshot. Users can upload a level screenshot; the editor analyzes it to extract fairway/walls/sand/water and the cup, generates geometry, and opens the result for editing.

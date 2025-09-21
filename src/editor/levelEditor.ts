@@ -67,6 +67,8 @@ export type EditorTool =
 
 export type EditorAction =
   | 'save' | 'saveAs' | 'load' | 'import' | 'importScreenshot' | 'importAnnotate' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'previewFillOnClose' | 'previewDashedNext' | 'alignmentGuides' | 'guideDetailsToggle' | 'rulersToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'chamfer' | 'angledCorridor' | 'courseCreator'
+  // Overlay Screenshot actions (View menu + Tools launcher)
+  | 'overlayOpen' | 'overlayToggle' | 'overlayOpacityUp' | 'overlayOpacityDown' | 'overlayZToggle' | 'overlayLockToggle' | 'overlaySnapToggle' | 'overlayFitFairway' | 'overlayFitCanvas' | 'overlayReset' | 'overlayModeMove' | 'overlayModeResize' | 'overlayModeRotate' | 'overlayFlipH' | 'overlayFlipV' | 'overlayThroughClick' | 'overlayAspectToggle' | 'overlayCalibrateScale'
   | 'alignLeft' | 'alignRight' | 'alignTop' | 'alignBottom' | 'alignCenterH' | 'alignCenterV' | 'distributeH' | 'distributeV';
 
 export type EditorMenuId = 'file' | 'edit' | 'view' | 'objects' | 'decorations' | 'tools';
@@ -305,6 +307,34 @@ class LevelEditorImpl implements LevelEditor {
   private resizeHandleIndex: number | null = null;
   private dragMoveStart: { x: number; y: number } | null = null;
   
+  // Overlay Screenshot session state (editor-only; not persisted)
+  private overlayCanvas: HTMLCanvasElement | null = null;
+  private overlayNatural: { width: number; height: number } = { width: 0, height: 0 };
+  private overlayVisible: boolean = false;
+  private overlayOpacity: number = 0.5; // 0..1
+  private overlayAbove: boolean = false; // z-order: false=below geometry, true=above geometry
+  private overlayLocked: boolean = false;
+  private overlaySnapToGrid: boolean = true;
+  private overlayThroughClick: boolean = false;
+  private overlayTransformMode: 'none' | 'move' | 'resize' | 'rotate' = 'none';
+  private overlayTransform = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, flipH: false, flipV: false, preserveAspect: true } as {
+    x: number; y: number; scaleX: number; scaleY: number; rotation: number; flipH: boolean; flipV: boolean; preserveAspect: boolean;
+  };
+  // Overlay interaction state
+  private overlayIsDragging: boolean = false;
+  private overlayDragStartMouse: { x: number; y: number } | null = null;
+  private overlayStartPos: { x: number; y: number } | null = null;
+  private overlayIsResizing: boolean = false;
+  private overlayResizeAnchorLocal: { x: number; y: number } | null = null;
+  private overlayResizeAnchorWorld: { x: number; y: number } | null = null;
+  private overlayResizeStartScale: { sx: number; sy: number } | null = null;
+  private overlayResizeAxis: 'both' | 'x' | 'y' = 'both';
+  private overlayActiveHandle: 'corner0' | 'corner1' | 'corner2' | 'corner3' | 'edgeTop' | 'edgeRight' | 'edgeBottom' | 'edgeLeft' | null = null;
+  private overlayIsRotating: boolean = false;
+  private overlayRotateStartAngleLocal: number = 0;
+  private overlayRotateInitialRotation: number = 0;
+  private overlayCalibrate: null | { phase: 'pickA' | 'pickB'; aLocal?: { x:number; y:number }; aWorld?: { x:number; y:number } } = null;
+  
   // Helper: constrain a segment to 0/45/90-degree increments relative to last vertex
   private constrainTo45(prevX: number, prevY: number, px: number, py: number, gridOn: boolean, gridSize: number): { x: number; y: number } {
     // Start with optional grid snap
@@ -326,6 +356,233 @@ class LevelEditorImpl implements LevelEditor {
     const sx = dx < 0 ? -1 : 1;
     const sy = dy < 0 ? -1 : 1;
     return { x: prevX + sx * len, y: prevY + sy * len };
+  }
+
+  // ----- Overlay helpers -----
+  private async openOverlayImage(): Promise<void> {
+    if (!this.env) return;
+    const env = this.env;
+    const file = await new Promise<File | null>((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.multiple = false;
+      input.onchange = () => {
+        const f = (input.files && input.files[0]) ? input.files[0] : null;
+        resolve(f);
+      };
+      input.click();
+    });
+    if (!file) return;
+
+    try {
+      const img = await this.loadImageFromFile(file);
+      // Downscale to max dimension to keep perf reasonable
+      const maxDim = 2048;
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.width * scale));
+      canvas.height = Math.max(1, Math.round(img.height * scale));
+      const c2d = canvas.getContext('2d');
+      if (!c2d) throw new Error('2D context not available');
+      c2d.imageSmoothingQuality = 'high';
+      c2d.drawImage(img, 0, 0, canvas.width, canvas.height);
+      this.overlayCanvas = canvas;
+      this.overlayNatural = { width: canvas.width, height: canvas.height };
+      this.overlayVisible = true;
+      this.overlayOpacity = 0.5;
+      this.overlayAbove = false;
+      this.overlayLocked = false;
+      this.overlaySnapToGrid = true;
+      this.overlayTransformMode = 'move';
+      this.resetOverlayTransform(env);
+      this.fitOverlayToFairway(env);
+      try { env.showToast('Overlay image loaded'); } catch {}
+    } catch (e) {
+      console.error('openOverlayImage failed', e);
+      try { this.env?.showToast('Failed to load overlay'); } catch {}
+    }
+  }
+
+  private resetOverlayTransform(env: EditorEnv): void {
+    this.overlayTransform = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, flipH: false, flipV: false, preserveAspect: true };
+  }
+
+  private fitOverlayToFairway(env: EditorEnv): void {
+    if (!this.overlayCanvas) return;
+    const { x: fx, y: fy, w: fw, h: fh } = env.fairwayRect();
+    const iw = this.overlayNatural.width || this.overlayCanvas.width;
+    const ih = this.overlayNatural.height || this.overlayCanvas.height;
+    if (iw <= 0 || ih <= 0 || fw <= 0 || fh <= 0) return;
+    const s = Math.min(fw / iw, fh / ih);
+    const dw = iw * s;
+    const dh = ih * s;
+    this.overlayTransform.scaleX = s;
+    this.overlayTransform.scaleY = s;
+    this.overlayTransform.x = fx + Math.floor((fw - dw) / 2);
+    this.overlayTransform.y = fy + Math.floor((fh - dh) / 2);
+  }
+
+  private renderOverlay(env: EditorEnv): void {
+    if (!this.overlayCanvas) return;
+    const { ctx } = env;
+    const img = this.overlayCanvas;
+    const t = this.overlayTransform;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, this.overlayOpacity));
+    // Apply transform
+    const cx = t.x;
+    const cy = t.y;
+    ctx.translate(cx, cy);
+    ctx.rotate(t.rotation || 0);
+    const sx = (t.flipH ? -1 : 1) * (t.scaleX || 1);
+    const sy = (t.flipV ? -1 : 1) * (t.scaleY || 1);
+    ctx.scale(sx, sy);
+    ctx.drawImage(img, 0, 0);
+    ctx.restore();
+  }
+
+  // Compute whether a world point lies within the transformed overlay image bounds
+  private isPointInOverlay(px: number, py: number): boolean {
+    if (!this.overlayCanvas) return false;
+    const t = this.overlayTransform;
+    const iw = this.overlayNatural.width || this.overlayCanvas.width;
+    const ih = this.overlayNatural.height || this.overlayCanvas.height;
+    const sx = (t.flipH ? -1 : 1) * (t.scaleX || 1);
+    const sy = (t.flipV ? -1 : 1) * (t.scaleY || 1);
+    const dx = px - t.x;
+    const dy = py - t.y;
+    const c = Math.cos(t.rotation || 0);
+    const s = Math.sin(t.rotation || 0);
+    // Inverse rotate
+    const xr = dx * c + dy * s;
+    const yr = -dx * s + dy * c;
+    // Inverse scale
+    const lx = xr / sx;
+    const ly = yr / sy;
+    return (lx >= 0 && ly >= 0 && lx <= iw && ly <= ih);
+  }
+
+  // Convert a world point to overlay local coordinates (before rotation/scale)
+  private worldToOverlayLocal(px: number, py: number): { x: number; y: number } {
+    if (!this.overlayCanvas) return { x: 0, y: 0 };
+    const t = this.overlayTransform;
+    const sx = (t.flipH ? -1 : 1) * (t.scaleX || 1);
+    const sy = (t.flipV ? -1 : 1) * (t.scaleY || 1);
+    const dx = px - t.x;
+    const dy = py - t.y;
+    const c = Math.cos(t.rotation || 0);
+    const s = Math.sin(t.rotation || 0);
+    const xr = dx * c + dy * s;
+    const yr = -dx * s + dy * c;
+    return { x: xr / sx, y: yr / sy };
+  }
+
+  // Compute handle world positions for overlay (corners, edges, rotation handle)
+  private getOverlayHandlePositions(): {
+    corners: [{x:number;y:number},{x:number;y:number},{x:number;y:number},{x:number;y:number}];
+    edges: { top:{x:number;y:number}; right:{x:number;y:number}; bottom:{x:number;y:number}; left:{x:number;y:number} };
+    rotation: { x:number; y:number };
+  } | null {
+    if (!this.overlayCanvas) return null;
+    const t = this.overlayTransform;
+    const iw = this.overlayNatural.width || this.overlayCanvas.width;
+    const ih = this.overlayNatural.height || this.overlayCanvas.height;
+    const c = Math.cos(t.rotation || 0);
+    const s = Math.sin(t.rotation || 0);
+    const sx = (t.flipH ? -1 : 1) * (t.scaleX || 1);
+    const sy = (t.flipV ? -1 : 1) * (t.scaleY || 1);
+    const worldPt = (lx: number, ly: number) => {
+      const lx2 = lx * sx;
+      const ly2 = ly * sy;
+      return { x: t.x + (lx2 * c - ly2 * s), y: t.y + (lx2 * s + ly2 * c) };
+    };
+    const p0 = worldPt(0, 0);
+    const p1 = worldPt(iw, 0);
+    const p2 = worldPt(iw, ih);
+    const p3 = worldPt(0, ih);
+    // Edge midpoints
+    const top = { x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2 };
+    const right = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+    const bottom = { x: (p2.x + p3.x) / 2, y: (p2.y + p3.y) / 2 };
+    const left = { x: (p3.x + p0.x) / 2, y: (p3.y + p0.y) / 2 };
+    // Rotation handle 20px outwards from top edge
+    const nx = p0.y - p1.y, ny = p1.x - p0.x; const nlen = Math.hypot(nx, ny) || 1; const ux = nx / nlen, uy = ny / nlen;
+    const rotation = { x: top.x + ux * 20, y: top.y + uy * 20 };
+    return { corners: [p0, p1, p2, p3], edges: { top, right, bottom, left }, rotation };
+  }
+
+  private renderOverlayHandles(env: EditorEnv): void {
+    if (!this.overlayCanvas) return;
+    const { ctx } = env;
+    const handles = this.getOverlayHandlePositions();
+    if (!handles) return;
+    const [p0, p1, p2, p3] = handles.corners;
+    const pr = handles.rotation;
+
+    ctx.save();
+    ctx.setLineDash([6, 4]);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#00aaff';
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.lineTo(p3.x, p3.y);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Corner handles
+    const drawHandle = (pt: {x:number;y:number}) => {
+      const hs = 6;
+      ctx.fillStyle = '#00aaff';
+      ctx.fillRect(pt.x - hs/2, pt.y - hs/2, hs, hs);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(pt.x - hs/2, pt.y - hs/2, hs, hs);
+    };
+    drawHandle(p0); drawHandle(p1); drawHandle(p2); drawHandle(p3);
+    // Edge handles (midpoints)
+    const drawEdge = (pt: {x:number;y:number}) => {
+      const hs = 6;
+      ctx.fillStyle = '#55ccff';
+      ctx.fillRect(pt.x - hs/2, pt.y - hs/2, hs, hs);
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.strokeRect(pt.x - hs/2, pt.y - hs/2, hs, hs);
+    };
+    drawEdge(handles.edges.top);
+    drawEdge(handles.edges.right);
+    drawEdge(handles.edges.bottom);
+    drawEdge(handles.edges.left);
+    // Rotation handle (circle)
+    ctx.fillStyle = '#ff6600';
+    ctx.beginPath(); ctx.arc(pr.x, pr.y, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(pr.x, pr.y, 6, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
+
+  private fitOverlayToCanvas(env: EditorEnv): void {
+    if (!this.overlayCanvas) return;
+    const WIDTH = env.width, HEIGHT = env.height;
+    const iw = this.overlayNatural.width || this.overlayCanvas.width;
+    const ih = this.overlayNatural.height || this.overlayCanvas.height;
+    if (iw <= 0 || ih <= 0 || WIDTH <= 0 || HEIGHT <= 0) return;
+    const s = Math.min(WIDTH / iw, HEIGHT / ih);
+    const dw = iw * s;
+    const dh = ih * s;
+    this.overlayTransform.scaleX = s;
+    this.overlayTransform.scaleY = s;
+    this.overlayTransform.x = Math.floor((WIDTH - dw) / 2);
+    this.overlayTransform.y = Math.floor((HEIGHT - dh) / 2);
+  }
+
+  private loadImageFromFile(file: File): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+      img.src = url;
+    });
   }
 
   // Compute snapping for drag-move based on the selection bounds rather than the mouse point.
@@ -366,6 +623,7 @@ class LevelEditorImpl implements LevelEditor {
         }
       }
     }
+
     // Proposed moved selection bounds
     const sel = this.getSelectionBounds();
     const moved = { x: sel.x + rawDx, y: sel.y + rawDy, w: sel.w, h: sel.h };
@@ -1232,7 +1490,25 @@ class LevelEditorImpl implements LevelEditor {
         { label: 'Dashed Next Segment', item: { kind: 'action', action: 'previewDashedNext' } },
         { label: 'Alignment Guides', item: { kind: 'action', action: 'alignmentGuides' } },
         { label: 'Guide Details', item: { kind: 'action', action: 'guideDetailsToggle' } },
-        { label: 'Rulers', item: { kind: 'action', action: 'rulersToggle' } }
+        { label: 'Rulers', item: { kind: 'action', action: 'rulersToggle' } },
+        // Overlay Screenshot options
+        { label: 'Overlay: Show/Hide', item: { kind: 'action', action: 'overlayToggle' } },
+        { label: 'Overlay: Opacity +', item: { kind: 'action', action: 'overlayOpacityUp' } },
+        { label: 'Overlay: Opacity -', item: { kind: 'action', action: 'overlayOpacityDown' } },
+        { label: 'Overlay: Z-Order (Above/Below)', item: { kind: 'action', action: 'overlayZToggle' } },
+        { label: 'Overlay: Lock', item: { kind: 'action', action: 'overlayLockToggle' } },
+        { label: 'Overlay: Snap to Grid', item: { kind: 'action', action: 'overlaySnapToggle' } },
+        { label: 'Overlay: Fit to Fairway', item: { kind: 'action', action: 'overlayFitFairway' } },
+        { label: 'Overlay: Fit to Canvas', item: { kind: 'action', action: 'overlayFitCanvas' } },
+        { label: 'Overlay: Reset Transform', item: { kind: 'action', action: 'overlayReset' } },
+        { label: 'Overlay: Preserve Aspect', item: { kind: 'action', action: 'overlayAspectToggle' } },
+        { label: 'Overlay: Flip Horizontal', item: { kind: 'action', action: 'overlayFlipH' } },
+        { label: 'Overlay: Flip Vertical', item: { kind: 'action', action: 'overlayFlipV' } },
+        { label: 'Overlay: Through-click (Above)', item: { kind: 'action', action: 'overlayThroughClick' } },
+        { label: 'Overlay: Transform Mode → Move', item: { kind: 'action', action: 'overlayModeMove' } },
+        { label: 'Overlay: Transform Mode → Resize', item: { kind: 'action', action: 'overlayModeResize' } },
+        { label: 'Overlay: Transform Mode → Rotate', item: { kind: 'action', action: 'overlayModeRotate' } },
+        { label: 'Overlay: Calibrate Scale…', item: { kind: 'action', action: 'overlayCalibrateScale' } }
       ]
     },
     objects: {
@@ -1268,6 +1544,7 @@ class LevelEditorImpl implements LevelEditor {
       items: [
         { label: 'Select Tool', item: { kind: 'tool', tool: 'select' } },
         { label: 'Measure Tool', item: { kind: 'tool', tool: 'measure' } },
+        { label: 'Overlay Screenshot…', item: { kind: 'action', action: 'overlayOpen' } },
         { label: 'Metadata', item: { kind: 'action', action: 'metadata' } },
         { label: 'Suggest Par', item: { kind: 'action', action: 'suggestPar' } },
         { label: 'Suggest Cup Positions', item: { kind: 'action', action: 'suggestCup' } },
@@ -1406,6 +1683,11 @@ class LevelEditorImpl implements LevelEditor {
       }
       ctx.stroke();
       ctx.restore();
+    }
+
+    // Overlay Screenshot — render BELOW geometry when enabled and set to below
+    if (this.overlayVisible && this.overlayCanvas && !this.overlayAbove) {
+      this.renderOverlay(env);
     }
 
     // Render pinned measurements
@@ -2315,6 +2597,14 @@ class LevelEditorImpl implements LevelEditor {
     }
 
     // Menubar (drawn last)
+    // When overlay is ABOVE geometry, render it just before menubar and selection overlays
+    if (this.overlayVisible && this.overlayCanvas && this.overlayAbove) {
+      this.renderOverlay(env);
+    }
+    // Draw overlay transform handles on top (when editable)
+    if (this.overlayVisible && this.overlayCanvas && this.overlayTransformMode !== 'none' && !this.overlayLocked) {
+      this.renderOverlayHandles(env);
+    }
     const menubarX = 0, menubarY = 0, menubarW = WIDTH, menubarH = 28;
     // Darker bar to match UI_Design panel aesthetic
     ctx.fillStyle = 'rgba(0,0,0,0.70)';
@@ -2457,6 +2747,74 @@ class LevelEditorImpl implements LevelEditor {
             case 'rulersToggle':
               displayLabel = `Rulers: ${this.showRulers ? 'On' : 'Off'}`;
               break;
+            // Overlay dynamic labels
+            case 'overlayToggle':
+              displayLabel = `Overlay: ${this.overlayVisible ? 'On' : 'Off'}`;
+              break;
+            case 'overlayOpacityUp':
+              displayLabel = `Overlay: Opacity + (${Math.round(this.overlayOpacity * 100)}%)`;
+              isDisabled = !this.overlayVisible || this.overlayOpacity >= 1;
+              break;
+            case 'overlayOpacityDown':
+              displayLabel = `Overlay: Opacity - (${Math.round(this.overlayOpacity * 100)}%)`;
+              isDisabled = !this.overlayVisible || this.overlayOpacity <= 0;
+              break;
+            case 'overlayZToggle':
+              displayLabel = `Overlay: ${this.overlayAbove ? 'Above Geometry' : 'Below Geometry'}`;
+              isDisabled = !this.overlayVisible;
+              break;
+            case 'overlayLockToggle':
+              displayLabel = `Overlay: ${this.overlayLocked ? 'Locked' : 'Unlocked'}`;
+              isDisabled = !this.overlayVisible;
+              break;
+            case 'overlaySnapToggle':
+              displayLabel = `Overlay: Snap to Grid ${this.overlaySnapToGrid ? 'On' : 'Off'}`;
+              isDisabled = !this.overlayVisible;
+              break;
+            case 'overlayFitFairway':
+              displayLabel = 'Overlay: Fit to Fairway';
+              isDisabled = !this.overlayVisible || !this.overlayCanvas;
+              break;
+            case 'overlayFitCanvas':
+              displayLabel = 'Overlay: Fit to Canvas';
+              isDisabled = !this.overlayVisible || !this.overlayCanvas;
+              break;
+            case 'overlayReset':
+              displayLabel = 'Overlay: Reset Transform';
+              isDisabled = !this.overlayVisible || !this.overlayCanvas;
+              break;
+            case 'overlayModeMove':
+              displayLabel = `Overlay: Transform Mode → Move${this.overlayTransformMode === 'move' ? ' (Active)' : ''}`;
+              isDisabled = !this.overlayVisible || !this.overlayCanvas || this.overlayLocked;
+              break;
+            case 'overlayModeResize':
+              displayLabel = `Overlay: Transform Mode → Resize${this.overlayTransformMode === 'resize' ? ' (Active)' : ''}`;
+              isDisabled = !this.overlayVisible || !this.overlayCanvas || this.overlayLocked;
+              break;
+            case 'overlayModeRotate':
+              displayLabel = `Overlay: Transform Mode → Rotate${this.overlayTransformMode === 'rotate' ? ' (Active)' : ''}`;
+              isDisabled = !this.overlayVisible || !this.overlayCanvas || this.overlayLocked;
+              break;
+            case 'overlayFlipH':
+              displayLabel = 'Overlay: Flip Horizontal';
+              isDisabled = !this.overlayVisible || !this.overlayCanvas || this.overlayLocked;
+              break;
+            case 'overlayFlipV':
+              displayLabel = 'Overlay: Flip Vertical';
+              isDisabled = !this.overlayVisible || !this.overlayCanvas || this.overlayLocked;
+              break;
+            case 'overlayThroughClick':
+              displayLabel = `Overlay: Through-click (Above) ${this.overlayThroughClick ? 'On' : 'Off'}`;
+              isDisabled = !this.overlayVisible || !this.overlayCanvas || !this.overlayAbove;
+              break;
+            case 'overlayAspectToggle':
+              displayLabel = `Overlay: Preserve Aspect ${this.overlayTransform.preserveAspect ? 'On' : 'Off'}`;
+              isDisabled = !this.overlayVisible || !this.overlayCanvas || this.overlayLocked;
+              break;
+            case 'overlayCalibrateScale':
+              displayLabel = 'Overlay: Calibrate Scale…';
+              isDisabled = !this.overlayVisible || !this.overlayCanvas || this.overlayLocked;
+              break;
             case 'suggestCup':
               // keep default label
               break;
@@ -2477,6 +2835,154 @@ class LevelEditorImpl implements LevelEditor {
   handleMouseDown(e: MouseEvent, env: EditorEnv): void {
     if (env.isOverlayActive?.()) return;
     const p = env.worldFromEvent(e);
+
+    // Swallow clicks when overlay is above and through-click is off (but allow overlay interactions)
+    const overlayClickInsideAbove = (this.overlayVisible && this.overlayCanvas && this.overlayAbove && !this.overlayThroughClick && this.isPointInOverlay(p.x, p.y));
+
+    // Overlay Calibrate Scale flow (click two points on the overlay image)
+    if (this.overlayVisible && this.overlayCanvas && this.overlayCalibrate) {
+      if (!this.isPointInOverlay(p.x, p.y)) {
+        try { env.showToast('Calibrate: click inside the overlay image'); } catch {}
+        return;
+      }
+      const local = this.worldToOverlayLocal(p.x, p.y);
+      if (this.overlayCalibrate.phase === 'pickA') {
+        // Record anchor local and world to preserve during scaling
+        const t = this.overlayTransform;
+        const c = Math.cos(t.rotation || 0), s = Math.sin(t.rotation || 0);
+        const sx = (t.flipH ? -1 : 1) * (t.scaleX || 1);
+        const sy = (t.flipV ? -1 : 1) * (t.scaleY || 1);
+        const ax = local.x, ay = local.y;
+        const wx = t.x + (ax * sx * c - ay * sy * s);
+        const wy = t.y + (ax * sx * s + ay * sy * c);
+        this.overlayCalibrate = { phase: 'pickB', aLocal: { x: local.x, y: local.y }, aWorld: { x: wx, y: wy } };
+        try { env.showToast('Calibrate: click the second point on the overlay'); } catch {}
+        return;
+      } else if (this.overlayCalibrate.phase === 'pickB' && this.overlayCalibrate.aLocal && this.overlayCalibrate.aWorld) {
+        const a = this.overlayCalibrate.aLocal;
+        const distLocal = Math.hypot(local.x - a.x, local.y - a.y);
+        if (distLocal < 1e-3) { try { env.showToast('Calibrate: points too close; try again'); } catch {} ; this.overlayCalibrate = { phase: 'pickA' }; return; }
+        (async () => {
+          const defaultPx = Math.round(Math.hypot(p.x - this.overlayCalibrate!.aWorld!.x, p.y - this.overlayCalibrate!.aWorld!.y)).toString();
+          const val = await env.showPrompt('Enter real distance between points (pixels):', defaultPx, 'Calibrate Scale');
+          if (val !== null) {
+            const realPx = parseFloat(val);
+            if (!isNaN(realPx) && isFinite(realPx) && realPx > 0) {
+              const t = this.overlayTransform;
+              const scaleMul = realPx / distLocal;
+              const newSx = Math.max(0.001, t.scaleX * scaleMul);
+              const newSy = Math.max(0.001, t.scaleY * scaleMul);
+              // Re-anchor at point A
+              const c = Math.cos(t.rotation || 0), s = Math.sin(t.rotation || 0);
+              const ax = a.x, ay = a.y;
+              const wx = this.overlayCalibrate!.aWorld!.x, wy = this.overlayCalibrate!.aWorld!.y;
+              const signX = (t.flipH ? -1 : 1);
+              const signY = (t.flipV ? -1 : 1);
+              const tx = wx - (ax * signX * newSx * c - ay * signY * newSy * s);
+              const ty = wy - (ax * signX * newSx * s + ay * signY * newSy * c);
+              this.overlayTransform.scaleX = newSx;
+              this.overlayTransform.scaleY = newSy;
+              this.overlayTransform.x = tx;
+              this.overlayTransform.y = ty;
+              try { env.showToast('Overlay scale calibrated'); } catch {}
+            } else {
+              try { env.showToast('Invalid distance'); } catch {}
+            }
+          }
+          this.overlayCalibrate = null;
+        })();
+        return;
+      }
+    }
+
+    // Overlay drag start (Move mode)
+    if (this.overlayVisible && this.overlayCanvas && this.overlayTransformMode === 'move' && !this.overlayLocked) {
+      if (this.isPointInOverlay(p.x, p.y)) {
+        this.overlayIsDragging = true;
+        this.overlayDragStartMouse = { x: p.x, y: p.y };
+        this.overlayStartPos = { x: this.overlayTransform.x, y: this.overlayTransform.y };
+        return;
+      }
+    }
+
+    // Overlay resize start (corners and edges)
+    if (this.overlayVisible && this.overlayCanvas && this.overlayTransformMode === 'resize' && !this.overlayLocked) {
+      const handles = this.getOverlayHandlePositions();
+      if (handles) {
+        const iw = this.overlayNatural.width || this.overlayCanvas.width;
+        const ih = this.overlayNatural.height || this.overlayCanvas.height;
+        const threshold = 10;
+        type Hit = { kind: 'corner0'|'corner1'|'corner2'|'corner3'|'edgeTop'|'edgeRight'|'edgeBottom'|'edgeLeft'; pt:{x:number;y:number} };
+        const hits: Hit[] = [
+          { kind: 'corner0', pt: handles.corners[0] },
+          { kind: 'corner1', pt: handles.corners[1] },
+          { kind: 'corner2', pt: handles.corners[2] },
+          { kind: 'corner3', pt: handles.corners[3] },
+          { kind: 'edgeTop', pt: handles.edges.top },
+          { kind: 'edgeRight', pt: handles.edges.right },
+          { kind: 'edgeBottom', pt: handles.edges.bottom },
+          { kind: 'edgeLeft', pt: handles.edges.left },
+        ];
+        let chosen: Hit | null = null;
+        for (const h of hits) {
+          const d = Math.hypot(p.x - h.pt.x, p.y - h.pt.y);
+          if (d <= threshold) { chosen = h; break; }
+        }
+        if (chosen) {
+          const t = this.overlayTransform;
+          this.overlayIsResizing = true;
+          this.overlayActiveHandle = chosen.kind;
+          // Set anchor local and axis based on handle
+          if (chosen.kind === 'corner0') { this.overlayResizeAnchorLocal = { x: iw, y: ih }; this.overlayResizeAxis = 'both'; }
+          else if (chosen.kind === 'corner1') { this.overlayResizeAnchorLocal = { x: 0, y: ih }; this.overlayResizeAxis = 'both'; }
+          else if (chosen.kind === 'corner2') { this.overlayResizeAnchorLocal = { x: 0, y: 0 }; this.overlayResizeAxis = 'both'; }
+          else if (chosen.kind === 'corner3') { this.overlayResizeAnchorLocal = { x: iw, y: 0 }; this.overlayResizeAxis = 'both'; }
+          else if (chosen.kind === 'edgeTop') { this.overlayResizeAnchorLocal = { x: 0, y: ih }; this.overlayResizeAxis = 'y'; }
+          else if (chosen.kind === 'edgeBottom') { this.overlayResizeAnchorLocal = { x: 0, y: 0 }; this.overlayResizeAxis = 'y'; }
+          else if (chosen.kind === 'edgeLeft') { this.overlayResizeAnchorLocal = { x: iw, y: 0 }; this.overlayResizeAxis = 'x'; }
+          else /* edgeRight */ { this.overlayResizeAnchorLocal = { x: 0, y: 0 }; this.overlayResizeAxis = 'x'; }
+          // Record anchor world position to keep fixed during resize
+          const c = Math.cos(t.rotation || 0), s = Math.sin(t.rotation || 0);
+          const sx = (t.flipH ? -1 : 1) * (t.scaleX || 1);
+          const sy = (t.flipV ? -1 : 1) * (t.scaleY || 1);
+          const ax = this.overlayResizeAnchorLocal.x, ay = this.overlayResizeAnchorLocal.y;
+          const wx = t.x + (ax * sx * c - ay * sy * s);
+          const wy = t.y + (ax * sx * s + ay * sy * c);
+          this.overlayResizeAnchorWorld = { x: wx, y: wy };
+          this.overlayResizeStartScale = { sx: t.scaleX, sy: t.scaleY };
+          return;
+        }
+      }
+    }
+
+    // Overlay rotation start (use rotation handle at top mid)
+    if (this.overlayVisible && this.overlayCanvas && this.overlayTransformMode === 'rotate' && !this.overlayLocked) {
+      // Compute rotation handle position
+      const t = this.overlayTransform;
+      const iw = this.overlayNatural.width || this.overlayCanvas.width;
+      const c = Math.cos(t.rotation || 0), s = Math.sin(t.rotation || 0);
+      const sx = (t.flipH ? -1 : 1) * (t.scaleX || 1);
+      const sy = (t.flipV ? -1 : 1) * (t.scaleY || 1);
+      const p0x = t.x, p0y = t.y;
+      const p1x = t.x + (iw * sx * c - 0 * sy * s);
+      const p1y = t.y + (iw * sx * s + 0 * sy * c);
+      const mx = (p0x + p1x) / 2, my = (p0y + p1y) / 2;
+      const nx = p0y - p1y, ny = p1x - p0x; const nlen = Math.hypot(nx, ny) || 1; const ux = nx / nlen, uy = ny / nlen;
+      const prx = mx + ux * 20, pry = my + uy * 20;
+      const dist = Math.hypot(p.x - prx, p.y - pry);
+      if (dist <= 10) {
+        this.overlayIsRotating = true;
+        const local = this.worldToOverlayLocal(p.x, p.y);
+        this.overlayRotateStartAngleLocal = Math.atan2(local.y, local.x);
+        this.overlayRotateInitialRotation = this.overlayTransform.rotation || 0;
+        return;
+      }
+    }
+
+    // If overlay is above and through-click is disabled and we clicked inside it but didn't start an overlay interaction, swallow the event
+    if (overlayClickInsideAbove) {
+      return;
+    }
 
     // Pending confirmations from screenshot import: click-to-confirm Tee/Cup
     if (this.pendingTeeConfirm || this.pendingCupConfirm) {
@@ -2556,6 +3062,27 @@ class LevelEditorImpl implements LevelEditor {
       const snap = (n: number) => { try { if (this.showGrid && env.getShowGrid()) { const g = env.getGridSize(); return Math.round(n / g) * g; } } catch {} return n; };
       const px = snap(clamp(p.x, fairX, fairX + fairW));
       const py = snap(clamp(p.y, fairY, fairY + fairH));
+
+    // Finish overlay drag
+    if (this.overlayIsDragging) {
+      this.overlayIsDragging = false;
+      this.overlayDragStartMouse = null;
+      this.overlayStartPos = null;
+      return;
+    }
+    if (this.overlayIsResizing) {
+      this.overlayIsResizing = false;
+      this.overlayResizeAnchorLocal = null;
+      this.overlayResizeAnchorWorld = null;
+      this.overlayResizeStartScale = null;
+      this.overlayActiveHandle = null;
+      this.overlayResizeAxis = 'both';
+      return;
+    }
+    if (this.overlayIsRotating) {
+      this.overlayIsRotating = false;
+      return;
+    }
       // Detect double-click to clear pinned measures
       const now = Date.now();
       if (this.lastClickPos && (now - this.lastClickMs) < 300) {
@@ -2814,6 +3341,50 @@ class LevelEditorImpl implements LevelEditor {
               void this.importFromScreenshot();
             } else if (item.action === 'importAnnotate') {
               void this.importFromScreenshotAnnotate();
+            } else if (item.action === 'overlayOpen') {
+              void this.openOverlayImage();
+            } else if (item.action === 'overlayToggle') {
+              this.overlayVisible = !this.overlayVisible;
+              try { env.showToast(`Overlay ${this.overlayVisible ? 'ON' : 'OFF'}`); } catch {}
+            } else if (item.action === 'overlayOpacityUp') {
+              if (this.overlayVisible) this.overlayOpacity = Math.max(0, Math.min(1, this.overlayOpacity + 0.05));
+            } else if (item.action === 'overlayOpacityDown') {
+              if (this.overlayVisible) this.overlayOpacity = Math.max(0, Math.min(1, this.overlayOpacity - 0.05));
+            } else if (item.action === 'overlayZToggle') {
+              if (this.overlayVisible) this.overlayAbove = !this.overlayAbove;
+            } else if (item.action === 'overlayLockToggle') {
+              if (this.overlayVisible) this.overlayLocked = !this.overlayLocked;
+            } else if (item.action === 'overlaySnapToggle') {
+              if (this.overlayVisible) this.overlaySnapToGrid = !this.overlaySnapToGrid;
+            } else if (item.action === 'overlayFitFairway') {
+              if (this.overlayVisible && this.overlayCanvas) this.fitOverlayToFairway(env);
+            } else if (item.action === 'overlayReset') {
+              if (this.overlayVisible) this.resetOverlayTransform(env);
+            } else if (item.action === 'overlayModeMove') {
+              if (this.overlayVisible && !this.overlayLocked) this.overlayTransformMode = 'move';
+            } else if (item.action === 'overlayModeResize') {
+              if (this.overlayVisible && !this.overlayLocked) this.overlayTransformMode = 'resize';
+            } else if (item.action === 'overlayModeRotate') {
+              if (this.overlayVisible && !this.overlayLocked) this.overlayTransformMode = 'rotate';
+            } else if (item.action === 'overlayFitCanvas') {
+              if (this.overlayVisible && this.overlayCanvas) this.fitOverlayToCanvas(env);
+            } else if (item.action === 'overlayFlipH') {
+              if (this.overlayVisible && this.overlayCanvas && !this.overlayLocked) this.overlayTransform.flipH = !this.overlayTransform.flipH;
+            } else if (item.action === 'overlayFlipV') {
+              if (this.overlayVisible && this.overlayCanvas && !this.overlayLocked) this.overlayTransform.flipV = !this.overlayTransform.flipV;
+            } else if (item.action === 'overlayThroughClick') {
+              if (this.overlayVisible && this.overlayCanvas && this.overlayAbove) {
+                this.overlayThroughClick = !this.overlayThroughClick;
+              } else {
+                try { env.showToast('Through-click is available only when Overlay is Above.'); } catch {}
+              }
+            } else if (item.action === 'overlayAspectToggle') {
+              if (this.overlayVisible && this.overlayCanvas && !this.overlayLocked) this.overlayTransform.preserveAspect = !this.overlayTransform.preserveAspect;
+            } else if (item.action === 'overlayCalibrateScale') {
+              if (this.overlayVisible && this.overlayCanvas && !this.overlayLocked) {
+                this.overlayCalibrate = { phase: 'pickA' };
+                try { env.showToast('Calibrate: click first point on the overlay'); } catch {}
+              }
             } else if (item.action === 'export') {
               void this.exportLevel();
             } else if (item.action === 'metadata') {
@@ -3142,6 +3713,70 @@ class LevelEditorImpl implements LevelEditor {
     const ry = clampY(p.y);
     const px = snap(rx);
     const py = snap(ry);
+
+    // Overlay drag update
+    if (this.overlayIsDragging && this.overlayDragStartMouse && this.overlayStartPos) {
+      const rawDx = p.x - this.overlayDragStartMouse.x;
+      const rawDy = p.y - this.overlayDragStartMouse.y;
+      let dx = rawDx, dy = rawDy;
+      if (this.overlaySnapToGrid) {
+        try {
+          const g = env.getGridSize();
+          dx = Math.round(rawDx / g) * g;
+          dy = Math.round(rawDy / g) * g;
+        } catch {}
+      }
+      this.overlayTransform.x = this.overlayStartPos.x + dx;
+      this.overlayTransform.y = this.overlayStartPos.y + dy;
+      return;
+    }
+
+    // Overlay resize update (bottom-right only)
+    if (this.overlayIsResizing && this.overlayResizeAnchorLocal && this.overlayResizeAnchorWorld && this.overlayResizeStartScale) {
+      if (!this.overlayCanvas) return;
+      const iw = this.overlayNatural.width || this.overlayCanvas!.width;
+      const ih = this.overlayNatural.height || this.overlayCanvas!.height;
+      const local = this.worldToOverlayLocal(p.x, p.y);
+      let nsx = Math.max(0.01, local.x / Math.max(1, iw));
+      let nsy = Math.max(0.01, local.y / Math.max(1, ih));
+      // Axis constraints
+      if (this.overlayResizeAxis === 'x') {
+        if (this.overlayTransform.preserveAspect) { nsy = nsx; } else { nsy = this.overlayTransform.scaleY; }
+      } else if (this.overlayResizeAxis === 'y') {
+        if (this.overlayTransform.preserveAspect) { nsx = nsy; } else { nsx = this.overlayTransform.scaleX; }
+      }
+      if (this.overlayTransform.preserveAspect && this.overlayResizeAxis === 'both') {
+        const s = Math.max(nsx, nsy);
+        nsx = s; nsy = s;
+      }
+      const t = this.overlayTransform;
+      // Keep anchor world fixed: T' = W_anchor - R * (S' * A_local)
+      const c = Math.cos(t.rotation || 0), s = Math.sin(t.rotation || 0);
+      const ax = this.overlayResizeAnchorLocal.x, ay = this.overlayResizeAnchorLocal.y;
+      const wx = this.overlayResizeAnchorWorld!.x, wy = this.overlayResizeAnchorWorld!.y;
+      const tx = wx - (ax * (t.flipH ? -1 : 1) * nsx * c - ay * (t.flipV ? -1 : 1) * nsy * s);
+      const ty = wy - (ax * (t.flipH ? -1 : 1) * nsx * s + ay * (t.flipV ? -1 : 1) * nsy * c);
+      this.overlayTransform.scaleX = nsx;
+      this.overlayTransform.scaleY = nsy;
+      this.overlayTransform.x = tx;
+      this.overlayTransform.y = ty;
+      return;
+    }
+
+    // Overlay rotate update
+    if (this.overlayIsRotating) {
+      const local = this.worldToOverlayLocal(p.x, p.y);
+      const a1 = Math.atan2(local.y, local.x);
+      const delta = a1 - this.overlayRotateStartAngleLocal;
+      const rot = this.overlayRotateInitialRotation + delta;
+      if (this.lastModifiers.shift) {
+        const step = Math.PI / 12; // 15°
+        this.overlayTransform.rotation = Math.round(rot / step) * step;
+      } else {
+        this.overlayTransform.rotation = rot;
+      }
+      return;
+    }
 
     // Ruler drag update (live preview of guide)
     if (this.isRulerDragging && this.rulerDragKind) {
@@ -3814,6 +4449,38 @@ class LevelEditorImpl implements LevelEditor {
       this.dragMoveStart = null;
       this.dragMoveOffset = { x: 0, y: 0 };
       return;
+    }
+
+    // Overlay quick controls and nudges (handled before selection so it takes precedence when active)
+    if (this.overlayVisible && this.overlayCanvas) {
+      // Opacity adjustments
+      if (key === '[') {
+        e.preventDefault();
+        this.overlayOpacity = Math.max(0, Math.min(1, this.overlayOpacity - (e.shiftKey ? 0.10 : 0.05)));
+        return;
+      }
+      if (key === ']') {
+        e.preventDefault();
+        this.overlayOpacity = Math.max(0, Math.min(1, this.overlayOpacity + (e.shiftKey ? 0.10 : 0.05)));
+        return;
+      }
+      // Nudge/Scale/Rotate when in Move mode
+      if (this.overlayTransformMode === 'move' && !this.overlayLocked) {
+        const nudge = (() => {
+          if (this.overlaySnapToGrid) {
+            try { const g = env.getGridSize(); return (e.shiftKey ? (g * 10) : g) || 20; } catch { return e.shiftKey ? 200 : 20; }
+          }
+          return e.shiftKey ? 10 : 1;
+        })();
+        if (key === 'ArrowLeft') { e.preventDefault(); this.overlayTransform.x -= nudge; return; }
+        if (key === 'ArrowRight') { e.preventDefault(); this.overlayTransform.x += nudge; return; }
+        if (key === 'ArrowUp') { e.preventDefault(); this.overlayTransform.y -= nudge; return; }
+        if (key === 'ArrowDown') { e.preventDefault(); this.overlayTransform.y += nudge; return; }
+        if (key === '=' || key === '+') { e.preventDefault(); this.overlayTransform.scaleX *= 1.02; this.overlayTransform.scaleY *= 1.02; return; }
+        if (key === '-') { e.preventDefault(); this.overlayTransform.scaleX *= 0.98; this.overlayTransform.scaleY *= 0.98; return; }
+        if (key === ',') { e.preventDefault(); this.overlayTransform.rotation -= (e.shiftKey ? Math.PI/12 : Math.PI/180); return; }
+        if (key === '.') { e.preventDefault(); this.overlayTransform.rotation += (e.shiftKey ? Math.PI/12 : Math.PI/180); return; }
+      }
     }
 
     // Arrow keys: nudge selection (Shift => larger step)

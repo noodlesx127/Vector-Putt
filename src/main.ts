@@ -5744,7 +5744,7 @@ function draw() {
     ctx.fillStyle = 'rgba(0,0,0,0.85)';
     ctx.fillRect(panelX, panelY, panelW, panelH);
     ctx.strokeStyle = '#cfd2cf';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.5;
     ctx.strokeRect(panelX, panelY, panelW, panelH);
     
     // Title
@@ -6192,7 +6192,7 @@ function draw() {
       // Scrollbar track
       ctx.fillStyle = 'rgba(255,255,255,0.1)';
       ctx.fillRect(scrollbarX, scrollbarY, scrollbarW, scrollbarH);
-      ctx.strokeStyle = '#666666';
+      ctx.strokeStyle = '#cfd2cf';
       ctx.lineWidth = 1;
       ctx.strokeRect(scrollbarX + 0.5, scrollbarY + 0.5, scrollbarW - 1, scrollbarH - 1);
       
@@ -6219,7 +6219,7 @@ function draw() {
       ctx.fillRect(rowX, rowY, rowW, rowHeight - 2);
       
       // Row border
-      ctx.strokeStyle = isSelected ? '#88d4ff' : '#666666';
+      ctx.strokeStyle = isSelected ? '#88d4ff' : '#cfd2cf';
       ctx.lineWidth = 1;
       ctx.strokeRect(rowX + 0.5, rowY + 0.5, rowW - 1, rowHeight - 2 - 1);
       
@@ -6263,16 +6263,16 @@ function draw() {
         if (!img) { img = new Image(); img.src = thumbData; courseImageCache.set(selCourse.id, img); }
         if (img.complete && (img as any).naturalWidth) {
           ctx.drawImage(img as any, pvX, pvY, pvW, pvH);
-          ctx.strokeStyle = '#666'; ctx.lineWidth = 1; ctx.strokeRect(pvX + 0.5, pvY + 0.5, pvW - 1, pvH - 1);
+          ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(pvX + 0.5, pvY + 0.5, pvW - 1, pvH - 1);
         } else {
           ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(pvX, pvY, pvW, pvH);
-          ctx.strokeStyle = '#666'; ctx.lineWidth = 1; ctx.strokeRect(pvX + 0.5, pvY + 0.5, pvW - 1, pvH - 1);
+          ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(pvX + 0.5, pvY + 0.5, pvW - 1, pvH - 1);
           ctx.fillStyle = '#bbbbbb'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '12px system-ui, sans-serif';
           ctx.fillText('Generating preview…', pvX + pvW/2, pvY + pvH/2);
         }
       } else {
         ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(pvX, pvY, pvW, pvH);
-        ctx.strokeStyle = '#666'; ctx.lineWidth = 1; ctx.strokeRect(pvX + 0.5, pvY + 0.5, pvW - 1, pvH - 1);
+        ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(pvX + 0.5, pvY + 0.5, pvW - 1, pvH - 1);
         ctx.fillStyle = '#bbbbbb'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '12px system-ui, sans-serif';
         ctx.fillText('Generating preview…', pvX + pvW/2, pvY + pvH/2);
       }
@@ -6354,8 +6354,8 @@ function draw() {
     // Clear hotspots for this frame
     userLevelsHotspots = [];
     
-    // Dark background
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    // Dark background (standardized per UI_Design.md)
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
     
     // Main panel (centered, responsive to small screens)
@@ -6558,10 +6558,10 @@ function draw() {
         if (!sel.thumbnailImage) { const img = new Image(); img.src = dataUrl; sel.thumbnailImage = img; }
         if (sel.thumbnailImage && (sel.thumbnailImage.complete || (sel.thumbnailImage as any).naturalWidth)) {
           ctx.drawImage(sel.thumbnailImage as any, thumbX, thumbY, thumbW, thumbH);
-          ctx.strokeStyle = '#666'; ctx.strokeRect(thumbX + 0.5, thumbY + 0.5, thumbW - 1, thumbH - 1);
+          ctx.strokeStyle = '#cfd2cf'; ctx.strokeRect(thumbX + 0.5, thumbY + 0.5, thumbW - 1, thumbH - 1);
         } else {
           ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(thumbX, thumbY, thumbW, thumbH);
-          ctx.strokeStyle = '#666'; ctx.strokeRect(thumbX + 0.5, thumbY + 0.5, thumbW - 1, thumbH - 1);
+          ctx.strokeStyle = '#cfd2cf'; ctx.strokeRect(thumbX + 0.5, thumbY + 0.5, thumbW - 1, thumbH - 1);
           ctx.fillStyle = '#bbbbbb'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '12px system-ui, sans-serif';
           ctx.fillText('Generating preview…', thumbX + thumbW/2, thumbY + thumbH/2);
         }
@@ -8182,7 +8182,7 @@ function renderGlobalOverlays(): void {
         // Scrollbar track
         ctx.fillStyle = 'rgba(255,255,255,0.1)';
         ctx.fillRect(scrollbarX, scrollbarY, scrollbarW, scrollbarH);
-        ctx.strokeStyle = '#666666';
+        ctx.strokeStyle = '#cfd2cf';
         ctx.lineWidth = 1;
         ctx.strokeRect(scrollbarX + 0.5, scrollbarY + 0.5, scrollbarW - 1, scrollbarH - 1);
         
@@ -8234,7 +8234,7 @@ function renderGlobalOverlays(): void {
         ctx.fillRect(rowX, rowY, rowW, rowHeight - 2);
         
         // Row border
-        ctx.strokeStyle = isBeingDragged ? '#ffaa00' : (isSelected ? '#88d4ff' : '#666666');
+        ctx.strokeStyle = isBeingDragged ? '#ffaa00' : (isSelected ? '#88d4ff' : '#cfd2cf');
         ctx.lineWidth = isBeingDragged ? 2 : 1;
         ctx.strokeRect(rowX + 0.5, rowY + 0.5, rowW - 1, rowHeight - 2 - 1);
         
@@ -8355,7 +8355,7 @@ function renderGlobalOverlays(): void {
       ctx.fillStyle = 'rgba(0,0,0,0.85)';
       ctx.fillRect(px, py, editorPanelW, editorPanelH);
       ctx.strokeStyle = '#cfd2cf';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1.5;
       ctx.strokeRect(px + 0.5, py + 0.5, editorPanelW - 1, editorPanelH - 1);
       
       // Title area
@@ -8430,7 +8430,7 @@ function renderGlobalOverlays(): void {
         ctx.fillRect(rowX, rowY, rowW, rowHeight - 2);
         
         // Row border
-        ctx.strokeStyle = isSelected ? '#88d4ff' : '#666666';
+        ctx.strokeStyle = isSelected ? '#88d4ff' : '#cfd2cf';
         ctx.lineWidth = 1;
         ctx.strokeRect(rowX + 0.5, rowY + 0.5, rowW - 1, rowHeight - 2 - 1);
         
@@ -8530,7 +8530,7 @@ function renderGlobalOverlays(): void {
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
       ctx.fillRect(toolsX, toolsY, toolsW, toolsH);
       ctx.strokeStyle = '#cfd2cf';
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 1.5;
       ctx.strokeRect(toolsX + 0.5, toolsY + 0.5, toolsW - 1, toolsH - 1);
       
       // Tool buttons with counts
@@ -8555,8 +8555,8 @@ function renderGlobalOverlays(): void {
         const isSelected = currentTool === tool.id;
         ctx.fillStyle = isSelected ? 'rgba(100,150,200,0.4)' : 'rgba(255,255,255,0.1)';
         ctx.fillRect(toolsX + 5, toolY, toolsW - 10, toolH);
-        ctx.strokeStyle = isSelected ? '#64a8c8' : '#666666';
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = isSelected ? '#64a8c8' : '#cfd2cf';
+        ctx.lineWidth = 1.5;
         ctx.strokeRect(toolsX + 5.5, toolY + 0.5, toolsW - 11, toolH - 1);
         
         ctx.fillStyle = '#ffffff';
@@ -8901,7 +8901,7 @@ function renderGlobalOverlays(): void {
         
         // Canvas border
         ctx.strokeStyle = '#cfd2cf';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1.5;
         ctx.strokeRect(drawX - 1, drawY - 1, drawW + 2, drawH + 2);
         
         // Add canvas as hotspot for drawing
@@ -8910,8 +8910,8 @@ function renderGlobalOverlays(): void {
         // Placeholder
         ctx.fillStyle = 'rgba(100,100,100,0.3)';
         ctx.fillRect(canvasX, canvasY, canvasW, canvasH);
-        ctx.strokeStyle = '#666666';
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = '#cfd2cf';
+        ctx.lineWidth = 1.5;
         ctx.strokeRect(canvasX + 0.5, canvasY + 0.5, canvasW - 1, canvasH - 1);
         
         ctx.fillStyle = '#ffffff';

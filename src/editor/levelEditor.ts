@@ -72,6 +72,8 @@ export type EditorAction =
   | 'overlayOpen' | 'overlayToggle' | 'overlayOpacityUp' | 'overlayOpacityDown' | 'overlayZToggle' | 'overlayLockToggle' | 'overlaySnapToggle' | 'overlayFitFairway' | 'overlayFitCanvas' | 'overlayReset' | 'overlayFlipH' | 'overlayFlipV' | 'overlayThroughClick' | 'overlayAspectToggle' | 'overlayCalibrateScale' | 'overlayRemove'
   // Object-level snapping
   | 'objectSnapToggle'
+  // Tool info bar toggle
+  | 'toolInfoBarToggle'
   | 'alignLeft' | 'alignRight' | 'alignTop' | 'alignBottom' | 'alignCenterH' | 'alignCenterV' | 'distributeH' | 'distributeV';
 
 export type EditorMenuId = 'file' | 'edit' | 'view' | 'objects' | 'decorations' | 'tools';
@@ -266,6 +268,8 @@ class LevelEditorImpl implements LevelEditor {
   private showRulers: boolean = false;
   // View option: show numeric guide detail labels (axis/spacing). When off, only cyan guide lines render.
   private showGuideDetails: boolean = true;
+  // View option: show bottom information toolbar for tool hints/metrics
+  private showToolInfoBar: boolean = true;
   // Importer guidance: require the user to click Tee (and optionally Cup) after screenshot import
   private pendingTeeConfirm: boolean = false;
   private pendingCupConfirm: boolean = false;
@@ -1501,6 +1505,7 @@ class LevelEditorImpl implements LevelEditor {
         { label: 'Alignment Guides', item: { kind: 'action', action: 'alignmentGuides' } },
         { label: 'Guide Details', item: { kind: 'action', action: 'guideDetailsToggle' } },
         { label: 'Rulers', item: { kind: 'action', action: 'rulersToggle' } },
+        { label: 'Tool Info Bar', item: { kind: 'action', action: 'toolInfoBarToggle' } },
         // Overlay Screenshot options
         { label: 'Overlay: Show/Hide', item: { kind: 'action', action: 'overlayToggle' } },
         { label: 'Overlay: Opacity +', item: { kind: 'action', action: 'overlayOpacityUp' } },
@@ -2225,50 +2230,54 @@ class LevelEditorImpl implements LevelEditor {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Subtle drafting hint near cursor
-        try {
-          const hint = 'Enter: Close  •  Esc: Cancel';
-          ctx.font = '11px system-ui, sans-serif';
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'top';
-          const pad = 4;
-          const tw = Math.ceil(ctx.measureText(hint).width);
-          const th = 14;
-          const hx = Math.min(Math.max(res.x + 10, fairX + 2), fairX + fairW - tw - pad * 2 - 2);
-          const hy = Math.min(Math.max(res.y + 10, fairY + 2), fairY + fairH - th - pad * 2 - 2);
-          ctx.fillStyle = 'rgba(0,0,0,0.65)';
-          ctx.fillRect(hx, hy, tw + pad * 2, th + pad * 2);
-          ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(hx, hy, tw + pad * 2, th + pad * 2);
-          ctx.fillStyle = 'rgba(255,255,255,0.9)';
-          ctx.fillText(hint, hx + pad, hy + pad);
-        } catch {}
-        // Numeric readout for preview (length and angle)
-        try {
-          const dx = res.x - lastX;
-          const dy = res.y - lastY;
-          const len = Math.hypot(dx, dy);
-          const ang = Math.atan2(dy, dx) * 180 / Math.PI;
-          const readout = `L=${len.toFixed(1)} px  θ=${ang.toFixed(1)}°`;
-          ctx.font = '11px system-ui, sans-serif';
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'top';
-          const pad2 = 4;
-          const tw2 = Math.ceil(ctx.measureText(readout).width);
-          const th2 = 14;
-          const midx = (lastX + res.x) / 2;
-          const midy = (lastY + res.y) / 2;
-          const bx = Math.min(Math.max(midx + 8, fairX + 2), fairX + fairW - tw2 - pad2 * 2 - 2);
-          const by = Math.min(Math.max(midy + 8, fairY + 2), fairY + fairH - th2 - pad2 * 2 - 2);
-          ctx.fillStyle = 'rgba(0,0,0,0.65)';
-          ctx.fillRect(bx, by, tw2 + pad2 * 2, th2 + pad2 * 2);
-          ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(bx, by, tw2 + pad2 * 2, th2 + pad2 * 2);
-          ctx.fillStyle = 'rgba(255,255,255,0.9)';
-          ctx.fillText(readout, bx + pad2, by + pad2);
-        } catch {}
+        // Subtle drafting hint near cursor (suppressed when Tool Info Bar is ON)
+        if (!this.showToolInfoBar) {
+          try {
+            const hint = 'Enter: Close  •  Esc: Cancel';
+            ctx.font = '11px system-ui, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            const pad = 4;
+            const tw = Math.ceil(ctx.measureText(hint).width);
+            const th = 14;
+            const hx = Math.min(Math.max(res.x + 10, fairX + 2), fairX + fairW - tw - pad * 2 - 2);
+            const hy = Math.min(Math.max(res.y + 10, fairY + 2), fairY + fairH - th - pad * 2 - 2);
+            ctx.fillStyle = 'rgba(0,0,0,0.65)';
+            ctx.fillRect(hx, hy, tw + pad * 2, th + pad * 2);
+            ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(hx, hy, tw + pad * 2, th + pad * 2);
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.fillText(hint, hx + pad, hy + pad);
+          } catch {}
+        }
+        // Numeric readout for preview (length and angle) — suppressed when Tool Info Bar is ON
+        if (!this.showToolInfoBar) {
+          try {
+            const dx = res.x - lastX;
+            const dy = res.y - lastY;
+            const len = Math.hypot(dx, dy);
+            const ang = Math.atan2(dy, dx) * 180 / Math.PI;
+            const readout = `L=${len.toFixed(1)} px  θ=${ang.toFixed(1)}°`;
+            ctx.font = '11px system-ui, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            const pad2 = 4;
+            const tw2 = Math.ceil(ctx.measureText(readout).width);
+            const th2 = 14;
+            const midx = (lastX + res.x) / 2;
+            const midy = (lastY + res.y) / 2;
+            const bx = Math.min(Math.max(midx + 8, fairX + 2), fairX + fairW - tw2 - pad2 * 2 - 2);
+            const by = Math.min(Math.max(midy + 8, fairY + 2), fairY + fairH - th2 - pad2 * 2 - 2);
+            ctx.fillStyle = 'rgba(0,0,0,0.65)';
+            ctx.fillRect(bx, by, tw2 + pad2 * 2, th2 + pad2 * 2);
+            ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(bx, by, tw2 + pad2 * 2, th2 + pad2 * 2);
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.fillText(readout, bx + pad2, by + pad2);
+          } catch {}
+        }
         // Guide indicator
         if (res.guide) {
           if (res.guide.kind === 'vertex') {
@@ -2518,27 +2527,29 @@ class LevelEditorImpl implements LevelEditor {
       ctx.fillStyle = '#ffffff';
       ctx.beginPath(); ctx.arc(a.x, a.y, 3.5, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(b.x, b.y, 3.5, 0, Math.PI * 2); ctx.fill();
-      // Label with length/angle/delta
-      const dx = b.x - a.x, dy = b.y - a.y;
-      const len = Math.hypot(dx, dy);
-      const ang = Math.atan2(dy, dx) * 180 / Math.PI;
-      const label = `L=${len.toFixed(1)} px  θ=${ang.toFixed(1)}°  Δ=(${dx.toFixed(1)}, ${dy.toFixed(1)})`;
-      ctx.font = '12px system-ui, sans-serif';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
-      const midx = (a.x + b.x) / 2;
-      const midy = (a.y + b.y) / 2;
-      const pad = 4;
-      const tw = Math.ceil(ctx.measureText(label).width);
-      const th = 16;
-      const { x: fx, y: fy, w: fw, h: fh } = env.fairwayRect();
-      const bx = Math.min(Math.max(midx + 8, fx + 2), fx + fw - tw - pad * 2 - 2);
-      const by = Math.min(Math.max(midy + 8, fy + 2), fy + fh - th - pad * 2 - 2);
-      ctx.fillStyle = 'rgba(0,0,0,0.70)';
-      ctx.fillRect(bx, by, tw + pad * 2, th + pad * 2);
-      ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1; ctx.strokeRect(bx, by, tw + pad * 2, th + pad * 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.95)';
-      ctx.fillText(label, bx + pad, by + pad);
+      // Label with length/angle/delta (suppressed when Tool Info Bar is ON)
+      if (!this.showToolInfoBar) {
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const len = Math.hypot(dx, dy);
+        const ang = Math.atan2(dy, dx) * 180 / Math.PI;
+        const label = `L=${len.toFixed(1)} px  θ=${ang.toFixed(1)}°  Δ=(${dx.toFixed(1)}, ${dy.toFixed(1)})`;
+        ctx.font = '12px system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        const midx = (a.x + b.x) / 2;
+        const midy = (a.y + b.y) / 2;
+        const pad = 4;
+        const tw = Math.ceil(ctx.measureText(label).width);
+        const th = 16;
+        const { x: fx, y: fy, w: fw, h: fh } = env.fairwayRect();
+        const bx = Math.min(Math.max(midx + 8, fx + 2), fx + fw - tw - pad * 2 - 2);
+        const by = Math.min(Math.max(midy + 8, fy + 2), fy + fh - th - pad * 2 - 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.70)';
+        ctx.fillRect(bx, by, tw + pad * 2, th + pad * 2);
+        ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1; ctx.strokeRect(bx, by, tw + pad * 2, th + pad * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.95)';
+        ctx.fillText(label, bx + pad, by + pad);
+      }
       ctx.restore();
     }
 
@@ -2604,8 +2615,7 @@ class LevelEditorImpl implements LevelEditor {
       ctx.restore();
     }
 
-    // Menubar (drawn last)
-    // When overlay is ABOVE geometry, render it just before menubar and selection overlays
+    // When overlay is ABOVE geometry, render it just before final UI overlays (bar/menubar)
     if (this.overlayVisible && this.overlayCanvas && this.overlayAbove) {
       this.renderOverlay(env);
     }
@@ -2617,6 +2627,12 @@ class LevelEditorImpl implements LevelEditor {
     ) {
       this.renderOverlayHandles(env);
     }
+    // Tool info bar (bottom) — draw above overlay image/handles, below menubar
+    if (this.showToolInfoBar) {
+      this.renderToolInfoBar(env);
+    }
+
+    // Menubar (drawn last)
     const menubarX = 0, menubarY = 0, menubarW = WIDTH, menubarH = 28;
     // Darker bar to match UI_Design panel aesthetic
     ctx.fillStyle = 'rgba(0,0,0,0.70)';
@@ -2807,6 +2823,10 @@ class LevelEditorImpl implements LevelEditor {
               displayLabel = `Overlay: Through-click (Above) ${this.overlayThroughClick ? 'On' : 'Off'}`;
               isDisabled = !this.overlayVisible || !this.overlayCanvas || !this.overlayAbove;
               break;
+            case 'toolInfoBarToggle':
+              displayLabel = `Tool Info Bar: ${this.showToolInfoBar ? 'On' : 'Off'}`;
+              isDisabled = false;
+              break;
             case 'objectSnapToggle':
               displayLabel = `Object: Snap to Grid ${this.objectSnapToGrid ? 'On' : 'Off'}`;
               isDisabled = false;
@@ -2838,6 +2858,100 @@ class LevelEditorImpl implements LevelEditor {
     }
 
     env.renderGlobalOverlays();
+  }
+
+  // Bottom information toolbar for tool hints/metrics
+  private renderToolInfoBar(env: EditorEnv): void {
+    const { ctx, width: WIDTH, height: HEIGHT } = env;
+    const barH = 36;
+    const x = 0, y = HEIGHT - barH;
+    const pad = 10;
+    ctx.save();
+    // Background and border per UI_Design.md
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(x, y, WIDTH, barH);
+    ctx.strokeStyle = '#cfd2cf';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x + 0.5, y + 0.5, WIDTH - 1, barH - 1);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+
+    const titleize = (s: string) => s.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()).trim();
+    const toolLabel = titleize(this.selectedTool);
+
+    let leftText = `${toolLabel}`;
+    let rightText = '';
+
+    const fitText = (text: string, maxW: number) => {
+      if (maxW <= 0) return '';
+      if (ctx.measureText(text).width <= maxW) return text;
+      let t = text;
+      const ell = '…';
+      while (t.length > 0 && ctx.measureText(t + ell).width > maxW) {
+        t = t.slice(0, -1);
+      }
+      return t + ell;
+    };
+
+    const gridOn = (() => { try { return this.objectSnapToGrid && this.showGrid && env.getShowGrid(); } catch { return false; } })();
+    const guidesOn = this.showAlignmentGuides;
+
+    // Populate content by tool
+    const polyTools: EditorTool[] = ['wallsPoly','waterPoly','sandPoly','walls45','water45','sand45'];
+    if (polyTools.includes(this.selectedTool)) {
+      const pts = this.polygonInProgress?.points || [];
+      let metrics = '';
+      if (pts.length >= 2) {
+        const lastX = pts[pts.length - 2];
+        const lastY = pts[pts.length - 1];
+        const desired = { x: this.lastMousePosition.x, y: this.lastMousePosition.y };
+        const res = this.computePolygonSnap({ x: lastX, y: lastY }, desired, this.selectedTool, { ctrl: this.lastModifiers.ctrl, shift: this.lastModifiers.shift }, env);
+        const dx = res.x - lastX, dy = res.y - lastY;
+        const len = Math.hypot(dx, dy);
+        const ang = Math.atan2(dy, dx) * 180 / Math.PI;
+        const n = Math.floor(pts.length / 2);
+        metrics = `L=${len.toFixed(1)} px  θ=${ang.toFixed(1)}°  •  Vertices: ${n}`;
+      }
+      leftText = `${toolLabel}${metrics ? ' — ' + metrics : ''}`;
+      rightText = `Enter: Close  •  Esc: Cancel  •  Backspace: Undo  •  Shift: Angle Snap  •  Ctrl: Grid-only  •  Alt: Disable Guides  •  Snap: Grid ${gridOn ? 'On' : 'Off'}, Guides ${guidesOn ? 'On' : 'Off'}`;
+    } else if (this.selectedTool === 'measure') {
+      if (this.measureStart && this.measureEnd) {
+        const a = this.measureStart, b = this.measureEnd;
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const len = Math.hypot(dx, dy);
+        const ang = Math.atan2(dy, dx) * 180 / Math.PI;
+        leftText = `${toolLabel} — L=${len.toFixed(1)} px  θ=${ang.toFixed(1)}°  Δ=(${dx.toFixed(1)}, ${dy.toFixed(1)})`;
+      } else {
+        leftText = `${toolLabel} — Click to start, move to measure`;
+      }
+      rightText = `Enter: Pin  •  Esc: Cancel  •  Right-click: Clear`;
+    } else if (this.selectedTool === 'select') {
+      const n = this.selectedObjects.length;
+      if (n > 0) {
+        const b = this.getSelectionBounds();
+        leftText = `${toolLabel} — ${n} selected  •  ${b.w}×${b.h}`;
+      } else {
+        leftText = `${toolLabel} — Click or drag to select`;
+      }
+      rightText = `Arrows: Nudge  •  Shift: Axis Lock  •  Ctrl: Grid-only  •  Alt: Disable Guides`;
+    } else {
+      leftText = `${toolLabel}`;
+      rightText = `Ctrl: Grid-only  •  Alt: Disable Guides  •  Snap: Grid ${gridOn ? 'On' : 'Off'}`;
+    }
+
+    // Layout left and right with elision to avoid overlap
+    const gap = 12;
+    const maxLeft = Math.max(0, WIDTH - 2 * pad - gap - Math.ceil(ctx.measureText(rightText).width));
+    const leftFitted = fitText(leftText, maxLeft);
+    const rightFitted = fitText(rightText, Math.max(0, WIDTH - 2 * pad - gap - Math.ceil(ctx.measureText(leftFitted).width)));
+
+    ctx.textAlign = 'left';
+    ctx.fillText(leftFitted, x + pad, y + barH / 2);
+    ctx.textAlign = 'right';
+    ctx.fillText(rightFitted, x + WIDTH - pad, y + barH / 2);
+    ctx.restore();
   }
 
   handleMouseDown(e: MouseEvent, env: EditorEnv): void {
@@ -3333,6 +3447,9 @@ class LevelEditorImpl implements LevelEditor {
             } else if (item.action === 'rulersToggle') {
               this.showRulers = !this.showRulers;
               try { env.showToast(`Rulers ${this.showRulers ? 'ON' : 'OFF'}`); } catch {}
+            } else if (item.action === 'toolInfoBarToggle') {
+              this.showToolInfoBar = !this.showToolInfoBar;
+              try { env.showToast(`Tool Info Bar ${this.showToolInfoBar ? 'ON' : 'OFF'}`); } catch {}
             } else if (item.action === 'alignLeft') {
               this.alignSelectedObjects('ArrowLeft', env);
             } else if (item.action === 'alignRight') {

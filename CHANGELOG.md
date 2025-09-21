@@ -14,13 +14,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Input routing: when Overlay is Above and Through‑click is OFF, clicks inside the overlay are swallowed (do not affect underlying tools); when ON, clicks pass through.
   - Note: Overlay remains session‑only and excluded from saves/exports/thumbnails.
 
+- Level Editor • Bottom Tool Info Bar: persistent toolbar anchored to the bottom of the editor showing dynamic tool metrics and context actions.
+  - View → Tool Info Bar toggle (default ON) with dynamic menu label.
+  - Poly drafting shows L/θ, vertex count, and Snap status; Measure tool shows Δx/Δy/L/θ; Select shows selection count and bounds.
+  - When ON, suppresses obstructive in‑canvas hint/readout bubbles for polygon drafting and the measure tool. Styled per `UI_Design.md` (bg `rgba(0,0,0,0.85)`, border `#cfd2cf` @ 1.5).
+  - Layering order updated so overlay image/handles draw beneath the bar and the menubar remains on top. (`src/editor/levelEditor.ts`)
+
 ### Changed
 - Level Editor • Overlay Screenshot: Refactored to treat the overlay like a normal selectable object.
   - The Select tool now moves, resizes, and rotates the overlay when it is unlocked. Resize/rotate handles render when the overlay is selected and no menu is open.
   - Quick keys for overlay scale (`=`/`-`) and rotate (`,`/`.`) apply when the overlay is selected.
   - Arrow keys now exclusively nudge the current selection; overlay nudges are performed via selection.
- - Play • HUD: Standardized the main play HUD to a dark top strip with a bottom border and white text per `UI_Design.md`. (`src/main.ts`)
- - Play • Pause/Esc Menu: Redesigned to a centered 800×600 panel with dim backdrop, `#cfd2cf` border, and standardized button styles/positions (Options, Replay, Back to Main Menu, Close). (`src/main.ts`)
+- Play • HUD: Standardized the main play HUD to a dark top strip with a bottom border and white text per `UI_Design.md`. (`src/main.ts`)
+- Play • Pause/Esc Menu: Redesigned to a centered 800×600 panel with dim backdrop, `#cfd2cf` border, and standardized button styles/positions (Options, Replay, Back to Main Menu, Close). (`src/main.ts`)
+- UI • Consistency refresh: Standardized panel borders to `#cfd2cf` with `1.5px` stroke and backdrop `rgba(0,0,0,0.85)` across Course Select, User Made Levels, and admin overlays (Edit Course/Course Creator). Unified scrollbar track borders, row borders, preview/thumbnail frames, and Annotate Screenshot overlay tool palette/canvas borders to `#cfd2cf` while preserving semantic highlight colors. (`src/main.ts`)
 
 ### Removed
 - Level Editor • Overlay Screenshot: Removed dedicated transform modes and their View menu items:

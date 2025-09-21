@@ -20,6 +20,14 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
     - Left panel: scrollable list of levels/courses.
     - Right panel: large preview thumbnail/screenshot and metadata (Title, Author, Creator, Date Created, Last Edited, Description, etc.).
     - Maintain standard panel, header, borders (`#cfd2cf`), and button styles.
+
+  - Audit update (2025-09-21):
+    - [x] Course Select — unified list scrollbar track border and row/preview borders to `#cfd2cf`; confirmed panel background `rgba(0,0,0,0.85)` and border width `1.5`. (`src/main.ts`)
+    - [x] User Made Levels — backdrop opacity updated to `rgba(0,0,0,0.85)`; right-pane thumbnail frame switched to `#cfd2cf`. (`src/main.ts`)
+    - [x] Admin overlays (Edit Course / Course Creator) — panel border width standardized to `1.5`; list scrollbar track border and list row borders switched to `#cfd2cf`. (`src/main.ts`)
+    - [ ] Overlay dialogs — remaining button borders that use semantic colors (e.g., disabled gray `#666`, danger red, action blue/green/orange) intentionally kept. If desired, we can also standardize disabled button borders to a lighter neutral per `UI_Design.md`.
+    - [ ] Annotate Screenshot overlay — tool palette item borders still use `#666`; consider switching non-semantic outlines to `#cfd2cf` and ensuring line width `1.5`. (`src/main.ts` near tool palette rendering)
+    - [ ] Thumbnail placeholders — some placeholder frames still use `#666`; we can convert remaining non-semantic frames to `#cfd2cf` for full parity.
   - Tasks:
      - [x] Refresh User Levels UI to match `UI_Design.md` (colors, borders, title, buttons). Implemented standard centered 800x600 panel with responsive fallback, background rgba(0,0,0,0.85), border #cfd2cf. (`src/main.ts`)
      - [x] Refresh Options screen to centered 800x600 panel with standard header, controls layout, and Back button styling. Implemented dark overlay, responsive panel sizing, background rgba(0,0,0,0.85), border #cfd2cf; reflowed Controls/Audio sections within panel. (`src/main.ts`)
@@ -176,13 +184,48 @@ Phase 2 (2025-09-20):
   - Drag‑move inside overlay (Move mode), grid‑snap aware.
   - Resize from all corners and edges with axis constraints and optional Preserve Aspect.
   - Rotate from top‑mid rotation handle with Shift=15° snap.
-- Implemented input routing: clicks inside overlay are swallowed when Above and Through‑click is OFF; otherwise they pass through to the editor.
 - Next: optional auto‑fade while dragging, fine‑tune hit‑areas, and unit tests for transform math and menu enable/disable.
 
 Bugfix (2025-09-20):
 - Fixed Overlay drag release continuing after mouseup. Finalization now occurs in `src/editor/levelEditor.ts::handleMouseUp()` and a safety guard in `handleMouseMove()` cancels overlay interactions when `e.buttons === 0` (missed mouseup/end-of-drag).
 
-Notes: This complements the `Screenshot → Level Importer` (automatic extraction) by providing a manual tracing workflow. Use images from `level_screenshots/` as typical sources. Align visuals and interactions to `UI_Design.md`.
+## Level Editor — Bottom Info Toolbar (Plan, 2025-09-21)
+
+Goal: Replace or relocate floating, in-canvas info bubbles (e.g., during `wallsPoly` drafting) with a persistent bottom information toolbar so hints, measurements, and tool details are visible without obstructing drawing.
+
+- Rationale
+  - Floating bubbles (e.g., segment length/angle and "Enter: Close, Esc: Cancel") can block geometry while authoring walls, especially near the cursor.
+  - A bottom toolbar provides a consistent location for tool details, similar to other editors.
+
+- Placement & Style (per `UI_Design.md`)
+  - Anchored to the bottom of the Level Editor canvas area; spans editor width; height ~32–40px.
+  - Background `rgba(0,0,0,0.85)`, border `#cfd2cf`, stroke 1.5; text `#ffffff`.
+  - Left: tool name/icon and live metrics. Right: context actions/shortcuts.
+
+- Content by Tool (examples)
+  - WallsPoly/WaterPoly/SandPoly: `L=xx.x px  θ=xx.x°` • Vertices: N • Snap: Grid/Guides indicators • Actions: Enter=Close, Esc=Cancel, Backspace=Undo, Shift=Angle Snap, Ctrl=Grid‑only, Alt=Disable Guides.
+  - Measure Tool: `Δx, Δy, L, θ` with same action hints (Esc cancel, Enter pin).
+  - Select/Transform: selection count, bounds W×H, rotation, and nudge size; hints for Shift=axis lock, Alt=disable guides, Ctrl=grid‑only.
+  - Posts/Rect tools: position W×H or center (x,y), radius, snap state.
+
+- Behavior
+  - When toolbar is ON, suppress obstructive in‑canvas info bubbles for affected tools.
+  - Provide a View toggle: `Tool Info Bar` (default ON). Persist setting in editor session.
+  - Responsive: wraps or elides long content; keep minimum 12px side padding; never overlaps menus.
+
+- Tasks
+  - [x] Add editor state flag and View menu toggle: `Tool Info Bar` (default ON). (`src/editor/levelEditor.ts`)
+  - [x] Render toolbar in `renderLevelEditor()`; anchored bottom; theme per `UI_Design.md`. (`src/editor/levelEditor.ts`)
+  - [x] Feed dynamic content for polygon drafting (length/angle/vertex count, snap state) and Measure tool (Δx/Δy/L/θ); basic Select info (count and W×H).
+  - [x] Suppress obstructive in‑canvas info bubbles for polygon drafting and measure when toolbar is ON.
+  - [ ] Extend content for additional tools (posts, rect tools, hills) as needed.
+  - [ ] QA: Verify no overlap with menus/overlays; responsive elision; test small screens.
+  - [ ] Update `CHANGELOG.md` with screenshots of the toolbar in use.
+
+Notes: This addresses the workflow friction shown in the screenshot where `wallsPoly` bubbles sit over the drafting line.
+
+Implementation (2025-09-21):
+- Implemented `showToolInfoBar` state (default ON) with View → `Tool Info Bar` toggle and dynamic label. Toolbar renders at the bottom with background `rgba(0,0,0,0.85)`, border `#cfd2cf` at 1.5, left metrics and right action hints. In‑canvas hint/readout bubbles for polygon drafting and measure are suppressed when the bar is ON. Ordering: overlay image/handles → tool info bar → menubar so the bar is always visible.
 
 Refactor (2025-09-21):
 - Overlay Screenshot tools simplified — removed dedicated Overlay Transform Modes (Move/Resize/Rotate) and their menu items.

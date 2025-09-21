@@ -177,6 +177,7 @@ Phase 2 (2025-09-20):
 
 Bugfix (2025-09-20):
 - Fixed Overlay drag release continuing after mouseup. Finalization now occurs in `src/editor/levelEditor.ts::handleMouseUp()` and a safety guard in `handleMouseMove()` cancels overlay interactions when `e.buttons === 0` (missed mouseup/end-of-drag).
+- Fixed menu click-through when Overlay is Above: overlay no longer swallows clicks over menu hotspots; overlay interactions do not start when clicking on menus. Handles are hidden while a menu is open and only shown in Resize/Rotate modes. (`src/editor/levelEditor.ts`)
 
 Notes: This complements the `Screenshot → Level Importer` (automatic extraction) by providing a manual tracing workflow. Use images from `level_screenshots/` as typical sources. Align visuals and interactions to `UI_Design.md`.
 

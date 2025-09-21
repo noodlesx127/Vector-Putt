@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Level Editor • Overlay Screenshot: fixed a drag release bug where, after adding an overlay image and moving it, the image continued to move because mouseup did not clear the drag state. Finalization now occurs in `handleMouseUp()` and a safety check in `handleMouseMove()` ends overlay interactions if `e.buttons === 0`. (`src/editor/levelEditor.ts`)
+- Level Editor • Overlay Screenshot: fixed menu items not clickable when Overlay was Above. Overlay now does not swallow clicks over menu hotspots, and overlay interactions do not start when clicking menus. (`src/editor/levelEditor.ts` `handleMouseDown()`)
 
 ## v0.3.29 — 2025-09-20
 

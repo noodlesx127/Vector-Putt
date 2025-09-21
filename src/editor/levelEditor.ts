@@ -2601,8 +2601,12 @@ class LevelEditorImpl implements LevelEditor {
     if (this.overlayVisible && this.overlayCanvas && this.overlayAbove) {
       this.renderOverlay(env);
     }
-    // Draw overlay transform handles on top (when editable)
-    if (this.overlayVisible && this.overlayCanvas && this.overlayTransformMode !== 'none' && !this.overlayLocked) {
+    // Draw overlay transform handles only in Resize/Rotate modes and hide when a menu is open
+    if (
+      this.overlayVisible && this.overlayCanvas && !this.overlayLocked &&
+      this.openEditorMenu === null &&
+      (this.overlayTransformMode === 'resize' || this.overlayTransformMode === 'rotate')
+    ) {
       this.renderOverlayHandles(env);
     }
     const menubarX = 0, menubarY = 0, menubarW = WIDTH, menubarH = 28;
@@ -2836,8 +2840,16 @@ class LevelEditorImpl implements LevelEditor {
     if (env.isOverlayActive?.()) return;
     const p = env.worldFromEvent(e);
 
-    // Swallow clicks when overlay is above and through-click is off (but allow overlay interactions)
-    const overlayClickInsideAbove = (this.overlayVisible && this.overlayCanvas && this.overlayAbove && !this.overlayThroughClick && this.isPointInOverlay(p.x, p.y));
+    // Detect if click hits any UI menu/menuItem hotspot from last render
+    const clickHitsMenu = this.uiHotspots.some(hs => (
+      (hs.kind === 'menu' || hs.kind === 'menuItem') &&
+      p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h
+    ));
+    // Swallow clicks when overlay is above and through-click is off (but allow overlay interactions and always allow menus)
+    const overlayClickInsideAbove = (
+      this.overlayVisible && this.overlayCanvas && this.overlayAbove && !this.overlayThroughClick &&
+      this.isPointInOverlay(p.x, p.y) && !clickHitsMenu
+    );
 
     // Overlay Calibrate Scale flow (click two points on the overlay image)
     if (this.overlayVisible && this.overlayCanvas && this.overlayCalibrate) {
@@ -2896,7 +2908,7 @@ class LevelEditorImpl implements LevelEditor {
     }
 
     // Overlay drag start (Move mode)
-    if (this.overlayVisible && this.overlayCanvas && this.overlayTransformMode === 'move' && !this.overlayLocked) {
+    if (this.overlayVisible && this.overlayCanvas && this.overlayTransformMode === 'move' && !this.overlayLocked && !clickHitsMenu) {
       if (this.isPointInOverlay(p.x, p.y)) {
         this.overlayIsDragging = true;
         this.overlayDragStartMouse = { x: p.x, y: p.y };
@@ -2906,7 +2918,7 @@ class LevelEditorImpl implements LevelEditor {
     }
 
     // Overlay resize start (corners and edges)
-    if (this.overlayVisible && this.overlayCanvas && this.overlayTransformMode === 'resize' && !this.overlayLocked) {
+    if (this.overlayVisible && this.overlayCanvas && this.overlayTransformMode === 'resize' && !this.overlayLocked && !clickHitsMenu) {
       const handles = this.getOverlayHandlePositions();
       if (handles) {
         const iw = this.overlayNatural.width || this.overlayCanvas.width;
@@ -2956,7 +2968,7 @@ class LevelEditorImpl implements LevelEditor {
     }
 
     // Overlay rotation start (use rotation handle at top mid)
-    if (this.overlayVisible && this.overlayCanvas && this.overlayTransformMode === 'rotate' && !this.overlayLocked) {
+    if (this.overlayVisible && this.overlayCanvas && this.overlayTransformMode === 'rotate' && !this.overlayLocked && !clickHitsMenu) {
       // Compute rotation handle position
       const t = this.overlayTransform;
       const iw = this.overlayNatural.width || this.overlayCanvas.width;

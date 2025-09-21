@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Input routing: when Overlay is Above and Through‑click is OFF, clicks inside the overlay are swallowed (do not affect underlying tools); when ON, clicks pass through.
   - Note: Overlay remains session‑only and excluded from saves/exports/thumbnails.
 
+### Fixed
+- Level Editor • Overlay Screenshot: fixed a drag release bug where, after adding an overlay image and moving it, the image continued to move because mouseup did not clear the drag state. Finalization now occurs in `handleMouseUp()` and a safety check in `handleMouseMove()` ends overlay interactions if `e.buttons === 0`. (`src/editor/levelEditor.ts`)
+
 ## v0.3.29 — 2025-09-20
 
 ### Added

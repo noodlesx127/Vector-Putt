@@ -63,6 +63,7 @@ Notes:
       - [x] Flip Horizontal / Flip Vertical
       - [x] Through‑click option (when Overlay is Above)
       - [ ] Tests for enable/disable states and transform math
+      - [x] Bugfix: overlay drag release continued after mouseup — finalize in `handleMouseUp()` and add `e.buttons===0` safety in `handleMouseMove()` (2025‑09‑20)
   - [x] Hills (prototype): directional acceleration zones with visual gradient
 - [ ] Moving obstacles (timed collisions; phase 2)
 - [ ] Boosters/Accelerators (apply impulse; phase 2)

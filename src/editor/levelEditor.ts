@@ -3714,6 +3714,27 @@ class LevelEditorImpl implements LevelEditor {
     const px = snap(rx);
     const py = snap(ry);
 
+    // Safety: if mouse button was released (no primary button), ensure overlay interactions end
+    if ((this.overlayIsDragging || this.overlayIsResizing || this.overlayIsRotating) && (e.buttons === 0)) {
+      if (this.overlayIsDragging) {
+        this.overlayIsDragging = false;
+        this.overlayDragStartMouse = null;
+        this.overlayStartPos = null;
+      }
+      if (this.overlayIsResizing) {
+        this.overlayIsResizing = false;
+        this.overlayResizeAnchorLocal = null;
+        this.overlayResizeAnchorWorld = null;
+        this.overlayResizeStartScale = null;
+        this.overlayActiveHandle = null;
+        this.overlayResizeAxis = 'both';
+      }
+      if (this.overlayIsRotating) {
+        this.overlayIsRotating = false;
+      }
+      // Do not return, allow rest of move handling to proceed safely after state reset
+    }
+
     // Overlay drag update
     if (this.overlayIsDragging && this.overlayDragStartMouse && this.overlayStartPos) {
       const rawDx = p.x - this.overlayDragStartMouse.x;
@@ -3770,7 +3791,7 @@ class LevelEditorImpl implements LevelEditor {
       const delta = a1 - this.overlayRotateStartAngleLocal;
       const rot = this.overlayRotateInitialRotation + delta;
       if (this.lastModifiers.shift) {
-        const step = Math.PI / 12; // 15°
+        const step = Math.PI / 12; // 15° snap
         this.overlayTransform.rotation = Math.round(rot / step) * step;
       } else {
         this.overlayTransform.rotation = rot;
@@ -3929,17 +3950,10 @@ class LevelEditorImpl implements LevelEditor {
       // Spacing bubble relative to snapped guide
       if (this.liveGuides && this.liveGuides.length) {
         const g0 = this.liveGuides[0];
-        if (g0.kind === 'x') {
-          const left = x, cx = x + w / 2, right = x + w;
-          const nearest = [left, cx, right].sort((a,b)=> Math.abs(a - g0.pos) - Math.abs(b - g0.pos))[0];
-          const space = Math.round(Math.abs(nearest - g0.pos));
-          this.liveGuideBubbles.push({ x: ax + 10, y: ay - 24, text: `↔ ${space} px` });
-        } else {
-          const top = y, cy = y + h / 2, bottom = y + h;
-          const nearest = [top, cy, bottom].sort((a,b)=> Math.abs(a - g0.pos) - Math.abs(b - g0.pos))[0];
-          const space = Math.round(Math.abs(nearest - g0.pos));
-          this.liveGuideBubbles.push({ x: ax + 10, y: ay - 24, text: `↕ ${space} px` });
-        }
+        const left = x, cx = x + w / 2, right = x + w;
+        const nearest = [left, cx, right].sort((a,b)=> Math.abs(a - g0.pos) - Math.abs(b - g0.pos))[0];
+        const space = Math.round(Math.abs(nearest - g0.pos));
+        this.liveGuideBubbles.push({ x: ax + 10, y: ay - 24, text: `↔ ${space} px` });
       }
       return;
     }
@@ -4057,6 +4071,15 @@ class LevelEditorImpl implements LevelEditor {
 
   handleMouseUp(e: MouseEvent, env: EditorEnv): void {
     const p = env.worldFromEvent(e);
+    
+    // Track mouse position for clipboard paste
+    this.lastMousePosition = { x: p.x, y: p.y };
+    // Track modifiers
+    this.lastModifiers = { shift: !!e.shiftKey, ctrl: !!e.ctrlKey, alt: !!e.altKey };
+    // Track modifier keys and preview join style
+    this.lastModifiers = { shift: !!e.shiftKey, ctrl: !!e.ctrlKey, alt: !!e.altKey };
+    if (this.polygonInProgress) this.polygonJoinBevel = !!e.altKey;
+    
     const { x: fairX, y: fairY, w: fairW, h: fairH } = env.fairwayRect();
     const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
     const snap = (n: number) => {

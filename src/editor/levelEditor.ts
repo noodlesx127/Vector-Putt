@@ -327,6 +327,7 @@ class LevelEditorImpl implements LevelEditor {
   private overlayIsResizing: boolean = false;
   private overlayResizeAnchorLocal: { x: number; y: number } | null = null;
   private overlayResizeAnchorWorld: { x: number; y: number } | null = null;
+  private overlayResizeHandleBaseLocal: { x: number; y: number } | null = null;
   private overlayResizeStartScale: { sx: number; sy: number } | null = null;
   private overlayResizeAxis: 'both' | 'x' | 'y' = 'both';
   private overlayActiveHandle: 'corner0' | 'corner1' | 'corner2' | 'corner3' | 'edgeTop' | 'edgeRight' | 'edgeBottom' | 'edgeLeft' | null = null;
@@ -2943,6 +2944,15 @@ class LevelEditorImpl implements LevelEditor {
           else if (chosen.kind === 'edgeRight') { this.overlayResizeAnchorLocal = { x: 0, y: 0 }; this.overlayResizeAxis = 'x'; }
           else if (chosen.kind === 'edgeBottom') { this.overlayResizeAnchorLocal = { x: 0, y: 0 }; this.overlayResizeAxis = 'y'; }
           else if (chosen.kind === 'edgeLeft') { this.overlayResizeAnchorLocal = { x: iw, y: 0 }; this.overlayResizeAxis = 'x'; }
+          // Record base local coordinate of the dragged handle (opposite of anchor where applicable)
+          if (chosen.kind === 'corner0') { this.overlayResizeHandleBaseLocal = { x: 0, y: 0 }; }
+          else if (chosen.kind === 'corner1') { this.overlayResizeHandleBaseLocal = { x: iw, y: 0 }; }
+          else if (chosen.kind === 'corner2') { this.overlayResizeHandleBaseLocal = { x: iw, y: ih }; }
+          else if (chosen.kind === 'corner3') { this.overlayResizeHandleBaseLocal = { x: 0, y: ih }; }
+          else if (chosen.kind === 'edgeTop') { this.overlayResizeHandleBaseLocal = { x: iw / 2, y: 0 }; }
+          else if (chosen.kind === 'edgeRight') { this.overlayResizeHandleBaseLocal = { x: iw, y: ih / 2 }; }
+          else if (chosen.kind === 'edgeBottom') { this.overlayResizeHandleBaseLocal = { x: iw / 2, y: ih }; }
+          else if (chosen.kind === 'edgeLeft') { this.overlayResizeHandleBaseLocal = { x: 0, y: ih / 2 }; }
           // Record anchor world position to keep fixed during resize
           const c = Math.cos(t.rotation || 0), s = Math.sin(t.rotation || 0);
           const sx = (t.flipH ? -1 : 1) * (t.scaleX || 1);
@@ -3070,6 +3080,7 @@ class LevelEditorImpl implements LevelEditor {
       this.overlayIsResizing = false;
       this.overlayResizeAnchorLocal = null;
       this.overlayResizeAnchorWorld = null;
+      this.overlayResizeHandleBaseLocal = null;
       this.overlayResizeStartScale = null;
       this.overlayActiveHandle = null;
       this.overlayResizeAxis = 'both';
@@ -3738,33 +3749,60 @@ class LevelEditorImpl implements LevelEditor {
       return;
     }
 
-    // Overlay resize update (bottom-right only)
-    if (this.overlayIsResizing && this.overlayResizeAnchorLocal && this.overlayResizeAnchorWorld && this.overlayResizeStartScale) {
-      if (!this.overlayCanvas) return;
-      const iw = this.overlayNatural.width || this.overlayCanvas!.width;
-      const ih = this.overlayNatural.height || this.overlayCanvas!.height;
-      const local = this.worldToOverlayLocal(p.x, p.y);
-      let nsx = Math.max(0.01, local.x / Math.max(1, iw));
-      let nsy = Math.max(0.01, local.y / Math.max(1, ih));
-      // Axis constraints
-      if (this.overlayResizeAxis === 'x') {
-        if (this.overlayTransform.preserveAspect) { nsy = nsx; } else { nsy = this.overlayTransform.scaleY; }
-      } else if (this.overlayResizeAxis === 'y') {
-        if (this.overlayTransform.preserveAspect) { nsx = nsy; } else { nsx = this.overlayTransform.scaleX; }
-      }
-      if (this.overlayTransform.preserveAspect && this.overlayResizeAxis === 'both') {
-        const s = Math.max(nsx, nsy);
-        nsx = s; nsy = s;
-      }
+    // Overlay resize update (robust, anchor-fixed, non-twitchy)
+    if (this.overlayIsResizing && this.overlayResizeAnchorLocal && this.overlayResizeHandleBaseLocal && this.overlayResizeAnchorWorld) {
       const t = this.overlayTransform;
-      // Keep anchor world fixed: T' = W_anchor - R * (S' * A_local)
-      const c = Math.cos(t.rotation || 0), s = Math.sin(t.rotation || 0);
-      const ax = this.overlayResizeAnchorLocal.x, ay = this.overlayResizeAnchorLocal.y;
-      const wx = this.overlayResizeAnchorWorld!.x, wy = this.overlayResizeAnchorWorld!.y;
-      const tx = wx - (ax * (t.flipH ? -1 : 1) * nsx * c - ay * (t.flipV ? -1 : 1) * nsy * s);
-      const ty = wy - (ax * (t.flipH ? -1 : 1) * nsx * s + ay * (t.flipV ? -1 : 1) * nsy * c);
-      this.overlayTransform.scaleX = nsx;
-      this.overlayTransform.scaleY = nsy;
+      const rot = t.rotation || 0;
+      const c = Math.cos(rot), s = Math.sin(rot);
+      const signX = (t.flipH ? -1 : 1);
+      const signY = (t.flipV ? -1 : 1);
+
+      const A = this.overlayResizeAnchorLocal; // local anchor (natural units)
+      const B0 = this.overlayResizeHandleBaseLocal; // local base point of the dragged handle (natural units)
+      const W = this.overlayResizeAnchorWorld; // world anchor point
+
+      // Vector from anchor world to mouse world, rotated into overlay local axes (rotation-only)
+      const dxw = p.x - W.x;
+      const dyw = p.y - W.y;
+      const rx = dxw * c + dyw * s;
+      const ry = -dxw * s + dyw * c;
+
+      // Base local deltas from anchor to handle (unscaled, natural image coords)
+      const Lx = (B0.x - A.x);
+      const Ly = (B0.y - A.y);
+
+      // Solve for new positive scale factors along axes
+      let sxNew = t.scaleX;
+      let syNew = t.scaleY;
+      if (this.overlayResizeAxis !== 'y' && Math.abs(Lx) > 1e-4) {
+        sxNew = (rx / (signX * Lx));
+      }
+      if (this.overlayResizeAxis !== 'x' && Math.abs(Ly) > 1e-4) {
+        syNew = (ry / (signY * Ly));
+      }
+      // Enforce positivity and minimum size
+      sxNew = Math.max(0.01, Math.abs(sxNew));
+      syNew = Math.max(0.01, Math.abs(syNew));
+
+      // Preserve aspect if requested
+      if (t.preserveAspect) {
+        if (this.overlayResizeAxis === 'x') {
+          syNew = sxNew;
+        } else if (this.overlayResizeAxis === 'y') {
+          sxNew = syNew;
+        } else {
+          const sUniform = Math.max(sxNew, syNew);
+          sxNew = sUniform;
+          syNew = sUniform;
+        }
+      }
+
+      // Keep anchor world fixed: T' = W_anchor - R * diag(signX*sxNew, signY*syNew) * A_local
+      const tx = W.x - (A.x * signX * sxNew * c - A.y * signY * syNew * s);
+      const ty = W.y - (A.x * signX * sxNew * s + A.y * signY * syNew * c);
+
+      this.overlayTransform.scaleX = sxNew;
+      this.overlayTransform.scaleY = syNew;
       this.overlayTransform.x = tx;
       this.overlayTransform.y = ty;
       return;

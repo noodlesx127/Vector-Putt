@@ -69,7 +69,9 @@ export type EditorTool =
 export type EditorAction =
   | 'save' | 'saveAs' | 'load' | 'import' | 'importScreenshot' | 'importAnnotate' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'previewFillOnClose' | 'previewDashedNext' | 'alignmentGuides' | 'guideDetailsToggle' | 'rulersToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'chamfer' | 'angledCorridor' | 'courseCreator'
   // Overlay Screenshot actions (View menu + Tools launcher)
-  | 'overlayOpen' | 'overlayToggle' | 'overlayOpacityUp' | 'overlayOpacityDown' | 'overlayZToggle' | 'overlayLockToggle' | 'overlaySnapToggle' | 'overlayFitFairway' | 'overlayFitCanvas' | 'overlayReset' | 'overlayFlipH' | 'overlayFlipV' | 'overlayThroughClick' | 'overlayAspectToggle' | 'overlayCalibrateScale'
+  | 'overlayOpen' | 'overlayToggle' | 'overlayOpacityUp' | 'overlayOpacityDown' | 'overlayZToggle' | 'overlayLockToggle' | 'overlaySnapToggle' | 'overlayFitFairway' | 'overlayFitCanvas' | 'overlayReset' | 'overlayFlipH' | 'overlayFlipV' | 'overlayThroughClick' | 'overlayAspectToggle' | 'overlayCalibrateScale' | 'overlayRemove'
+  // Object-level snapping
+  | 'objectSnapToggle'
   | 'alignLeft' | 'alignRight' | 'alignTop' | 'alignBottom' | 'alignCenterH' | 'alignCenterV' | 'distributeH' | 'distributeV';
 
 export type EditorMenuId = 'file' | 'edit' | 'view' | 'objects' | 'decorations' | 'tools';
@@ -213,6 +215,8 @@ class LevelEditorImpl implements LevelEditor {
   private env: EditorEnv | null = null;
   private gridSize: number = 20;
   private editorMenuActiveItemIndex: number = -1;
+  // Per-object snap to grid (move/create). Mirrors overlaySnapToGrid but for editor objects.
+  private objectSnapToGrid: boolean = true;
   // Suggest Cup markers (transient hints rendered on canvas)
   private suggestedCupCandidates: Array<{ x: number; y: number; score: number; lengthPx: number; turns: number }> | null = null;
   // Visual Path Preview (computed from A* used in Suggest Par)
@@ -651,7 +655,7 @@ class LevelEditorImpl implements LevelEditor {
     if (bestYGuide !== null && bestYDist <= threshold) { dy = rawDy + bestYAdjust; guides.push({ kind: 'y', pos: bestYGuide }); }
     // Grid quantization for displacement and guides
     try {
-      const gridOn = this.showGrid && env.getShowGrid();
+      const gridOn = this.objectSnapToGrid && this.showGrid && env.getShowGrid();
       if (gridOn) {
         const g = env.getGridSize();
         dx = Math.round(dx / g) * g;
@@ -718,7 +722,7 @@ class LevelEditorImpl implements LevelEditor {
     if (bestY !== null && bestDy <= threshold) { sy = bestY; guides.push({ kind: 'y', pos: bestY }); }
     // Respect grid: when grid is on, round snapped result to grid to keep objects aligned with grid
     try {
-      const gridOn = this.showGrid && env.getShowGrid();
+      const gridOn = this.objectSnapToGrid && this.showGrid && env.getShowGrid();
       if (gridOn) {
         const g = env.getGridSize();
         sx = Math.round(sx / g) * g;
@@ -776,7 +780,7 @@ class LevelEditorImpl implements LevelEditor {
 
   // Helper: compute constrained and snapped point for polygon tools
   private computePolygonSnap(prev: { x: number; y: number } | null, desired: { x: number; y: number }, tool: EditorTool, modifiers: { ctrl: boolean; shift: boolean }, env: EditorEnv): { x: number; y: number; guide?: { kind: 'vertex'|'edge'; x: number; y: number; x1?: number; y1?: number; x2?: number; y2?: number } } {
-    const gridOn = (() => { try { return this.showGrid && env.getShowGrid(); } catch { return false; } })();
+    const gridOn = (() => { try { return this.objectSnapToGrid && this.showGrid && env.getShowGrid(); } catch { return false; } })();
     const gridSize = (() => { try { return env.getGridSize(); } catch { return this.gridSize; } })();
     const snapGrid = (n: number) => (gridOn ? Math.round(n / gridSize) * gridSize : n);
     let nx = snapGrid(desired.x);
@@ -1491,6 +1495,7 @@ class LevelEditorImpl implements LevelEditor {
       title: 'View',
       items: [
         { label: 'Grid Toggle', item: { kind: 'action', action: 'gridToggle' } },
+        { label: 'Object: Snap to Grid', item: { kind: 'action', action: 'objectSnapToggle' } },
         { label: 'Preview Fill Only On Close', item: { kind: 'action', action: 'previewFillOnClose' } },
         { label: 'Dashed Next Segment', item: { kind: 'action', action: 'previewDashedNext' } },
         { label: 'Alignment Guides', item: { kind: 'action', action: 'alignmentGuides' } },
@@ -1510,7 +1515,8 @@ class LevelEditorImpl implements LevelEditor {
         { label: 'Overlay: Flip Horizontal', item: { kind: 'action', action: 'overlayFlipH' } },
         { label: 'Overlay: Flip Vertical', item: { kind: 'action', action: 'overlayFlipV' } },
         { label: 'Overlay: Through-click (Above)', item: { kind: 'action', action: 'overlayThroughClick' } },
-        { label: 'Overlay: Calibrate Scale…', item: { kind: 'action', action: 'overlayCalibrateScale' } }
+        { label: 'Overlay: Calibrate Scale…', item: { kind: 'action', action: 'overlayCalibrateScale' } },
+        { label: 'Overlay: Remove', item: { kind: 'action', action: 'overlayRemove' } }
       ]
     },
     objects: {
@@ -2801,6 +2807,10 @@ class LevelEditorImpl implements LevelEditor {
               displayLabel = `Overlay: Through-click (Above) ${this.overlayThroughClick ? 'On' : 'Off'}`;
               isDisabled = !this.overlayVisible || !this.overlayCanvas || !this.overlayAbove;
               break;
+            case 'objectSnapToggle':
+              displayLabel = `Object: Snap to Grid ${this.objectSnapToGrid ? 'On' : 'Off'}`;
+              isDisabled = false;
+              break;
             case 'overlayAspectToggle':
               displayLabel = `Overlay: Preserve Aspect ${this.overlayTransform.preserveAspect ? 'On' : 'Off'}`;
               isDisabled = !this.overlayVisible || !this.overlayCanvas || this.overlayLocked;
@@ -2808,6 +2818,10 @@ class LevelEditorImpl implements LevelEditor {
             case 'overlayCalibrateScale':
               displayLabel = 'Overlay: Calibrate Scale…';
               isDisabled = !this.overlayVisible || !this.overlayCanvas || this.overlayLocked;
+              break;
+            case 'overlayRemove':
+              displayLabel = 'Overlay: Remove';
+              isDisabled = !this.overlayCanvas;
               break;
             case 'suggestCup':
               // keep default label
@@ -2835,6 +2849,11 @@ class LevelEditorImpl implements LevelEditor {
       (hs.kind === 'menu' || hs.kind === 'menuItem') &&
       p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h
     ));
+    // Click-away: close any open menu when clicking outside of menu/menuItem hotspots
+    if (this.openEditorMenu && !clickHitsMenu) {
+      this.openEditorMenu = null;
+      // continue processing so the click acts on the canvas as expected
+    }
     // Swallow clicks when overlay is above and through-click is off (but allow overlay interactions and always allow menus)
     const overlayClickInsideAbove = (
       this.overlayVisible && this.overlayCanvas && this.overlayAbove && !this.overlayThroughClick &&
@@ -2919,18 +2938,23 @@ class LevelEditorImpl implements LevelEditor {
         const ih = this.overlayNatural.height || this.overlayCanvas!.height;
         const threshold = 10;
         type Hit = { kind: 'corner0'|'corner1'|'corner2'|'corner3'|'edgeTop'|'edgeRight'|'edgeBottom'|'edgeLeft'; pt:{x:number;y:number} };
+        // Prefer edge handles when near both by selecting the closest handle among all
         const hits: Hit[] = [
-          { kind: 'corner0', pt: handles.corners[0] },
-          { kind: 'corner1', pt: handles.corners[1] },
-          { kind: 'corner2', pt: handles.corners[2] },
-          { kind: 'corner3', pt: handles.corners[3] },
           { kind: 'edgeTop', pt: handles.edges.top },
           { kind: 'edgeRight', pt: handles.edges.right },
           { kind: 'edgeBottom', pt: handles.edges.bottom },
-          { kind: 'edgeLeft', pt: handles.edges.left }
+          { kind: 'edgeLeft', pt: handles.edges.left },
+          { kind: 'corner0', pt: handles.corners[0] },
+          { kind: 'corner1', pt: handles.corners[1] },
+          { kind: 'corner2', pt: handles.corners[2] },
+          { kind: 'corner3', pt: handles.corners[3] }
         ];
         let chosen: Hit | null = null;
-        for (const h of hits) { if (Math.hypot(p.x - h.pt.x, p.y - h.pt.y) <= threshold) { chosen = h; break; } }
+        let bestD = Infinity;
+        for (const h of hits) {
+          const d = Math.hypot(p.x - h.pt.x, p.y - h.pt.y);
+          if (d <= threshold && d < bestD) { chosen = h; bestD = d; }
+        }
         if (chosen) {
           const t = this.overlayTransform;
           this.overlayIsResizing = true;
@@ -3194,8 +3218,10 @@ class LevelEditorImpl implements LevelEditor {
           if (picker.postIndex >= 0 && picker.postIndex < gs.posts.length) {
             const post: any = gs.posts[picker.postIndex];
             post.r = radii[i];
-            const snapped = this.snapPostPosition(post.x, post.y, post.r, env);
-            post.x = snapped.x; post.y = snapped.y;
+            if (this.objectSnapToGrid) {
+              const snapped = this.snapPostPosition(post.x, post.y, post.r, env);
+              post.x = snapped.x; post.y = snapped.y;
+            }
             if (this.editorLevelData && picker.postIndex < this.editorLevelData.posts.length) {
               this.editorLevelData.posts[picker.postIndex].r = radii[i];
               this.editorLevelData.posts[picker.postIndex].x = post.x;
@@ -3289,6 +3315,9 @@ class LevelEditorImpl implements LevelEditor {
                 env.setShowGrid?.(newShow);
                 this.showGrid = newShow; // keep local state in sync in case env doesn't repaint immediately
               } catch {}
+            } else if (item.action === 'objectSnapToggle') {
+              this.objectSnapToGrid = !this.objectSnapToGrid;
+              try { env.showToast(`Object Snap to Grid ${this.objectSnapToGrid ? 'ON' : 'OFF'}`); } catch {}
             } else if (item.action === 'previewFillOnClose') {
               this.previewFillOnClose = !this.previewFillOnClose;
               try { env.showToast(`Preview Fill Only On Close ${this.previewFillOnClose ? 'ON' : 'OFF'}`); } catch {}
@@ -3381,6 +3410,17 @@ class LevelEditorImpl implements LevelEditor {
               }
             } else if (item.action === 'overlayAspectToggle') {
               if (this.overlayVisible && this.overlayCanvas && !this.overlayLocked) this.overlayTransform.preserveAspect = !this.overlayTransform.preserveAspect;
+            } else if (item.action === 'overlayRemove') {
+              // Clear overlay image and all related state
+              this.overlayCanvas = null;
+              this.overlayVisible = false;
+              this.overlayCalibrate = null;
+              this.overlayIsDragging = false;
+              this.overlayIsResizing = false;
+              this.overlayIsRotating = false;
+              this.overlayActiveHandle = null;
+              this.resetOverlayTransform(env);
+              try { env.showToast('Overlay removed'); } catch {}
             } else if (item.action === 'overlayCalibrateScale') {
               if (this.overlayVisible && this.overlayCanvas && !this.overlayLocked) {
                 this.overlayCalibrate = { phase: 'pickA' };
@@ -3435,7 +3475,7 @@ class LevelEditorImpl implements LevelEditor {
     const { x: fairX, y: fairY, w: fairW, h: fairH } = env.fairwayRect();
     const inFairway = (p.x >= fairX && p.x <= fairX + fairW && p.y >= fairY && p.y <= fairY + fairH);
     const snap = (n: number) => {
-      try { if (this.showGrid && env.getShowGrid()) { const g = env.getGridSize(); return Math.round(n / g) * g; } } catch {}
+      try { if (this.objectSnapToGrid && this.showGrid && env.getShowGrid()) { const g = env.getGridSize(); return Math.round(n / g) * g; } } catch {}
       return n;
     };
     // Raw clamped mouse (no snap) used for hit-testing and drag-start
@@ -3521,7 +3561,7 @@ class LevelEditorImpl implements LevelEditor {
         const gs = env.getGlobalState();
         const defaultRadius = 12;
         // For posts, snap center so edges align with grid lines (similar feel to wall edges)
-        if (this.selectedTool === 'post') {
+        if (this.selectedTool === 'post' && this.objectSnapToGrid) {
           const snapPos = this.snapPostPosition(px, py, defaultRadius, env);
           px = snapPos.x; py = snapPos.y;
         }
@@ -4055,7 +4095,7 @@ class LevelEditorImpl implements LevelEditor {
           this.liveGuideBubbles.push({ x: px + 10, y: py + 10, text: label });
         }
       } else {
-        // If guides are off, still respect grid for non-circular selection
+        // If guides are off, still respect grid for non-circular selection when object snapping is enabled
         const selectionIsAllCircles = this.selectedObjects.length > 0 && this.selectedObjects.every(o => (o.type === 'post' || o.type === 'tee' || o.type === 'cup'));
         if (!selectionIsAllCircles) { dx = gridOn ? Math.round(rawDx / gridSize) * gridSize : rawDx; dy = gridOn ? Math.round(rawDy / gridSize) * gridSize : rawDy; }
       }
@@ -4260,7 +4300,7 @@ class LevelEditorImpl implements LevelEditor {
           } else if (t === 'post' || t === 'wall' || t === 'water' || t === 'sand' || t === 'bridge' || t === 'hill' || t === 'decoration') {
             if (typeof o.x === 'number') o.x += dx;
             if (typeof o.y === 'number') o.y += dy;
-            if (t === 'post') {
+            if (t === 'post' && this.objectSnapToGrid) {
               const snapped = this.snapPostPosition(o.x, o.y, o.r ?? 12, env);
               o.x = snapped.x; o.y = snapped.y;
             }
@@ -4685,7 +4725,7 @@ class LevelEditorImpl implements LevelEditor {
       } else if (t === 'post' || t === 'wall' || t === 'water' || t === 'sand' || t === 'bridge' || t === 'hill' || t === 'decoration') {
         if (typeof o.x === 'number') o.x = clampX(o.x + dx);
         if (typeof o.y === 'number') o.y = clampY(o.y + dy);
-        if (t === 'post') {
+        if (t === 'post' && this.objectSnapToGrid) {
           const snapped = this.snapPostPosition(o.x, o.y, o.r ?? 12, env);
           o.x = snapped.x; o.y = snapped.y;
         }

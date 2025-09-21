@@ -155,10 +155,10 @@ A tracing aid for the Level Editor that lets you place a level screenshot over t
   - [ ] View menu: add `Overlay Screenshot` group — Show/Hide, Opacity slider, Lock, Snap to Grid, Z‑Order (Above/Below), Fit to Fairway, Fit to Canvas, Reset Transform, Calibrate Scale, Flip H/V
     - Phase 1: implemented Show/Hide, Opacity +/- (hotkeys `[`/`]`), Z‑Order (Above/Below), Lock, Snap to Grid, Fit to Fairway, Reset Transform, and Transform Mode → Move.
     - Phase 2: added Fit to Canvas, Preserve Aspect toggle, Flip H/V, Through‑click (when Above), Calibrate Scale…, and Transform Modes → Resize/Rotate.
-  - [ ] Implement overlay transform handles and keyboard nudge; preserve aspect by default; grid snapping when enabled (`src/editor/levelEditor.ts`)
+  - [x] Implement overlay transform handles and keyboard nudge; preserve aspect by default; grid snapping when enabled (`src/editor/levelEditor.ts`)
     - Phase 1: keyboard nudges (Arrows, Shift multiplier), scale (`=`/`-`), rotate (`,`/`.`); handles pending.
     - Phase 2: on‑canvas transform handles implemented — Move via drag inside, Resize via corners and edges (axis constraints; aspect lock option), Rotate via top‑mid rotation handle with Shift=15° snap.
-  - [ ] Input routing: when Above and Through‑click is off, overlay consumes input; otherwise pass to editor tools; ensure overlays swallow events consistently (`src/main.ts`)
+  - [x] Input routing: when Above and Through‑click is off, overlay consumes input; otherwise pass to editor tools; ensure overlays swallow events consistently (`src/main.ts`)
     - Implemented: overlay swallows clicks when Above + Through‑click is OFF; allows interactions with overlay handles/move.
   - [x] Exclude overlay from all saves/exports/thumbnails and gameplay; keep as editor‑session state only
   - [ ] Tests: transform math and hit‑testing; menu enable/disable; performance with large images
@@ -177,27 +177,36 @@ Phase 2 (2025-09-20):
 
 Bugfix (2025-09-20):
 - Fixed Overlay drag release continuing after mouseup. Finalization now occurs in `src/editor/levelEditor.ts::handleMouseUp()` and a safety guard in `handleMouseMove()` cancels overlay interactions when `e.buttons === 0` (missed mouseup/end-of-drag).
-- Fixed menu click-through when Overlay is Above: overlay no longer swallows clicks over menu hotspots; overlay interactions do not start when clicking on menus. Handles are hidden while a menu is open and only shown in Resize/Rotate modes. (`src/editor/levelEditor.ts`)
 
 Notes: This complements the `Screenshot → Level Importer` (automatic extraction) by providing a manual tracing workflow. Use images from `level_screenshots/` as typical sources. Align visuals and interactions to `UI_Design.md`.
 
 Refactor (2025-09-21):
 - Overlay Screenshot tools simplified — removed dedicated Overlay Transform Modes (Move/Resize/Rotate) and their menu items.
-- The Select Tool now controls the overlay like any other object when it is unlocked:
+  - The Select Tool now controls the overlay like any other object when it is unlocked:
   - Single‑selecting the overlay shows its own resize/rotate handles (when no menu is open). Drag inside to move.
-  - Quick keys `=`/`-` (scale) and `,`/`.` (rotate) apply when the overlay is selected.
   - Arrow keys nudge selection uniformly (including the overlay when selected).
 - Updated label logic and menu rendering accordingly. Documented in `CHANGELOG.md`.
 
+## Level Editor — Fixes & Enhancements (2025-09-20)
+
+- [x] Post movement parity
+  - Implemented consistent drag/nudge handling for `post` objects; arrow key nudging now matches tees/cups. Post-specific grid snapping is now gated behind the new Object Snap toggle so movement parity is preserved when snapping is off. (`src/editor/levelEditor.ts`: `handleMouseMove()`, `handleMouseUp()`, `nudgeSelectedObjects()`, `snapPostPosition()` gating)
+- [x] Per-object Grid Snap toggle (move and create)
+  - Added View → "Object: Snap to Grid" toggle. When OFF, object creation and drag-move skip grid quantization; when ON, existing grid rules apply. Dynamic label reflects state. (`src/editor/levelEditor.ts`: `EditorAction`, `EDITOR_MENUS.view`, action handler, and snapping checks)
+- [x] Remove Overlay action
+  - Added View → "Overlay: Remove" to clear the loaded screenshot and all overlay interaction state; transform resets and overlay is hidden. Overlay remains excluded from saves/exports as before. (`src/editor/levelEditor.ts`)
+- [x] Menus close on click-away
+  - Clicking anywhere outside an open menu now closes it while preserving selection/tool state. Click-away works even when the overlay is above geometry. (`src/editor/levelEditor.ts`: `handleMouseDown()`)
+ 
+- [ ] Overlay Screenshot resize handles bug — in progress
+  - Improved hit-testing to choose the nearest handle and prioritize edge handles so center edges reliably enter axis-only resize; axis mapping already constrains to H/V for edges and both for corners. Tests for handle detection and transform deltas are still pending. (`src/editor/levelEditor.ts`: overlay handle hit-testing in `handleMouseDown()`)
+
 ## Next Up (Short Horizon)
-- Seeded from `TODO.md` backlog:
 
 - **Physics & Interactions (Phase 2 features)**
   - [x] Hills: bidirectional push — hills now apply constant downhill acceleration so going uphill resists and slows the ball; going downhill accelerates as expected. (`src/main.ts`)
-  - [x] Bridges over sand: sand friction disabled when ball is on a bridge; underlying sand no longer affects speed on bridge surface. (`src/main.ts`)
   - [x] Hills visual arrows: render as an overlay above geometry and add dark outline + white pass for strong contrast, matching editor display. (`src/main.ts`)
-  - [ ] Ramps/Hills (beyond current prototype zones)
-  - [ ] Moving obstacles (timed collisions)
+{{ ... }}
   - [ ] Boosters/Accelerators (impulse)
   - [ ] Tunnels/Teleporters (enter/exit mapping)
 

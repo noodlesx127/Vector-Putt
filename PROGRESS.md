@@ -1,3 +1,16 @@
+## Cross‑cutting — Obstacles Integration Policy (2025-09-22)
+
+- When introducing any new obstacle type, it must be:
+  - Added to the Level Editor as a placeable/selectable object (render, hit‑test, transform, save/load).
+  - Incorporated into Suggest Par and cup heuristics (A* grid build, directional costs if applicable, lint rules) so estimates and suggestions remain accurate.
+
+- Suggest Par Heuristics — Improvements (2025-09-21)
+  - [x] Account for hills direction and strength in pathfinding by encoding a hill vector field and penalizing uphill segments while easing downhill.
+  - [x] Treat bridges as pass-through over blocked cells (e.g., water/wall) for the path estimate.
+  - [x] Count sand explicitly via a sand flag to avoid double counting with hill base costs.
+  - [x] Apply hill difficulty bump only when the path crosses hill cells, scaled by coverage.
+  - [x] Added unit tests covering hill direction effects and bridge pass-through. (`src/__tests__/LevelHeuristics.test.ts`)
+
 # Project Progress — Vector Putt
 
 

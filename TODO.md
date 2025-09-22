@@ -88,6 +88,9 @@ Notes:
   - [x] Walls/boundaries
   - [x] Terrain tiles (fairway, sand, water)
   - [ ] Optional: slopes, moving blocks, boosters, tunnels
+  - [ ] Obstacles Integration Policy
+    - [ ] When introducing any new obstacle type, add it to the Level Editor as a placeable/selectable object (render, hit-test, transform, save/load).
+    - [ ] Incorporate the new obstacle into Suggest Par and cup heuristics (A* grid build, directional/dynamic costs if applicable, and lint rules) so estimates/suggestions remain accurate.
   - [ ] Cup placement heuristics (avoid trivial layouts)
     - [ ] Define constraints for logical cup placement: minimum distance from tee; not directly visible by straight shot when obstacles intend a path; not hugging walls/edges; inside intended gated region
     - [ ] Path validation: grid/navmesh A* over fairway (excluding walls/water) to ensure a non-trivial route length and at least one corridor/bank interaction

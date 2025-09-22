@@ -54,4 +54,38 @@ describe('Level System heuristics', () => {
     const rOpenAgain = estimatePar(lvlOpen, fair, cellSize);
     expect(rOpenAgain.suggestedPar).toBeLessThanOrEqual(rCorridor.suggestedPar);
   });
+
+  it('estimatePar reflects hill direction (uphill harder than downhill)', () => {
+    const base: LevelLike = baseLevel();
+    // Wide hill band across the middle corridor
+    const hillRect = { x: fair.x + 120, y: fair.y + fair.h / 2 - 40, w: 120, h: 80, dir: 'W', strength: 1 } as any;
+    const lvlUphill: LevelLike = { ...base, hills: [hillRect] };
+    // Uphill: tee->cup is eastbound; hill downhill points west, so movement is uphill
+    const rUp = estimatePar(lvlUphill, fair, cellSize);
+
+    // Flip to downhill assistance (east)
+    const lvlDownhill: LevelLike = { ...base, hills: [{ ...hillRect, dir: 'E' }] };
+    const rDown = estimatePar(lvlDownhill, fair, cellSize);
+
+    expect(rUp.reachable).toBe(true);
+    expect(rDown.reachable).toBe(true);
+    // Uphill should be tougher than downhill
+    expect(rUp.suggestedPar).toBeGreaterThanOrEqual(rDown.suggestedPar);
+  });
+
+  it('estimatePar accounts for bridges passing over blocked water', () => {
+    const base: LevelLike = baseLevel();
+    // Water wall blocking mid corridor
+    const waterRect = { x: fair.x + 180, y: fair.y, w: 16, h: fair.h };
+    const lvlWaterBlock: LevelLike = { ...base, water: [waterRect] };
+    const rBlock = estimatePar(lvlWaterBlock, fair, cellSize);
+
+    // Add a bridge to allow pass-through
+    const bridgeRect = { x: waterRect.x, y: fair.y + fair.h / 2 - 30, w: waterRect.w, h: 60 };
+    const lvlBridge: LevelLike = { ...base, water: [waterRect], bridges: [bridgeRect] };
+    const rBridge = estimatePar(lvlBridge, fair, cellSize);
+
+    // With a bridge, par should be less than or equal to the fully blocked version
+    expect(rBridge.suggestedPar).toBeLessThanOrEqual(rBlock.suggestedPar);
+  });
 });

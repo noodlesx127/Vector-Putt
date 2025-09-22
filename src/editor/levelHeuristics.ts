@@ -20,7 +20,16 @@ export type LevelLike = {
   bridges?: Rect[];
 };
 
-type GridCell = { cost: number; blocked: boolean };
+type GridCell = {
+  cost: number;
+  blocked: boolean;
+  // Optional terrain annotations for more accurate path costs
+  isSand?: boolean;
+  // Hill vector field (downhill direction, unit-ish) and strength (0..~2)
+  hillVX?: number;
+  hillVY?: number;
+  hillStrength?: number;
+};
 
 function pointInRect(px: number, py: number, r: Rect): boolean {
   return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
@@ -264,7 +273,22 @@ export function buildGrid(level: LevelLike, fairway: Fairway, cellSize: number):
   const watersPoly = level.waterPoly || [];
   const sandsPoly = level.sandPoly || [];
   const hills = level.hills || [];
-  // bridges are passable
+  const bridges = level.bridges || [];
+  // bridges are passable (unblock water/wall under a bridge)
+
+  const dirToVec = (dir?: string): { x: number; y: number } => {
+    switch ((dir || '').toUpperCase()) {
+      case 'N': return { x: 0, y: -1 };
+      case 'S': return { x: 0, y: 1 };
+      case 'W': return { x: -1, y: 0 };
+      case 'E': return { x: 1, y: 0 };
+      case 'NW': return { x: -Math.SQRT1_2, y: -Math.SQRT1_2 };
+      case 'NE': return { x: Math.SQRT1_2, y: -Math.SQRT1_2 };
+      case 'SW': return { x: -Math.SQRT1_2, y: Math.SQRT1_2 };
+      case 'SE': return { x: Math.SQRT1_2, y: Math.SQRT1_2 };
+      default: return { x: 0, y: 0 };
+    }
+  };
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -275,17 +299,41 @@ export function buildGrid(level: LevelLike, fairway: Fairway, cellSize: number):
       if (!blocked) for (const wp of wallsPoly) { if (pointInPoly(x, y, wp.points)) { blocked = true; break; } }
       if (!blocked) for (const w of waters) { if (pointInRect(x, y, w)) { blocked = true; break; } }
       if (!blocked) for (const wp of watersPoly) { if (pointInPoly(x, y, wp.points)) { blocked = true; break; } }
+      // Bridge overrides: if a bridge covers this point, it's passable
+      if (blocked) {
+        for (const b of bridges) { if (pointInRect(x, y, b)) { blocked = false; break; } }
+      }
 
       // sand is higher cost but not blocked; hills are a mild extra cost to reflect difficulty
       let cost = 1;
+      let isSand = false;
+      let hillVX = 0, hillVY = 0, hillStrength = 0;
       if (!blocked) {
-        for (const s of sands) { if (pointInRect(x, y, s)) { cost = Math.max(cost, 3); break; } }
-        if (cost === 1) for (const sp of sandsPoly) { if (pointInPoly(x, y, sp.points)) { cost = Math.max(cost, 3); break; } }
-        // hills bump cost slightly (strength-weighted if available)
-        for (const h of hills) { if (pointInRect(x, y, h)) { const k = (h as any).strength ? Math.min(2, 1 + (h as any).strength * 0.5) : 1.25; cost = Math.max(cost, k * 1.25); break; } }
+        for (const s of sands) { if (pointInRect(x, y, s)) { cost = Math.max(cost, 3); isSand = true; break; } }
+        if (!isSand) for (const sp of sandsPoly) { if (pointInPoly(x, y, sp.points)) { cost = Math.max(cost, 3); isSand = true; break; } }
+        // hills: accumulate downhill vector and strength; directional penalty applied during A*
+        for (const h of hills) {
+          if (pointInRect(x, y, h as any)) {
+            const v = dirToVec((h as any).dir);
+            const s = Math.max(0.2, Math.min(2, (h as any).strength ?? 1));
+            hillVX += v.x * s; hillVY += v.y * s; hillStrength = Math.max(hillStrength, s);
+          }
+        }
+        // small base cost bump for hills (regardless of direction), softer than sand
+        if ((hillVX !== 0 || hillVY !== 0) && cost <= 1) cost = 1.25;
       }
 
-      grid[r][c] = { cost, blocked };
+      const cell: GridCell = { cost, blocked };
+      if (isSand) cell.isSand = true;
+      if (hillVX !== 0 || hillVY !== 0) {
+        // normalize vector to ~unit length
+        const mag = Math.hypot(hillVX, hillVY) || 1;
+        cell.hillVX = hillVX / mag;
+        cell.hillVY = hillVY / mag;
+        cell.hillStrength = Math.min(1.5, hillStrength);
+      }
+
+      grid[r][c] = cell;
     }
   }
 
@@ -362,7 +410,24 @@ export function aStar(
       }
 
       const neighborK = key(nc, nr);
-      const moveCost = d.w * ((grid[nr][nc].cost + grid[current.r][current.c].cost) * 0.5);
+      // Base cost (accounts for sand/hill base cost) using avg cell cost
+      let moveCost = d.w * ((grid[nr][nc].cost + grid[current.r][current.c].cost) * 0.5);
+      // Directional hill penalty/reward: penalize moving uphill, slight reward for downhill
+      const stepLen = d.w;
+      const sx = d.dc / stepLen, sy = d.dr / stepLen; // normalized step direction
+      const h1 = grid[current.r][current.c], h2 = grid[nr][nc];
+      const hx = ((h1.hillVX ?? 0) + (h2.hillVX ?? 0)) * 0.5;
+      const hy = ((h1.hillVY ?? 0) + (h2.hillVY ?? 0)) * 0.5;
+      const hStr = ((h1.hillStrength ?? 0) + (h2.hillStrength ?? 0)) * 0.5;
+      if (hStr > 0 && (hx !== 0 || hy !== 0)) {
+        const dot = hx * sx + hy * sy; // + with downhill, - against (uphill)
+        const uphill = Math.max(0, -dot);
+        const downhill = Math.max(0, dot);
+        const alpha = 0.5;  // uphill penalty weight
+        const beta = 0.15;  // downhill easing weight
+        const hillFactor = clamp(1 + alpha * uphill * hStr - beta * downhill * hStr, 0.75, 1.6);
+        moveCost *= hillFactor;
+      }
       const tentativeG = (gScore[ck] ?? Infinity) + moveCost;
       if (tentativeG < (gScore[neighborK] ?? Infinity)) {
         came[neighborK] = ck;
@@ -461,7 +526,7 @@ export function estimatePar(
   let strokes = pathLengthPx / D;
 
   // Add penalties based on terrain cost encountered along path
-  const sandCellsOnPath = path.filter(p => !grid[p.r][p.c].blocked && grid[p.r][p.c].cost > 1).length;
+  const sandCellsOnPath = path.filter(p => !grid[p.r][p.c].blocked && !!grid[p.r][p.c].isSand).length;
   const baseSandPenaltyPerCell = opts?.sandPenaltyPerCell ?? 0.01; // default small cumulative penalty
   const sandMult = opts?.sandFrictionMultiplier ?? 6.0; // gameplay default
   const sandPenaltyPerCell = baseSandPenaltyPerCell * (sandMult / 6.0);
@@ -478,14 +543,19 @@ export function estimatePar(
 
   strokes = strokes + sandPenalty + turnPenalty + bankPenalty;
 
-  // Hills: rough complexity bump if present
-  const hillBump = opts?.hillBump ?? 0.2;
-  if (level.hills && level.hills.length > 0) strokes += hillBump;
+  // Hills: apply a mild bump only if the path actually crosses hill cells; scale slightly with coverage
+  const hillCellsOnPath = path.filter(p => (grid[p.r][p.c].hillStrength ?? 0) > 0).length;
+  const hillBump = opts?.hillBump ?? 0.15;
+  if (hillCellsOnPath > 0) {
+    const coverage = Math.min(1, hillCellsOnPath / Math.max(1, Math.floor(path.length * 0.5)));
+    strokes += hillBump * (0.5 + 0.5 * coverage);
+  }
 
   let suggested = Math.round(strokes + 1); // add 1 for tee off
   suggested = Math.max(2, Math.min(7, suggested));
 
   if (sandCellsOnPath > 0) notes.push(`sand cells ~${sandCellsOnPath}`);
+  if (hillCellsOnPath > 0) notes.push(`hills on path ~${hillCellsOnPath}`);
   if (turns > 0) notes.push(`turns ~${turns}`);
   if (blockedAvg > 0) notes.push(`corridor contact ~${blockedAvg.toFixed(2)}`);
 

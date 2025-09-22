@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Level Editor • Help menu: new top-level Help menu with “Keyboard Shortcuts & Tool Guide…”. Opens a panelized overlay (same family as Pause/Options) listing global shortcuts and per‑tool tips, implemented via the existing overlay list UI. (`src/editor/levelEditor.ts`, `src/main.ts`)
 
 ### Changed
+- Level Editor • Suggest Par heuristics: improved accuracy by incorporating directional hill effects and bridge pass‑through.
+  - Grid now encodes a hill vector field (direction + strength) so A* penalizes uphill segments and slightly eases downhill ones.
+  - Bridges now unblock water/wall cells they cover so paths can cross correctly.
+  - Sand counting for penalties is now explicit via a sand flag, avoiding double counting with hill base cost.
+  - Hill bump is applied only if the computed path actually crosses hill cells, scaled by coverage. (`src/editor/levelHeuristics.ts`)
 - Level Editor • Overlay Screenshot: Refactored to treat the overlay like a normal selectable object.
   - The Select tool now moves, resizes, and rotates the overlay when it is unlocked. Resize/rotate handles render when the overlay is selected and no menu is open.
   - Quick keys for overlay scale (`=`/`-`) and rotate (`,`/`.`) apply when the overlay is selected.

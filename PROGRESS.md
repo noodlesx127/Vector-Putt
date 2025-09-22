@@ -213,19 +213,28 @@ Goal: Replace or relocate floating, in-canvas info bubbles (e.g., during `wallsP
   - Provide a View toggle: `Tool Info Bar` (default ON). Persist setting in editor session.
   - Responsive: wraps or elides long content; keep minimum 12px side padding; never overlaps menus.
 
+- Additional Requirements (2025-09-21)
+  - Info Tool Bar should surface comprehensive information for all Level Editor tools: contextual help, key shortcuts, guide details, and any relevant dynamic metrics for the active tool.
+  - New top-level menu: Help — opens a window (same style as Pause/Options) that lists all keyboard shortcuts and a short description for each tool and editor capability, including lesser-known features.
+
 - Tasks
   - [x] Add editor state flag and View menu toggle: `Tool Info Bar` (default ON). (`src/editor/levelEditor.ts`)
   - [x] Render toolbar in `renderLevelEditor()`; anchored bottom; theme per `UI_Design.md`. (`src/editor/levelEditor.ts`)
   - [x] Feed dynamic content for polygon drafting (length/angle/vertex count, snap state) and Measure tool (Δx/Δy/L/θ); basic Select info (count and W×H).
   - [x] Suppress obstructive in‑canvas info bubbles for polygon drafting and measure when toolbar is ON.
-  - [ ] Extend content for additional tools (posts, rect tools, hills) as needed.
+  - [x] Extend content for additional tools (posts, rect tools, hills, tee/cup, decorations) in `renderToolInfoBar()`.
   - [ ] QA: Verify no overlap with menus/overlays; responsive elision; test small screens.
   - [ ] Update `CHANGELOG.md` with screenshots of the toolbar in use.
+
+  - [x] Add Help menu and initial overlay window (Keyboard Shortcuts & Tool Guide) using existing overlay list UI; wire action in Level Editor. (`src/editor/levelEditor.ts`, `src/main.ts` adapters already support `showList`)
 
 Notes: This addresses the workflow friction shown in the screenshot where `wallsPoly` bubbles sit over the drafting line.
 
 Implementation (2025-09-21):
 - Implemented `showToolInfoBar` state (default ON) with View → `Tool Info Bar` toggle and dynamic label. Toolbar renders at the bottom with background `rgba(0,0,0,0.85)`, border `#cfd2cf` at 1.5, left metrics and right action hints. In‑canvas hint/readout bubbles for polygon drafting and measure are suppressed when the bar is ON. Ordering: overlay image/handles → tool info bar → menubar so the bar is always visible.
+
+Help Menu (2025-09-21):
+- Added top-level `Help` menu with “Keyboard Shortcuts & Tool Guide…” entry that opens an overlay listing global shortcuts and per‑tool hints. Implemented via `EditorEnv.showList()` using the existing overlay window system (same styling family as Pause/Options). Initial content covers Selection, Grid/Rulers/Guides, Polygons, Measure, Posts, Rect Tools, Overlay Screenshot, and the Tool Info Bar.
 
 Refactor (2025-09-21):
 - Overlay Screenshot tools simplified — removed dedicated Overlay Transform Modes (Move/Resize/Rotate) and their menu items.

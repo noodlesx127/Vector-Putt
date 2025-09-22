@@ -74,9 +74,11 @@ export type EditorAction =
   | 'objectSnapToggle'
   // Tool info bar toggle
   | 'toolInfoBarToggle'
+  // Help
+  | 'showHelp'
   | 'alignLeft' | 'alignRight' | 'alignTop' | 'alignBottom' | 'alignCenterH' | 'alignCenterV' | 'distributeH' | 'distributeV';
 
-export type EditorMenuId = 'file' | 'edit' | 'view' | 'objects' | 'decorations' | 'tools';
+export type EditorMenuId = 'file' | 'edit' | 'view' | 'objects' | 'decorations' | 'tools' | 'help';
 
 export type EditorMenuItem =
   | { kind: 'tool'; tool: EditorTool }
@@ -1567,8 +1569,14 @@ class LevelEditorImpl implements LevelEditor {
         // Admin-only tool entry (conditionally rendered at runtime)
         { label: 'Course Creator', item: { kind: 'action', action: 'courseCreator' }, separator: true }
       ]
+    },
+    help: {
+      title: 'Help',
+      items: [
+        { label: 'Keyboard Shortcuts & Tool Guide…', item: { kind: 'action', action: 'showHelp' } }
+      ]
     }
-  };
+  } as const;
 
   init(env: EditorEnv): void {
     this.env = env;
@@ -2644,7 +2652,7 @@ class LevelEditorImpl implements LevelEditor {
     ctx.font = '14px system-ui, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    const menuIds: EditorMenuId[] = ['file', 'edit', 'view', 'objects', 'decorations', 'tools'];
+    const menuIds: EditorMenuId[] = ['file', 'edit', 'view', 'objects', 'decorations', 'tools', 'help'];
     let mx = 8; const my = menubarH / 2;
     for (const menuId of menuIds) {
       const menu = this.EDITOR_MENUS[menuId];
@@ -2936,6 +2944,39 @@ class LevelEditorImpl implements LevelEditor {
         leftText = `${toolLabel} — Click or drag to select`;
       }
       rightText = `Arrows: Nudge  •  Shift: Axis Lock  •  Ctrl: Grid-only  •  Alt: Disable Guides`;
+    } else if (this.selectedTool === 'post') {
+      // Preview post center at snapped mouse with default radius until placed
+      const gOn = (() => { try { return this.objectSnapToGrid && this.showGrid && env.getShowGrid(); } catch { return false; } })();
+      const g = (() => { try { return env.getGridSize(); } catch { return this.gridSize; } })();
+      const defR = 12;
+      let px = this.lastMousePosition.x, py = this.lastMousePosition.y;
+      if (gOn) { px = Math.round(px / g) * g; py = Math.round(py / g) * g; }
+      leftText = `${toolLabel} — Center=(${Math.round(px)}, ${Math.round(py)})  •  r=${defR}`;
+      rightText = `Click: Place  •  Double‑click Post (Select): Change Radius  •  Ctrl: Grid‑only  •  Alt: Disable Guides`;
+    } else if (this.selectedTool === 'tee' || this.selectedTool === 'cup') {
+      const gOn = (() => { try { return this.objectSnapToGrid && this.showGrid && env.getShowGrid(); } catch { return false; } })();
+      const g = (() => { try { return env.getGridSize(); } catch { return this.gridSize; } })();
+      let px = this.lastMousePosition.x, py = this.lastMousePosition.y;
+      if (gOn) { px = Math.round(px / g) * g; py = Math.round(py / g) * g; }
+      const radius = this.selectedTool === 'tee' ? 8 : 12;
+      leftText = `${toolLabel} — Center=(${Math.round(px)}, ${Math.round(py)})  •  r=${radius}`;
+      rightText = `Click: Place  •  Ctrl: Grid‑only  •  Alt: Disable Guides`;
+    } else if (this.selectedTool === 'wall' || this.selectedTool === 'water' || this.selectedTool === 'sand' || this.selectedTool === 'bridge' || this.selectedTool === 'hill') {
+      // Rectangle drag tools
+      if (this.isEditorDragging && this.editorDragTool === this.selectedTool && this.editorDragStart && this.editorDragCurrent) {
+        const w = Math.abs(this.editorDragCurrent.x - this.editorDragStart.x);
+        const h = Math.abs(this.editorDragCurrent.y - this.editorDragStart.y);
+        leftText = `${toolLabel} — ${Math.round(w)}×${Math.round(h)}`;
+      } else {
+        leftText = `${toolLabel} — Click‑drag to place`;
+      }
+      if (this.selectedTool === 'hill' && this.hillDirectionPicker && this.hillDirectionPicker.visible) {
+        leftText += '  •  Pick Direction…';
+      }
+      rightText = `Shift: Axis Lock  •  Ctrl: Grid‑only  •  Alt: Disable Guides`;
+    } else if (this.selectedTool === 'decoration') {
+      leftText = `${toolLabel} — 32×32  •  ${this.selectedDecoration}`;
+      rightText = `Click: Place  •  Ctrl: Grid‑only`;
     } else {
       leftText = `${toolLabel}`;
       rightText = `Ctrl: Grid-only  •  Alt: Disable Guides  •  Snap: Grid ${gridOn ? 'On' : 'Off'}`;
@@ -3191,8 +3232,8 @@ class LevelEditorImpl implements LevelEditor {
       }
     }
 
-    // Measure Tool begin
-    if (this.selectedTool === 'measure') {
+    // Measure Tool begin (do not start if clicking menus)
+    if (this.selectedTool === 'measure' && !clickHitsMenu) {
       // Right-click: clear any in-progress and pinned measurements and do not start a new one
       if (e.button === 2) {
         e.preventDefault();
@@ -3553,6 +3594,23 @@ class LevelEditorImpl implements LevelEditor {
               void this.testLevel();
             } else if (item.action === 'delete') {
               void this.openDeletePicker();
+            } else if (item.action === 'showHelp') {
+              // Help overlay: list of shortcuts and tool descriptions
+              (async () => {
+                const items: Array<{ label: string; value: string }> = [
+                  { label: 'Global — Esc: Cancel current action; Enter: Confirm (varies by tool)', value: 'global' },
+                  { label: 'Selection — Arrows: Nudge • Shift: Axis Lock • Ctrl: Grid-only • Alt: Disable Guides', value: 'select' },
+                  { label: 'Grid/Rulers/Guides — View menu toggles; Ctrl forces grid-only during interactions', value: 'guides' },
+                  { label: 'Polygons — Click to add vertices • Enter/Click near start: Close • Backspace: Undo last', value: 'poly' },
+                  { label: 'Polygons — Shift: Angle Snap • Ctrl: Grid-only • Alt: Disable Guides', value: 'poly2' },
+                  { label: 'Measure — Click-drag to measure • Enter: Pin • Esc: Cancel • Right-click: Clear', value: 'measure' },
+                  { label: 'Posts — Click to place • Double-click (Select): Change Radius', value: 'posts' },
+                  { label: 'Rect Tools — Click-drag to place walls/water/sand/bridge/hill • Shift: Axis Lock', value: 'rect' },
+                  { label: 'Overlay Screenshot — See View → Overlay controls; select overlay to move/resize/rotate', value: 'overlay' },
+                  { label: 'Tool Info Bar — Bottom toolbar shows live metrics and shortcuts by tool', value: 'infobar' }
+                ];
+                try { await env.showList('Level Editor Help', items, 0); } catch {}
+              })();
             } else if (item.action === 'undo') {
               if (this.canUndo()) this.performUndo();
             } else if (item.action === 'redo') {
@@ -3822,6 +3880,28 @@ class LevelEditorImpl implements LevelEditor {
 
     // Hit-test objects for selection and drag-move
     const hit = this.findObjectAtPoint(rx, ry, env);
+    // Quick edit: double-click a Post to open its radius picker for on-the-fly size change
+    if (this.selectedTool === 'select' && hit && (hit as any).type === 'post') {
+      const now = Date.now();
+      const isSecond = this.lastClickPos && (now - this.lastClickMs) < 300 && ((rx - this.lastClickPos.x) ** 2 + (ry - this.lastClickPos.y) ** 2) <= 36;
+      if (isSecond) {
+        const idx = (hit as any).index ?? -1;
+        const po: any = (hit as any).object;
+        if (idx >= 0 && po && typeof po.x === 'number' && typeof po.y === 'number') {
+          this.postRadiusPicker = {
+            x: po.x,
+            y: po.y,
+            visible: true,
+            selectedRadius: po.r || 12,
+            postIndex: idx
+          } as any;
+          // Reset double-click tracker to avoid triple processing
+          this.lastClickMs = 0; this.lastClickPos = null;
+          return;
+        }
+      }
+      this.lastClickMs = now; this.lastClickPos = { x: rx, y: ry };
+    }
     if (this.selectedTool === 'select') {
       if (hit) {
         if (e.shiftKey) {

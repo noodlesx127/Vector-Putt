@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Poly drafting shows L/θ, vertex count, and Snap status; Measure tool shows Δx/Δy/L/θ; Select shows selection count and bounds.
   - When ON, suppresses obstructive in‑canvas hint/readout bubbles for polygon drafting and the measure tool. Styled per `UI_Design.md` (bg `rgba(0,0,0,0.85)`, border `#cfd2cf` @ 1.5).
   - Layering order updated so overlay image/handles draw beneath the bar and the menubar remains on top. (`src/editor/levelEditor.ts`)
+  - Extended content to cover posts, rect tools (Walls/Water/Sand/Bridge/Hill), Tee/Cup, and Decorations. (`src/editor/levelEditor.ts`)
+
+- Level Editor • Help menu: new top-level Help menu with “Keyboard Shortcuts & Tool Guide…”. Opens a panelized overlay (same family as Pause/Options) listing global shortcuts and per‑tool tips, implemented via the existing overlay list UI. (`src/editor/levelEditor.ts`, `src/main.ts`)
 
 ### Changed
 - Level Editor • Overlay Screenshot: Refactored to treat the overlay like a normal selectable object.
@@ -37,6 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Level Editor • Overlay Screenshot: fixed a drag release bug where, after adding an overlay image and moving it, the image continued to move because mouseup did not clear the drag state. Finalization now occurs in `handleMouseUp()` and a safety check in `handleMouseMove()` ends overlay interactions if `e.buttons === 0`. (`src/editor/levelEditor.ts`)
 - Level Editor • Overlay Screenshot: fixed menu items not clickable when Overlay was Above. Overlay now does not swallow clicks over menu hotspots, and overlay interactions do not start when clicking menus. (`src/editor/levelEditor.ts` `handleMouseDown()`)
 - Level Editor • Posts movement parity: fixed an issue where posts could not be moved like tees/cups via drag or arrow keys. Drag‑move commit now clamps/snaps the post center like tee/cup, and arrow key nudges no longer apply radius edge‑aligned snapping that cancelled small steps. Movement respects the View → "Object: Snap to Grid" toggle. (`src/editor/levelEditor.ts`)
+ - Level Editor • Measure Tool menu interactions: starting a measurement is now suppressed when clicking on menu hotspots, so selecting a menu or menu item no longer places measurement points. (`src/editor/levelEditor.ts`)
+ - Level Editor • Posts size quick edit: double‑clicking a Post with the Select tool opens the radius picker to change its size on the fly. New radius re‑snaps to grid edges when Object Snap is enabled. (`src/editor/levelEditor.ts`)
 
 ## v0.3.29 — 2025-09-20
 

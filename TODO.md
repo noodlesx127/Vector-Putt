@@ -300,6 +300,57 @@ Notes:
 - [ ] Per-level palette overrides (wall/fairway/decor variations)
 - [x] Diagonal/chamfered walls support in schema + rendering
 
+### Play Area Visual Refresh — Plan (2025-09-22)
+
+Goal: keep the recognizable retro style of the original while improving readability and polish. All changes are render-only and must remain fully backward compatible with existing level JSON and Firebase data.
+
+- [x] Seam-free terrains (water/sand/fairway adjacencies)
+  - Technique: stroke-first-then-fill for rects; for polygons, two-pass (stroke all, then fill all). This covers any shared edges and removes seams.
+  - Implementation notes: keep normal `source-over`; draw outlines first so subsequent fills cover interior stroke; outer rims remain visible over fairway.
+  - Validate at 1× and 2× scale; confirm no gaps when zoomed screenshots are inspected.
+
+- [x] Walls visual pass (continuous rims, better joins)
+  - Rim stroke with bevel joins (source-over) to produce continuous rims at segment joints; bevel joins for chamfers.
+  - Use `lineJoin='bevel'` (or tuned `miterLimit`) for crisp chamfers matching octagonal corners.
+  - Add subtle top/left highlight (white 20–25% alpha) and faint drop shadow bottom/right (black 30–35% alpha) to create depth without changing collision.
+  - Match outer border thickness to references; ensure physics edges remain unchanged.
+
+- [x] Hills visual redesign
+  - Base: directional green gradient aligned to hill vector, dark→light downhill.
+  - Arrows: replace noisy repeat arrows with a clean glyph: white fill with dark outline, 15–20% spaced along direction; respects View → “Slope Arrows” toggle.
+  - Fix: ensure arrows render for both rect and future poly hills; verify editor preview parity.
+
+- [x] Water polish
+  - Keep current blue; add subtle inner rim darken (2–3px) using `destination-over` stroke.
+  - Optional light ripple overlay (white at 6–10% alpha) in large bodies; disabled on small shapes by area threshold.
+
+- [x] Sand polish
+  - Slight inner shadow (black 12–16% alpha) to read as recessed; maintain crisp outer stroke.
+  - Trapezoid “bowls” use same style; tune friction separately.
+
+- [x] Cup polish
+  - Stronger rim (2px) and inner radial shadow; optional small starburst indicator on tee-off and sink.
+
+- [x] Ball polish
+  - Subtle radial highlight and soft drop shadow; no physics changes.
+
+- [x] Bridge polish
+  - Raised plank look with thin edge cast shadow onto water and 1.5px fairway outline; ensure bridges render above water but below posts/ball.
+
+- [ ] Canonical render order (runtime and editor preview)
+  1) Table background → 2) Fairway base + bands → 3) Water/Sand fills → 4) Water/Sand strokes (destination-over) → 5) Walls/Posts fills → 6) Wall/Post strokes (destination-over) + highlights/shadows → 7) Bridges → 8) Hills gradient + arrows → 9) Tee/Cup (rim last) → 10) Ball → 11) UI overlays.
+
+- [ ] Acceptance criteria
+  - No visible seams between adjacent like-typed terrains at 1× and 2×.
+  - Wall runs appear continuous; no darker joints at miters.
+  - Hill direction is obvious at a glance; arrows legible but not busy.
+  - Back-compat: no changes required to existing levels; collision unchanged.
+
+- [ ] Testing & QA
+  - Visual regression snapshots: levels with adjacent waters/sands, long wall chains, hills in both directions.
+  - Perf check: ensure no measurable frame drop from new compositing.
+  - Cross-verify editor preview and play-mode render paths share the same ordering and styles.
+
 ## Reference Videos — Consolidated Findings
 Sources:
 - Layout & Graphics: https://www.youtube.com/watch?v=Lp4iL9WKpV4

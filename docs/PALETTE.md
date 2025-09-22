@@ -36,6 +36,36 @@ Canonical colors used by Vector Putt. Keep this file in sync with `src/main.ts` 
 - Walls/Posts: 2px `wallStroke` rim + subtle white highlight on top/left.
 - Cup: 2px `holeRim` stroke.
 
+## Effects & Compositing (Seamless)
+
+- Seamless terrain outlines: for Water and Sand, render outlines first (stroke), then fills. For polygons, do a two‑pass approach: stroke all polygons first, then fill all polygons. This hides any shared‑edge strokes while preserving the outer rims.
+- Walls/Posts: fill face then stroke rim with bevel joins for chamfers (`lineJoin='bevel'`, tuned `miterLimit`).
+- Wall/post depth: add a subtle top/left highlight `rgba(255,255,255,0.22–0.25)` and a soft bottom/right shadow `rgba(0,0,0,0.28–0.35)`; these are visual only and do not affect collision.
+- Sand recess: optional inner shadow `rgba(0,0,0,0.12–0.16)` feathered inward 2–3px on large shapes.
+- Water ripples: optional animated white ripples `rgba(255,255,255,0.06–0.10)` on large areas; skip for tiny shapes by area threshold.
+- Cup depth: inner radial darken peaking near center `rgba(0,0,0,0.30–0.40)` beneath the `holeRim`.
+- Ball polish: soft drop shadow `rgba(0,0,0,0.25–0.30)` and small radial highlight (white 15–25% alpha). Purely cosmetic.
+
+## Hills Arrow Glyphs
+
+- Fill: `white`.
+- Outline: use `fairwayLine` at 80–100% opacity for contrast; 1–1.5px stroke.
+- Placement: arrows are spaced sparsely along the slope direction to avoid visual noise; honor the View → "Slope Arrows" toggle in both editor and runtime.
+
+## Canonical Render Order
+
+1) Table background
+2) Fairway base + bands
+3) Water/Sand strokes
+4) Water/Sand fills
+5) Walls/Posts fills
+6) Wall/Post strokes + highlights/shadows
+7) Bridges
+8) Hills gradient + arrows
+9) Tee/Cup (rim last)
+10) Ball
+11) UI overlays
+
 ## Notes
 - Page background (outside canvas): `#222` and canvas element background: `#1f4d21` are defined in `index.html` for framing and do not affect in-canvas palette.
 - Keep palette additions centralized in `COLORS` and prefer using these constants over hard-coded hex values.

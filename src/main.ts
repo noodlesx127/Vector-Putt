@@ -6958,27 +6958,38 @@ function draw() {
   ctx.strokeRect(fairX + 1, fairY + 1, fairW - 2, fairH - 2);
 
   // terrain zones (draw before walls)
-  for (const r of waters) {
-    ctx.fillStyle = COLORS.waterFill;
-    ctx.fillRect(r.x, r.y, r.w, r.h);
+  // Water (rectangles): stroke first, then fill to eliminate interior seams between adjacent shapes
+  if (waters.length > 0) {
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = COLORS.waterStroke;
-    ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+    for (const r of waters) {
+      ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+    }
+    ctx.fillStyle = COLORS.waterFill;
+    for (const r of waters) {
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+    }
   }
-  // polygon water
+  // polygon water — two-pass: stroke all, then fill all (prevents shared-edge seams)
   if (watersPoly.length > 0) {
+    // Stroke pass
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = COLORS.waterStroke;
+    for (const wp of watersPoly) {
+      const pts = wp.points; if (!pts || pts.length < 6) continue;
+      ctx.beginPath(); ctx.moveTo(pts[0], pts[1]);
+      for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+      ctx.closePath();
+      ctx.stroke();
+    }
+    // Fill pass
     ctx.fillStyle = COLORS.waterFill;
     for (const wp of watersPoly) {
-      const pts = wp.points;
-      if (!pts || pts.length < 6) continue;
-      ctx.beginPath();
-      ctx.moveTo(pts[0], pts[1]);
+      const pts = wp.points; if (!pts || pts.length < 6) continue;
+      ctx.beginPath(); ctx.moveTo(pts[0], pts[1]);
       for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
       ctx.closePath();
       ctx.fill();
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = COLORS.waterStroke;
-      ctx.stroke();
     }
   }
   // splash ripples on water
@@ -7005,27 +7016,38 @@ function draw() {
     }
     splashes = newFx;
   }
-  for (const r of sands) {
-    ctx.fillStyle = COLORS.sandFill;
-    ctx.fillRect(r.x, r.y, r.w, r.h);
+  // Sand (rectangles): stroke first, then fill
+  if (sands.length > 0) {
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = COLORS.sandStroke;
-    ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+    for (const r of sands) {
+      ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+    }
+    ctx.fillStyle = COLORS.sandFill;
+    for (const r of sands) {
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+    }
   }
-  // polygon sand
+  // polygon sand — two-pass: stroke all, then fill all
   if (sandsPoly.length > 0) {
+    // Stroke pass
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = COLORS.sandStroke;
+    for (const sp of sandsPoly) {
+      const pts = sp.points; if (!pts || pts.length < 6) continue;
+      ctx.beginPath(); ctx.moveTo(pts[0], pts[1]);
+      for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+      ctx.closePath();
+      ctx.stroke();
+    }
+    // Fill pass
     ctx.fillStyle = COLORS.sandFill;
     for (const sp of sandsPoly) {
-      const pts = sp.points;
-      if (!pts || pts.length < 6) continue;
-      ctx.beginPath();
-      ctx.moveTo(pts[0], pts[1]);
+      const pts = sp.points; if (!pts || pts.length < 6) continue;
+      ctx.beginPath(); ctx.moveTo(pts[0], pts[1]);
       for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
       ctx.closePath();
       ctx.fill();
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = COLORS.sandStroke;
-      ctx.stroke();
     }
   }
   // bridges (fairway rectangles spanning water)
@@ -7035,6 +7057,14 @@ function draw() {
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = COLORS.fairwayLine;
     ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+    // subtle cast shadow to read as raised above water
+    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+    ctx.beginPath();
+    ctx.moveTo(r.x + 1, r.y + r.h - 0.5);
+    ctx.lineTo(r.x + r.w - 1, r.y + r.h - 0.5);
+    ctx.moveTo(r.x + r.w - 0.5, r.y + 1);
+    ctx.lineTo(r.x + r.w - 0.5, r.y + r.h - 1);
+    ctx.stroke();
   }
   // hills (visualize gradient underlay)
   for (const h of hills) {
@@ -7095,8 +7125,10 @@ function draw() {
     // face
     ctx.fillStyle = COLORS.wallFill;
     ctx.fillRect(w.x, w.y, w.w, w.h);
-    // inner stroke
+    // rim stroke with bevel joins for crisp chamfers (source-over)
     ctx.lineWidth = 2;
+    ctx.lineJoin = 'bevel';
+    ctx.miterLimit = 2.5;
     ctx.strokeStyle = COLORS.wallStroke;
     ctx.strokeRect(w.x + 1, w.y + 1, w.w - 2, w.h - 2);
     // top/left highlight
@@ -7121,7 +7153,9 @@ function draw() {
     for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
     ctx.closePath();
     ctx.fill();
-    // rim
+    // rim with bevel joins (source-over)
+    ctx.lineJoin = 'bevel';
+    ctx.miterLimit = 2.5;
     ctx.strokeStyle = COLORS.wallStroke;
     ctx.stroke();
   }
@@ -7131,7 +7165,7 @@ function draw() {
     // face
     ctx.fillStyle = COLORS.wallFill;
     ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
-    // rim
+    // rim (source-over)
     ctx.strokeStyle = COLORS.wallStroke; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(p.x, p.y, p.r - 1, 0, Math.PI * 2); ctx.stroke();
   }
@@ -7172,15 +7206,13 @@ function draw() {
           for (let c = 0; c < cols; c++) {
             const xx = h.x + inset + c * cellW + cellW * 0.5;
             if (xx <= h.x + inset || xx >= h.x + h.w - inset) continue;
-            // Outline
-            // Understroke for contrast
-            ac.strokeStyle = 'rgba(0,30,0,0.55)';
+            // Outline: dark understroke then white stroke for clear, clean glyph
+            ac.strokeStyle = 'rgba(0,30,0,0.75)';
             ac.lineWidth = 3;
             const sizeAdj = 9 * (1 + Math.max(0, Math.min(1, (h.falloff ?? 1)))) * 0.15 + 9; // subtle size scale with falloff
             drawSlopeIndicator(ac as any, xx, yy, dirX, dirY, sizeAdj);
-            // Tinted green arrow with strength-based alpha
             const alpha = Math.max(0.28, Math.min(0.65, 0.30 + (s - 1) * 0.22));
-            ac.strokeStyle = `rgba(180,255,180,${alpha})`;
+            ac.strokeStyle = `rgba(255,255,255,${alpha})`;
             ac.lineWidth = 1.8;
             drawSlopeIndicator(ac as any, xx, yy, dirX, dirY, sizeAdj);
           }
@@ -7243,6 +7275,23 @@ function draw() {
   ctx.beginPath();
   ctx.arc(hole.x, hole.y, hole.r, 0, Math.PI * 2);
   ctx.fill();
+  // inner radial shading for depth
+  {
+    const cupGrad = ctx.createRadialGradient(
+      hole.x - hole.r * 0.25,
+      hole.y - hole.r * 0.25,
+      Math.max(1, hole.r * 0.10),
+      hole.x,
+      hole.y,
+      hole.r
+    );
+    cupGrad.addColorStop(0, 'rgba(255,255,255,0.06)');
+    cupGrad.addColorStop(1, 'rgba(0,0,0,0.35)');
+    ctx.fillStyle = cupGrad;
+    ctx.beginPath();
+    ctx.arc(hole.x, hole.y, hole.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.lineWidth = 2;
   ctx.strokeStyle = COLORS.holeRim;
   ctx.stroke();
@@ -7252,6 +7301,23 @@ function draw() {
   ctx.beginPath();
   ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
   ctx.fill();
+  // subtle highlight
+  {
+    const hl = ctx.createRadialGradient(
+      ball.x - ball.r * 0.4,
+      ball.y - ball.r * 0.4,
+      0,
+      ball.x - ball.r * 0.4,
+      ball.y - ball.r * 0.4,
+      ball.r
+    );
+    hl.addColorStop(0, 'rgba(255,255,255,0.35)');
+    hl.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = hl;
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
   // simple shadow
   ctx.fillStyle = 'rgba(0,0,0,0.15)';
   ctx.beginPath();

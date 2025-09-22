@@ -1743,27 +1743,34 @@ class LevelEditorImpl implements LevelEditor {
       const r = waters[i];
       const obj: SelectableObject = { type: 'water', object: r, index: i };
       this.renderWithRotation(ctx, obj, () => {
-        ctx.fillStyle = COLORS.waterFill;
-        ctx.fillRect(r.x, r.y, r.w, r.h);
+        // Stroke first, then fill to avoid interior seams between adjacent rects
         ctx.lineWidth = 1.5;
         ctx.strokeStyle = COLORS.waterStroke;
         ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+        ctx.fillStyle = COLORS.waterFill;
+        ctx.fillRect(r.x, r.y, r.w, r.h);
       });
     }
-    // Water (polys)
+    // Water (polys) — two-pass: stroke all, then fill all
     if (watersPoly.length > 0) {
+      // Stroke pass
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = COLORS.waterStroke;
+      for (const wp of watersPoly) {
+        const pts = wp.points; if (!pts || pts.length < 6) continue;
+        ctx.beginPath(); ctx.moveTo(pts[0], pts[1]);
+        for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+        ctx.closePath();
+        ctx.stroke();
+      }
+      // Fill pass
       ctx.fillStyle = COLORS.waterFill;
       for (const wp of watersPoly) {
-        const pts = wp.points;
-        if (!pts || pts.length < 6) continue;
-        ctx.beginPath();
-        ctx.moveTo(pts[0], pts[1]);
+        const pts = wp.points; if (!pts || pts.length < 6) continue;
+        ctx.beginPath(); ctx.moveTo(pts[0], pts[1]);
         for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
         ctx.closePath();
         ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = COLORS.waterStroke;
-        ctx.stroke();
       }
     }
     // Sand (rects)
@@ -1771,27 +1778,34 @@ class LevelEditorImpl implements LevelEditor {
       const r = sands[i];
       const obj: SelectableObject = { type: 'sand', object: r, index: i };
       this.renderWithRotation(ctx, obj, () => {
-        ctx.fillStyle = COLORS.sandFill;
-        ctx.fillRect(r.x, r.y, r.w, r.h);
+        // Stroke first, then fill to avoid interior seams between adjacent rects
         ctx.lineWidth = 1.5;
         ctx.strokeStyle = COLORS.sandStroke;
         ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+        ctx.fillStyle = COLORS.sandFill;
+        ctx.fillRect(r.x, r.y, r.w, r.h);
       });
     }
-    // Sand (polys)
+    // Sand (polys) — two-pass: stroke all, then fill all
     if (sandsPoly.length > 0) {
+      // Stroke pass
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = COLORS.sandStroke;
+      for (const sp of sandsPoly) {
+        const pts = sp.points; if (!pts || pts.length < 6) continue;
+        ctx.beginPath(); ctx.moveTo(pts[0], pts[1]);
+        for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+        ctx.closePath();
+        ctx.stroke();
+      }
+      // Fill pass
       ctx.fillStyle = COLORS.sandFill;
       for (const sp of sandsPoly) {
-        const pts = sp.points;
-        if (!pts || pts.length < 6) continue;
-        ctx.beginPath();
-        ctx.moveTo(pts[0], pts[1]);
+        const pts = sp.points; if (!pts || pts.length < 6) continue;
+        ctx.beginPath(); ctx.moveTo(pts[0], pts[1]);
         for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
         ctx.closePath();
         ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = COLORS.sandStroke;
-        ctx.stroke();
       }
     }
     // Bridges
@@ -1804,6 +1818,14 @@ class LevelEditorImpl implements LevelEditor {
         ctx.lineWidth = 1.5;
         ctx.strokeStyle = COLORS.fairwayLine;
         ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+        // Subtle cast shadow to read as raised
+        ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+        ctx.beginPath();
+        ctx.moveTo(r.x + 1, r.y + r.h - 0.5);
+        ctx.lineTo(r.x + r.w - 1, r.y + r.h - 0.5);
+        ctx.moveTo(r.x + r.w - 0.5, r.y + 1);
+        ctx.lineTo(r.x + r.w - 0.5, r.y + r.h - 1);
+        ctx.stroke();
       });
     }
     // Hills
@@ -1830,8 +1852,10 @@ class LevelEditorImpl implements LevelEditor {
           const step = Math.max(18, Math.min(28, 24 / s));
           ctx.save();
           const alpha = Math.max(0.18, Math.min(0.5, 0.22 + (s - 1) * 0.18));
-          ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
-          ctx.lineWidth = 1.5;
+          // Draw dark outline then white stroke for clear glyph
+          const outlineStyle = 'rgba(0,30,0,0.75)';
+          const outlineWidth = 3;
+          const arrowWidth = 1.8;
           // small arrow drawing helper (inline to avoid cross-module dependency)
           const drawArrow = (cx: number, cy: number, dx: number, dy: number, size: number) => {
             const len = Math.hypot(dx, dy) || 1;
@@ -1856,6 +1880,9 @@ class LevelEditorImpl implements LevelEditor {
           };
           for (let yy = h.y + step * 0.5; yy < h.y + h.h; yy += step) {
             for (let xx = h.x + step * 0.5; xx < h.x + h.w; xx += step) {
+              ctx.strokeStyle = outlineStyle; ctx.lineWidth = outlineWidth;
+              drawArrow(xx, yy, dirX, dirY, 7);
+              ctx.strokeStyle = `rgba(255,255,255,${alpha})`; ctx.lineWidth = arrowWidth;
               drawArrow(xx, yy, dirX, dirY, 7);
             }
           }
@@ -1902,7 +1929,10 @@ class LevelEditorImpl implements LevelEditor {
         ctx.fillRect(w.x + 2, w.y + 2, w.w, w.h);
         ctx.fillStyle = COLORS.wallFill;
         ctx.fillRect(w.x, w.y, w.w, w.h);
+        // Rim stroke (source-over) with bevel joins for chamfers
         ctx.lineWidth = 2;
+        ctx.lineJoin = 'bevel';
+        ctx.miterLimit = 2.5;
         ctx.strokeStyle = COLORS.wallStroke;
         ctx.strokeRect(w.x + 1, w.y + 1, w.w - 2, w.h - 2);
         ctx.strokeStyle = 'rgba(255,255,255,0.25)';
@@ -1931,6 +1961,9 @@ class LevelEditorImpl implements LevelEditor {
       for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
       ctx.closePath();
       ctx.fill();
+      // Rim stroke (source-over) with bevel joins for chamfers
+      ctx.lineJoin = 'bevel';
+      ctx.miterLimit = 2.5;
       ctx.strokeStyle = COLORS.wallStroke;
       ctx.stroke();
     }
@@ -1940,6 +1973,7 @@ class LevelEditorImpl implements LevelEditor {
       ctx.beginPath(); ctx.arc(p.x + 2, p.y + 2, p.r, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = COLORS.wallFill;
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+      // Rim stroke (source-over)
       ctx.strokeStyle = COLORS.wallStroke; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r - 1, 0, Math.PI * 2); ctx.stroke();
     }
@@ -1949,6 +1983,19 @@ class LevelEditorImpl implements LevelEditor {
       const r = 6;
       ctx.fillStyle = '#ffffff';
       ctx.beginPath(); ctx.arc(ball.x, ball.y, r, 0, Math.PI * 2); ctx.fill();
+      // subtle highlight
+      const hl = ctx.createRadialGradient(
+        ball.x - r * 0.4,
+        ball.y - r * 0.4,
+        0,
+        ball.x - r * 0.4,
+        ball.y - r * 0.4,
+        r
+      );
+      hl.addColorStop(0, 'rgba(255,255,255,0.35)');
+      hl.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = hl;
+      ctx.beginPath(); ctx.arc(ball.x, ball.y, r, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = 'rgba(0,0,0,0.18)';
       ctx.beginPath(); ctx.ellipse(ball.x + 2, ball.y + 3, r * 0.9, r * 0.6, 0, 0, Math.PI * 2); ctx.fill();
     }
@@ -1956,6 +2003,19 @@ class LevelEditorImpl implements LevelEditor {
     {
       const r = (hole as any).r ?? 8;
       ctx.fillStyle = COLORS.holeFill;
+      ctx.beginPath(); ctx.arc(hole.x, hole.y, r, 0, Math.PI * 2); ctx.fill();
+      // inner radial shading for depth
+      const cupGrad = ctx.createRadialGradient(
+        hole.x - r * 0.25,
+        hole.y - r * 0.25,
+        Math.max(1, r * 0.10),
+        hole.x,
+        hole.y,
+        r
+      );
+      cupGrad.addColorStop(0, 'rgba(255,255,255,0.06)');
+      cupGrad.addColorStop(1, 'rgba(0,0,0,0.35)');
+      ctx.fillStyle = cupGrad;
       ctx.beginPath(); ctx.arc(hole.x, hole.y, r, 0, Math.PI * 2); ctx.fill();
       ctx.lineWidth = 2; ctx.strokeStyle = COLORS.holeRim; ctx.stroke();
       ctx.fillStyle = COLORS.wallFill;

@@ -23,8 +23,40 @@
   - [x] Apply hill difficulty bump only when the path crosses hill cells, scaled by coverage.
   - [x] Added unit tests covering hill direction effects and bridge pass-through. (`src/__tests__/LevelHeuristics.test.ts`)
 
-# Project Progress — Vector Putt
+## Play Area Visual Refresh — Plan (2025-09-22)
 
+Goal: preserve the recognizable retro look while making the playfield more readable and polished. All changes are render-only and fully backward compatible with existing level JSON and Firebase data — no schema or physics changes.
+
+ - Highlights
+  - Seam-free terrains: implemented stroke-first-then-fill for water/sand; for polygons, two-pass (stroke all, then fill all). Eliminates seams where like terrains touch.
+  - Walls refresh: implemented bevel-joined rim strokes (source-over), plus top/left highlight and soft shadow accents; physics edges unchanged.
+  - Hills readability: implemented cleaner arrows (dark outline + white stroke) with sparse spacing; respects View → "Slope Arrows".
+  - Cup/ball/bridge polish: implemented inner cup radial shading, subtle ball highlight + shadow, and bridge cast shadow.
+  - Canonical render order: will be validated/refined; current order respects terrains before walls and post-polish layers.
+
+ - Canonical render order (target)
+  1) Table background → 2) Fairway base + bands → 3) Water/Sand strokes → 4) Water/Sand fills → 5) Walls/Posts fills → 6) Wall/Post strokes + highlights/shadows → 7) Bridges → 8) Hills gradient + arrows → 9) Tee/Cup (rim last) → 10) Ball → 11) UI overlays.
+
+- Acceptance
+  - No visible seams between adjacent like terrains at 1×/2× zoom.
+  - Wall chains look continuous at joints/chamfers.
+  - Hill direction obvious at a glance; arrows legible but subtle.
+  - Performance unaffected; keep 60 FPS target.
+
+ - Status
+  - Implemented in runtime (`src/main.ts`) and editor preview (`src/editor/levelEditor.ts`):
+    - Stroke-first-then-fill terrains (rect + poly two-pass) for seam-free edges
+    - Bevel-joined wall/post rims, highlights/shadows
+    - Hill arrows redesign with outline + white stroke
+    - Cup shading, ball highlight, bridge shadow
+  - Docs updated: `Design_Doc.md` and `docs/PALETTE.md` to match stroke-first approach.
+
+ - Next
+  - Validate canonical render order across play/editor; adjust if edge visuals require.
+  - Add visual snapshot tests (adjacent terrain seams, long wall chains, hills both directions).
+  - QA pass on bundled and user levels for back-compat; capture before/after screenshots.
+
+# Project Progress — Vector Putt
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 

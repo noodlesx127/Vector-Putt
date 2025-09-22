@@ -113,10 +113,9 @@ type UiToast = { id: number; message: string; expiresAt: number };
 type UiListItem = { id?: string; label: string; value?: any; disabled?: boolean };
 type UiOverlayState = {
   kind: UiOverlayKind;
-  // Shared
   title?: string;
   message?: string;
-  // Positioning (for draggable overlays)
+  // Shared positioning and dragging
   posX?: number;
   posY?: number;
   // Drag state (internal)
@@ -169,12 +168,12 @@ type UiOverlayState = {
   showWater?: boolean;
   // Load Levels overlay state
   loadLevels?: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>; 
-  loadFilter?: 'all' | 'built-in' | 'user' | 'local';
+  loadFilter?: 'all' | 'built-in' | 'user' | 'local' | 'cloud';
   loadSearch?: string;
   loadSearchFocus?: boolean;
-  hoverFilter?: 'all' | 'built-in' | 'user' | 'local' | null;
+  hoverFilter?: 'all' | 'built-in' | 'user' | 'local' | 'cloud' | null;
   hoverLevelIndex?: number | null;
-  hoverBtn?: 'load' | 'cancel' | null;
+  hoverBtn?: 'load' | 'play' | 'cancel' | null;
   hoverSearch?: boolean;
   // DnD overlay hovers
   hoverDnDIndex?: number | null;
@@ -564,6 +563,15 @@ function handleOverlayKey(e: KeyboardEvent) {
   } else if (k === 'loadLevels') {
     // Keyboard handling for Load Levels overlay
     const items = uiOverlay.loadLevels ?? [];
+    // Recompute filtered list to keep keyboard navigation consistent with UI
+    const active = uiOverlay.loadFilter || 'all';
+    const bySource = items.filter((it) => (active === 'all') ? true : it.source === active);
+    const query = (uiOverlay.loadSearch || '').toLowerCase().trim();
+    const filtered = query ? bySource.filter((it) => {
+      const t = (it.title || '').toLowerCase();
+      const a = (it.author || '').toLowerCase();
+      return t.includes(query) || a.includes(query);
+    }) : bySource;
     if (uiOverlay.loadSearchFocus) {
       if (e.code === 'Escape') { uiOverlay.loadSearchFocus = false; return; }
       if (e.code === 'Enter' || e.code === 'NumpadEnter') { /* keep focus but do not close */ return; }
@@ -572,9 +580,9 @@ function handleOverlayKey(e: KeyboardEvent) {
       return;
     }
     // Arrow navigation and quick load
-    if (e.code === 'ArrowDown') { uiOverlay.selectedLevelIndex = Math.min(items.length - 1, (uiOverlay.selectedLevelIndex ?? 0) + 1); return; }
+    if (e.code === 'ArrowDown') { uiOverlay.selectedLevelIndex = Math.min(filtered.length - 1, (uiOverlay.selectedLevelIndex ?? 0) + 1); return; }
     if (e.code === 'ArrowUp') { uiOverlay.selectedLevelIndex = Math.max(0, (uiOverlay.selectedLevelIndex ?? 0) - 1); return; }
-    if (e.code === 'Enter' || e.code === 'NumpadEnter') { const idx = uiOverlay.selectedLevelIndex ?? 0; uiOverlay.resolve?.(items[idx] ?? null); uiOverlay = { kind: 'none' }; return; }
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') { const idx = Math.max(0, Math.min(filtered.length - 1, uiOverlay.selectedLevelIndex ?? 0)); uiOverlay.resolve?.(filtered[idx] ?? null); uiOverlay = { kind: 'none' }; return; }
     if (e.code === 'Escape') { uiOverlay.resolve?.(null); uiOverlay = { kind: 'none' }; return; }
   } else if (k === 'courseEditor') {
     if (uiOverlay.courseEditingTitle) {
@@ -1114,8 +1122,45 @@ function handleOverlayMouseDown(e: MouseEvent) {
           }
           if (action === 'load') {
             const all = uiOverlay.loadLevels ?? [];
-            const idx = uiOverlay.selectedLevelIndex ?? 0;
-            uiOverlay.resolve?.(all[idx] ?? null);
+            // Recompute filtered in click path
+            const active = uiOverlay.loadFilter || 'all';
+            const bySource = all.filter((it) => (active === 'all') ? true : it.source === active);
+            const query = (uiOverlay.loadSearch || '').toLowerCase().trim();
+            const filtered = query ? bySource.filter((it) => {
+              const t = (it.title || '').toLowerCase();
+              const a = (it.author || '').toLowerCase();
+              return t.includes(query) || a.includes(query);
+            }) : bySource;
+            const idx = Math.max(0, Math.min(filtered.length - 1, uiOverlay.selectedLevelIndex ?? 0));
+            uiOverlay.resolve?.(filtered[idx] ?? null);
+            uiOverlay = { kind: 'none' };
+            return;
+          }
+          if (action === 'play') {
+            const all = uiOverlay.loadLevels ?? [];
+            const active = uiOverlay.loadFilter || 'all';
+            const bySource = all.filter((it) => (active === 'all') ? true : it.source === active);
+            const query = (uiOverlay.loadSearch || '').toLowerCase().trim();
+            const filtered = query ? bySource.filter((it) => {
+              const t = (it.title || '').toLowerCase();
+              const a = (it.author || '').toLowerCase();
+              return t.includes(query) || a.includes(query);
+            }) : bySource;
+            const idx = Math.max(0, Math.min(filtered.length - 1, uiOverlay.selectedLevelIndex ?? 0));
+            const sel = filtered[idx];
+            if (sel && sel.data) {
+              (async () => {
+                try {
+                  await loadLevelFromData(sel.data);
+                  showUiToast(`Playing: ${sel.title} by ${sel.author}`);
+                } catch (err) {
+                  console.error('Quick Play failed:', err);
+                  showUiToast('Failed to play level');
+                }
+              })();
+            }
+            // Resolve with null to close promise for any awaiting caller
+            uiOverlay.resolve?.(null);
             uiOverlay = { kind: 'none' };
             return;
           }
@@ -1191,7 +1236,7 @@ function handleOverlayMouseMove(e: MouseEvent) {
     for (const hs of overlayHotspots) {
       if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
         if (hs.kind === 'btn' && (hs.action || '').startsWith('filter_')) {
-          const filt = (hs.action || '').replace('filter_', '') as 'all' | 'built-in' | 'user' | 'local';
+          const filt = (hs.action || '').replace('filter_', '') as 'all' | 'built-in' | 'user' | 'local' | 'cloud';
           uiOverlay.hoverFilter = filt;
         } else if (hs.kind === 'input' && hs.id === 'loadSearch') {
           uiOverlay.hoverSearch = true;
@@ -1199,7 +1244,7 @@ function handleOverlayMouseMove(e: MouseEvent) {
           uiOverlay.hoverLevelIndex = hs.index;
         } else if (hs.kind === 'btn') {
           const a = hs.action || '';
-          if (a === 'load' || a === 'cancel') uiOverlay.hoverBtn = a;
+          if (a === 'load' || a === 'play' || a === 'cancel') uiOverlay.hoverBtn = a as any;
         }
         break;
       }
@@ -2552,6 +2597,9 @@ function generateLevelThumbnail(levelData: any, width: number = 120, height: num
 
 // Cache for level thumbnails
 const levelThumbnailCache = new Map<string, string>();
+// Cache specifically for Load Levels overlay (by id)
+const loadLevelThumbCache = new Map<string, string>();
+const loadLevelImageCache = new Map<string, HTMLImageElement>();
 
 // Get or generate thumbnail for a level
 function getLevelThumbnail(level: UserLevelEntry): string {
@@ -3392,6 +3440,7 @@ canvas.addEventListener('mousedown', (e) => {
               const res = await showUiDnDList(title, items as any);
               return res ? res.map(it => ({ label: it.label, value: (it as any).value })) : null;
             },
+            showLoadLevels: (levels: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>) => showUiLoadLevels(levels),
             showImportReview: (init: any) => showUiImportReview(init),
             showAnnotateScreenshot: (file: File, opts: any) => showAnnotateScreenshot(file, opts),
             showCourseEditor: (courseData: { id: string; title: string; levelIds: string[]; levelTitles: string[] }) => showUiCourseEditor(courseData),
@@ -3665,6 +3714,7 @@ canvas.addEventListener('mousedown', (e) => {
       getUserName: () => ((userProfile?.name ?? getUserId()) + ''),
       getUserRole: () => userProfile.role
     };
+    (editorEnv as any).showLoadLevels = (levels: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>) => showUiLoadLevels(levels);
     levelEditor.handleMouseDown(e, editorEnv);
     return;
   }
@@ -4122,6 +4172,7 @@ canvas.addEventListener('mousemove', (e) => {
       getUserName: () => ((userProfile?.name ?? getUserId()) + ''),
       getUserRole: () => userProfile.role
     };
+    (editorEnv as any).showLoadLevels = (levels: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>) => showUiLoadLevels(levels);
     levelEditor.handleMouseMove(e as MouseEvent, editorEnv);
     // Cursor: pointer over UI hotspots, crosshair for placement tools, default otherwise
     const hotspots = levelEditor.getUiHotspots();
@@ -4380,6 +4431,7 @@ canvas.addEventListener('mouseup', (e) => {
       getUserName: () => ((userProfile?.name ?? getUserId()) + ''),
       getUserRole: () => userProfile.role
     };
+    (editorEnv as any).showLoadLevels = (levels: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>) => showUiLoadLevels(levels);
     levelEditor.handleMouseUp(e as MouseEvent, editorEnv);
     return;
   }
@@ -7950,11 +8002,12 @@ function renderGlobalOverlays(): void {
       const all = uiOverlay.loadLevels ?? [];
       const padSm = 10;
       // Filters row
-      const filters: Array<{ id: 'all'|'built-in'|'user'|'local'; label: string }>= [
+      const filters: Array<{ id: 'all'|'built-in'|'user'|'local'|'cloud'; label: string }>= [
         { id: 'all', label: 'All' },
         { id: 'built-in', label: 'Bundled' },
         { id: 'user', label: 'User' },
-        { id: 'local', label: 'Local' }
+        { id: 'local', label: 'Local' },
+        { id: 'cloud', label: 'Cloud' }
       ];
       const active = uiOverlay.loadFilter || 'all';
       let fx = px + pad;
@@ -8012,6 +8065,10 @@ function renderGlobalOverlays(): void {
       // Filter items
       const filteredBySource = all.filter((it) => {
         if (active === 'all') return true;
+        if (active === 'user') {
+          const my = ((userProfile?.name || '').trim().toLowerCase());
+          return my ? ((it.author || '').toLowerCase() === my) : false;
+        }
         return it.source === active;
       });
       const query = (uiOverlay.loadSearch || '').toLowerCase().trim();
@@ -8068,12 +8125,47 @@ function renderGlobalOverlays(): void {
         ctx.fillStyle = '#aaaaaa';
         const meta2 = `by ${sel.author} • ${sel.source}${sel.lastModified ? ' • ' + new Date(sel.lastModified).toLocaleString() : ''}`;
         ctx.fillText(meta2, detX + 10, detY + 34);
+
+        // Thumbnail preview box
+        const prevX = detX + 10;
+        const prevY = detY + 60;
+        const prevW = detailW - 20;
+        const prevH = Math.min(160, listH - 100);
+        ctx.fillStyle = 'rgba(255,255,255,0.06)';
+        ctx.fillRect(prevX, prevY, prevW, prevH);
+        ctx.strokeStyle = '#cfd2cf'; ctx.strokeRect(prevX + 0.5, prevY + 0.5, prevW - 1, prevH - 1);
+        try {
+          const id = sel.id || `${sel.source}:${sel.title}`;
+          let dataUrl = loadLevelThumbCache.get(id);
+          if (!dataUrl) {
+            dataUrl = generateLevelThumbnail(sel.data);
+            loadLevelThumbCache.set(id, dataUrl);
+          }
+          if (dataUrl) {
+            let img = loadLevelImageCache.get(id);
+            if (!img) { img = new Image(); img.src = dataUrl; loadLevelImageCache.set(id, img); }
+            if (img && (img.complete || (img as any).naturalWidth)) {
+              // Fit image into preview rect with aspect preserved
+              const imgW = (img as any).naturalWidth || 120;
+              const imgH = (img as any).naturalHeight || 80;
+              const scale = Math.min(prevW / imgW, prevH / imgH);
+              const dw = Math.floor(imgW * scale), dh = Math.floor(imgH * scale);
+              const dx = prevX + Math.floor((prevW - dw) / 2);
+              const dy = prevY + Math.floor((prevH - dh) / 2);
+              ctx.drawImage(img as any, dx, dy, dw, dh);
+            }
+          }
+        } catch {}
       }
 
-      // Buttons: Load and Cancel per UI_Design.md (standard height 28px)
+      // Buttons: Load, (Quick Play when not in editor), Cancel per UI_Design.md (standard height 28px)
       const bw = 110, bh = 28, gap = 12;
       const by = py + panelH - pad - bh;
-      const loadX = px + panelW - pad - bw * 2 - gap;
+      // Layout: [Play] [Load] [Cancel] when not in editor; otherwise [Load] [Cancel]
+      const isEditor = (gameState as any) === 'levelEditor';
+      const btnCount = isEditor ? 2 : 3;
+      const loadX = isEditor ? (px + panelW - pad - bw * 2 - gap) : (px + panelW - pad - bw * 3 - gap * 2);
+      const playX = isEditor ? -1 : (px + panelW - pad - bw * 2 - gap);
       const cancelX = px + panelW - pad - bw;
       const canLoad = filtered.length > 0;
       const loadHover = uiOverlay.hoverBtn === 'load';
@@ -8083,6 +8175,16 @@ function renderGlobalOverlays(): void {
       ctx.fillStyle = canLoad ? '#ffffff' : '#999999'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '14px system-ui, sans-serif';
       ctx.fillText('Load', loadX + bw/2, by + bh/2 + 0.5);
       if (canLoad) overlayHotspots.push({ kind: 'btn', action: 'load', x: loadX, y: by, w: bw, h: bh });
+
+      if (!isEditor) {
+        const playHover = uiOverlay.hoverBtn === 'play';
+        ctx.fillStyle = canLoad ? (playHover ? 'rgba(136,212,255,0.95)' : 'rgba(136,212,255,0.80)') : 'rgba(100,100,100,0.20)';
+        ctx.fillRect(playX, by, bw, bh);
+        ctx.strokeStyle = canLoad ? (playHover ? '#88d4ff' : '#88d4ff') : '#666666'; ctx.lineWidth = 1.5; ctx.strokeRect(playX, by, bw, bh);
+        ctx.fillStyle = canLoad ? '#0b3b14' : '#999999'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '14px system-ui, sans-serif';
+        ctx.fillText('Play', playX + bw/2, by + bh/2 + 0.5);
+        if (canLoad) overlayHotspots.push({ kind: 'btn', action: 'play', x: playX, y: by, w: bw, h: bh });
+      }
 
       const cancelHover = uiOverlay.hoverBtn === 'cancel';
       ctx.fillStyle = cancelHover ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.10)';
@@ -9038,7 +9140,10 @@ function handleOverlayWheel(e: WheelEvent) {
     const rowH = 34;
     const listH = Math.min(600, HEIGHT - 120) - 200;
     const maxRows = Math.max(1, Math.floor(listH / rowH));
-    const filteredLen = all.filter(it => (uiOverlay.loadFilter === 'all') ? true : it.source === uiOverlay.loadFilter).length;
+    const active = uiOverlay.loadFilter || 'all';
+    const query = (uiOverlay.loadSearch || '').toLowerCase().trim();
+    const bySource = all.filter(it => (active === 'all') ? true : it.source === active);
+    const filteredLen = query ? bySource.filter(it => ((it.title || '').toLowerCase().includes(query) || (it.author || '').toLowerCase().includes(query))).length : bySource.length;
     const maxScroll = Math.max(0, filteredLen - maxRows);
     uiOverlay.scrollOffset = Math.max(0, Math.min(maxScroll, (uiOverlay.scrollOffset ?? 0) + scrollDelta));
     return;

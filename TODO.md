@@ -91,11 +91,11 @@ Notes:
   - [ ] Obstacles Integration Policy
     - [ ] When introducing any new obstacle type, add it to the Level Editor as a placeable/selectable object (render, hit-test, transform, save/load).
     - [ ] Incorporate the new obstacle into Suggest Par and cup heuristics (A* grid build, directional/dynamic costs if applicable, and lint rules) so estimates/suggestions remain accurate.
-  - [ ] Cup placement heuristics (avoid trivial layouts)
-    - [ ] Define constraints for logical cup placement: minimum distance from tee; not directly visible by straight shot when obstacles intend a path; not hugging walls/edges; inside intended gated region
-    - [ ] Path validation: grid/navmesh A* over fairway (excluding walls/water) to ensure a non-trivial route length and at least one corridor/bank interaction
-    - [ ] Editor assist: auto-suggest 3–5 candidate cup positions ranked by difficulty; highlight invalid/too-easy placements
-    - [ ] Add lint rule in level validator to flag cups that can be bypassed around obstacles
+  - [x] Cup placement heuristics (avoid trivial layouts)
+    - [x] Define constraints for logical cup placement: minimum distance from tee; avoid hugging edges; min straightness ratio; optional region constraint (`suggestCupPositions()` in `src/editor/levelHeuristics.ts`)
+    - [x] Path validation: grid A* over fairway (walls/water blocked; bridges pass-through) with corridor/bank scoring (`buildGrid()`/`aStar()` in `src/editor/levelHeuristics.ts`)
+    - [x] Editor assist: auto-suggest 3–5 candidate cup positions; click marker to apply (Tools → Suggest Cup, `levelEditor.suggestCup()`)
+    - [x] Lint rule to flag trivial/edge cases (`lintCupPath()` warns on nearly-straight low-contact paths and edge proximity)
  - [x] Course definition (ordered list of holes + par values)
  - [x] Author 3–5 MVP holes to validate mechanics (added level4, level5)
 - [x] Adjust L1 decorations to sit outside playfield
@@ -103,15 +103,14 @@ Notes:
 
 - [ ] Level Editor & Browser (authoring and discovery)
   - [x] In-app (or web) level editor to place walls/terrain/hills/decorations
-  - [ ] Grid snapping, keyboard nudges, and alignment helpers
-    - [ ] Smart Alignment Guides during drag-move/resize/vertex drag/polygon drafting
-      - Snap to nearby object edges/centers (left/center/right, top/middle/bottom) within ~6px; show cyan guide lines and spacing labels; Alt disables guides; Ctrl forces grid-only snap
-    - [ ] Rulers (top/left) with tick marks and live cursor indicator; View toggle “Rulers”
-    - [ ] Measure Tool (Tools → Measure): click-drag to measure distance/angle (Δx/Δy); snaps to grid/vertices/edges; ESC cancels; Enter pins; double-click clears
-    - [ ] Axis lock for drag-move (Shift constrains to dominant axis)
-    - [ ] Align/Distribute commands for multi-select (Align Left/Right/Top/Bottom/Center H/V; Distribute H/V spacing)
-    - [ ] Numeric readout on polygon drafting (length + angle near the next-segment guide)
-    - [ ] Ruler guide lines (drag out from rulers; double-click ruler to clear)
+  - [x] Grid snapping, keyboard nudges, and alignment helpers
+    - [x] Smart Alignment Guides during drag-move/resize/vertex drag/polygon drafting (cyan lines + spacing; Alt disables; Ctrl grid-only)
+    - [x] Rulers (top/left) with tick marks and live cursor indicator; View → Rulers toggle
+    - [x] Measure Tool (Tools → Measure): click-drag distance/angle (Δx/Δy, L, θ); Esc cancels; Enter pins; right-click clears; double-click clears pinned
+    - [x] Axis lock for drag-move (Shift constrains)
+    - [x] Align/Distribute commands for multi-select (Align Left/Right/Top/Bottom/Center H/V; Distribute H/V)
+    - [x] Numeric readout for drafting via bottom Tool Info Bar; in-canvas bubbles minimized to avoid obstruction
+    - [x] Ruler guide lines (drag out from rulers; double-click ruler to clear)
   - [x] Load/Save `levels/*.json` with schema-aware validation
   - [ ] Dev/Admin-only Course Creator (Editor → Editor Tools → "Course Creator")
     - [ ] Dedicated UI listing all levels with thumbnail and metadata (name, author, par)
@@ -123,7 +122,12 @@ Notes:
     - [x] Visibility: feature gated to Dev/Admin only
     - [ ] Persistence: course definition format consumed by runtime Course Select
   - [ ] Level browser: scan `levels/` and list levels; searchable and filterable
+    - [x] Overlay UI built in `showUiLoadLevels()` with filters (All/Bundled/User/Local/Cloud), search box (title/author), scroll, keyboard nav, and details pane
+    - [ ] Wire an entry point outside the editor (e.g., from Main Menu or User Levels) to browse and quick‑play without entering the editor
   - [ ] Preview thumbnails and quick-play from the browser
+    - [x] Thumbnail generation for selected item in details pane; image cached
+    - [x] Quick Play action implemented in overlay (disabled when invoked from editor)
+    - [ ] Expose Quick Play via a non‑editor browser entry; confirm UX and persistence rules
   - [x] Open/edit existing `levels/*.json` (load, modify, validate) and Save/Save As
   - [x] Create new level workflow (canvas size, par, initial metadata)
   - [x] Metadata editor: Level title and author name (persisted in JSON)
@@ -263,6 +267,12 @@ Notes:
 - [x] HUD: optional hole title display (per-level `course.title`)
 - [x] HUD: Menu button toggles Pause (replaces HUD Replay)
 - [x] Main Menu: simple vector graphic (flag, hole, ball, putter)
+
+- [ ] Main Menu: Quick Play
+  - [ ] Add a Quick Play button to the Main Menu that opens the Load Levels overlay in non‑editor browsing mode
+  - [ ] Enable filters/search and right‑pane thumbnail/metadata
+  - [ ] Show Play/Cancel buttons (no Load, since this path doesn’t enter the editor)
+  - [ ] After selecting a level, immediately start play via `loadLevelFromData()`; no persistence changes
 
  - [x] Overlay consistency per `UI_Design.md`
    - [x] Prompt primary button shows “Save” for Save/Save As/Metadata

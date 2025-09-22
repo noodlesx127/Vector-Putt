@@ -144,6 +144,8 @@ export interface EditorEnv {
   showToast(message: string): void;
   showConfirm(message: string, title?: string): Promise<boolean>;
   showPrompt(message: string, defaultValue?: string, title?: string): Promise<string | null>;
+  // Load Levels overlay (optional richer browser)
+  showLoadLevels?(levels: Array<{ id: string; title: string; author: string; source: 'built-in' | 'cloud' | 'local'; data: any; lastModified?: number }>): Promise<any>;
   // Optional panelized metadata form; returns null on cancel
   showMetadataForm?(init: { title: string; author: string; par: string; description?: string; tags?: string }, dialogTitle?: string): Promise<{ title: string; author: string; par: string; description: string; tags: string } | null>;
   showList(title: string, items: Array<{label: string; value: any}>, startIndex?: number): Promise<any>;
@@ -295,6 +297,9 @@ class LevelEditorImpl implements LevelEditor {
   private lastClickPos: { x: number; y: number } | null = null;
   // Track last modifier keys for preview constraints
   private lastModifiers: { shift: boolean; ctrl: boolean; alt: boolean } = { shift: false, ctrl: false, alt: false };
+  // Cup lint cache (warnings for current configuration)
+  private cupLintWarnings: string[] = [];
+  private cupLintLastMs: number = 0;
   
   // Polygon vertex dragging state
   private isVertexDragging: boolean = false;
@@ -1956,6 +1961,28 @@ class LevelEditorImpl implements LevelEditor {
       ctx.fillStyle = COLORS.wallFill;
       const stickW = 3, stickH = 24;
       ctx.fillRect(hole.x - stickW / 2, hole.y - stickH - r, stickW, stickH);
+
+      // Cup lint indicator (warn on invalid/too-easy placements)
+      const now = Date.now();
+      if (!this.editorLevelData) this.syncEditorDataFromGlobals(env);
+      if ((now - this.cupLintLastMs) > 800 && this.editorLevelData) {
+        try {
+          const fair = env.fairwayRect();
+          let cellSize = 20; try { const g = env.getGridSize(); if (g && g > 0) cellSize = Math.max(10, Math.min(40, g)); } catch {}
+          this.cupLintWarnings = lintCupPath(this.editorLevelData, fair, cellSize) || [];
+        } catch { this.cupLintWarnings = []; }
+        this.cupLintLastMs = now;
+      }
+      if (this.cupLintWarnings && this.cupLintWarnings.length > 0) {
+        // Draw a small red badge with ! near the flagstick
+        const bx = hole.x + 14, by = hole.y - stickH - r - 10;
+        ctx.save();
+        ctx.fillStyle = '#e33';
+        ctx.beginPath(); ctx.arc(bx, by, 8, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 10px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('!', bx, by + 0.5);
+        ctx.restore();
+      }
     }
 
     // Suggested cup markers (transient)
@@ -5383,6 +5410,39 @@ class LevelEditorImpl implements LevelEditor {
       return;
     }
 
+    // Prefer the richer Level Browser overlay if available
+    if (typeof env.showLoadLevels === 'function') {
+      const entries = allEntries.map(e => ({
+        id: e.name,
+        title: e.title,
+        author: e.author,
+        source: 'cloud' as const,
+        data: e.data,
+        lastModified: e.lastModified
+      }));
+      const chosen = await env.showLoadLevels(entries);
+      if (!chosen) return;
+      const ok = await env.showConfirm('Load selected level and discard current changes?', 'Load Level');
+      if (!ok) return;
+      const id = (chosen.id ?? chosen.value?.id ?? chosen.value?.name ?? chosen.name) as string;
+      let levelData: any = chosen.data ?? chosen.value?.data;
+      if (typeof levelData === 'string') {
+        try { levelData = JSON.parse(levelData); } catch { levelData = null; }
+      }
+      if (!levelData || typeof levelData !== 'object') {
+        let fetched = await firebaseLevelStore.loadLevel(id, username);
+        if (!fetched && isAdmin) fetched = await firebaseLevelStore.loadLevel(id);
+        if (!fetched) { env.showToast('Failed to load level data'); return; }
+        levelData = fetched;
+      }
+      const fixed = applyLevelDataFixups(levelData);
+      this.applyLevelToEnv(fixed, env);
+      this.editorCurrentSavedId = id;
+      env.showToast(`Loaded "${chosen.title || 'Untitled'}" by ${chosen.author || 'Unknown'}`);
+      return;
+    }
+
+    // Fallback: simple list flow with filters
     // Categorize levels for filtering
     const myLevels = allEntries.filter(e => e.author === username || 
       (e.data?.meta?.authorId === username) || (e.data?.meta?.authorName === username));

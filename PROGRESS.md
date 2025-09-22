@@ -4,6 +4,18 @@
   - Added to the Level Editor as a placeable/selectable object (render, hit‑test, transform, save/load).
   - Incorporated into Suggest Par and cup heuristics (A* grid build, directional costs if applicable, lint rules) so estimates and suggestions remain accurate.
 
+- Level System — Editor/Browser (2025-09-22)
+  - [x] Editor: Cup lint indicator near the flag to warn on invalid/too‑easy placements; throttled recompute. (`src/editor/levelEditor.ts`)
+  - [x] Editor: Level Load picker now uses the richer Load Levels overlay (search/filter list with details) when available. (`src/editor/levelEditor.ts`, `src/main.ts`)
+  - [x] TODO alignment: marked Cup placement heuristics subtasks and alignment helpers as completed; ruler guide lines checked. (`TODO.md`)
+
+- Main Menu — Quick Play (Plan, 2025-09-22)
+  - Decision: Quick Play lives on the Main Menu.
+  - Behavior: Opens the Load Levels overlay in non‑editor browsing mode with Quick Play enabled.
+  - UI: Same filters/search and right‑pane thumbnail/metadata as the Editor’s Load overlay.
+  - Flow: Does not enter the editor; loads the selected level transiently for immediate play (no persistence changes).
+  - Next: Implement the Main Menu button and route it to `showUiLoadLevels()` with Quick Play visible. (`src/main.ts`)
+
 - Suggest Par Heuristics — Improvements (2025-09-21)
   - [x] Account for hills direction and strength in pathfinding by encoding a hill vector field and penalizing uphill segments while easing downhill.
   - [x] Treat bridges as pass-through over blocked cells (e.g., water/wall) for the path estimate.

@@ -49,11 +49,12 @@ Goal: preserve the recognizable retro look while making the playfield more reada
     - Bevel-joined wall/post rims, highlights/shadows
     - Hill arrows redesign with outline + white stroke
     - Cup shading, ball highlight, bridge shadow
+    - Optional faint water ripple overlay for large bodies (runtime and editor)
   - Canonical render order implemented across runtime and editor: walls/posts before bridges and hills; editor decorations moved before walls to match runtime. Editor gained View → "Slope Arrows" toggle; arrows skip rendering under walls/posts/water.
   - Docs updated: `Design_Doc.md`, `docs/PALETTE.md`, and `TODO.md` aligned with stroke-first terrains and canonical order.
 
  - Next
-  - Add visual snapshot tests (adjacent terrain seams, long wall chains, hills both directions).
+  - Visual snapshot tests (adjacent terrain seams, long wall chains, hills both directions) — deferred for now per request.
   - QA pass on bundled and user levels for back-compat; capture before/after screenshots.
 
 # Project Progress — Vector Putt

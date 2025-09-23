@@ -1776,6 +1776,50 @@ class LevelEditorImpl implements LevelEditor {
         ctx.fill();
       }
     }
+    // Optional faint ripple overlay for large water bodies (visual polish)
+    {
+      const areaThreshold = 6000; // only apply to larger bodies
+      // Rect water
+      for (const r of waters) {
+        if (r.w * r.h < areaThreshold) continue;
+        ctx.save();
+        ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
+        ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+        ctx.lineWidth = 1;
+        const step = 12;
+        const minX = r.x - r.h, maxX = r.x + r.w + r.h;
+        for (let x = minX; x < maxX; x += step) {
+          ctx.beginPath();
+          ctx.moveTo(x, r.y);
+          ctx.lineTo(x + r.h, r.y + r.h);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+      // Polygon water
+      for (const wp of watersPoly) {
+        const pts = wp.points; if (!pts || pts.length < 6) continue;
+        // area via shoelace
+        let A = 0; for (let i = 0, j = pts.length - 2; i < pts.length; i += 2) { const xi = pts[i], yi = pts[i + 1]; const xj = pts[j], yj = pts[j + 1]; A += (xj * yi - xi * yj); j = i; } A = Math.abs(A) / 2;
+        if (A < areaThreshold) continue;
+        // bbox
+        let minx = pts[0], miny = pts[1], maxx = pts[0], maxy = pts[1];
+        for (let i = 2; i < pts.length; i += 2) { const x = pts[i], y = pts[i + 1]; if (x < minx) minx = x; if (y < miny) miny = y; if (x > maxx) maxx = x; if (y > maxy) maxy = y; }
+        ctx.save();
+        ctx.beginPath(); ctx.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]); ctx.closePath(); ctx.clip();
+        ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
+        const step = 12;
+        const height = maxy - miny;
+        const start = minx - height, end = maxx + height;
+        for (let x = start; x < end; x += step) {
+          ctx.beginPath();
+          ctx.moveTo(x, miny);
+          ctx.lineTo(x + height, miny + height);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
     // Sand (rects)
     for (let i = 0; i < sands.length; i++) {
       const r = sands[i];

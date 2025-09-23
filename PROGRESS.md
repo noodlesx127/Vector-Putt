@@ -42,6 +42,16 @@ Notes
 - Coefficients wired from Admin → Game Settings: Baseline Shot px, Turn Penalty, Hill Bump, Bank Weight, Friction K, Sand Multiplier.
 - Candidate ranking uses the same cost model to ensure consistency with runtime tuning.
 
+## Level Editor — Selection & Polygon Editing Fixes (2025-09-23)
+
+- [x] Marquee selection accuracy
+  - Default behavior is now Contain: an object is selected only if fully inside the selection box. Hold Alt to switch to Intersect mode during the drag/finalize.
+- [x] Polygon vertex add/remove
+  - Alt+Click on a vertex removes it (enforced minimum of 3 vertices).
+  - Double-click near an edge inserts a new vertex at the closest point on that edge and begins dragging it immediately. Insertion honors alignment guides and grid snapping.
+- [x] Precise vertex hit-testing near nearby polygons
+  - Vertex hit-tests now prefer vertices on already-selected polygons, and then the closest vertex within threshold. This eliminates accidental grabs from adjacent polygons.
+
 ## Play Area Visual Refresh — Plan (2025-09-22)
 
 Goal: preserve the recognizable retro look while making the playfield more readable and polished. All changes are render-only and fully backward compatible with existing level JSON and Firebase data — no schema or physics changes.

@@ -7072,6 +7072,22 @@ function draw() {
     for (const r of sands) {
       ctx.fillRect(r.x, r.y, r.w, r.h);
     }
+    // Optional subtle inner shadow on large sand traps (recessed look)
+    {
+      const areaThreshold = 6000;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0,0,0,0.14)';
+      ctx.lineWidth = 2;
+      for (const r of sands) {
+        if (r.w * r.h < areaThreshold) continue;
+        ctx.save();
+        // clip to the sand rect so stroke sits inside
+        ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
+        ctx.strokeRect(r.x + 2, r.y + 2, Math.max(0, r.w - 4), Math.max(0, r.h - 4));
+        ctx.restore();
+      }
+      ctx.restore();
+    }
   }
   // polygon sand — two-pass: stroke all, then fill all
   if (sandsPoly.length > 0) {

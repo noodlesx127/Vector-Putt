@@ -209,6 +209,44 @@ Notes:
 - [ ] UI integration
   - [x] Main Menu: username input field between the graphic and the Start button; Start disabled until a non-empty username is entered; persist and prefill last user
 
+### Leaderboards — Levels and Courses
+
+- [ ] Data model (see `firebase.md` for schema updates)
+  - [ ] Levels leaderboard: `/leaderboards/levels/{levelId}/entries/{userId}` with `{ userId, username, bestStrokes, bestTimeMs?, attempts, lastUpdated }`
+  - [ ] Courses leaderboard: `/leaderboards/courses/{courseId}/entries/{userId}` with `{ userId, username, bestTotalStrokes, bestTimeMs?, attempts, lastUpdated }`
+  - [ ] Settings: `/leaderboards/settings` (admin-only): `{ resetsEnabled, retentionDays, visibility: 'public'|'friends'|'private', allowTies, maxEntriesPerBoard }`
+  - [ ] Security rules: admin-gated resets/maintenance; users can only upsert their own entries
+
+- [ ] Automatic creation
+  - [ ] On new Level creation (Editor Save/New flow): ensure `/leaderboards/levels/{levelId}` exists with defaults
+  - [ ] On new Course creation (Admin Course Creator): ensure `/leaderboards/courses/{courseId}` exists with defaults
+
+- [ ] Runtime integration
+  - [ ] On hole complete: upsert per-level leaderboard entry for active user when score improves (lower strokes or tie-break by time)
+  - [ ] On course complete: upsert per-course leaderboard entry when total improves
+  - [ ] Offline-safe queue with retry; debounce multiple writes
+
+- [ ] UI integration
+  - [ ] Post-Hole / Course Summary: show top-N leaderboard with your rank highlighted; button to "View Full Leaderboard"
+  - [ ] Level Browser / Course Select: add "View Leaderboard" action and small top-3 preview
+  - [ ] Admin Menu → Leaderboards: settings panel (reset per-level/per-course/all, retention, visibility). Role-gated.
+
+- [ ] Admin operations
+  - [ ] Reset per-level/per-course/all boards (soft delete with archive option)
+  - [ ] Prune by retentionDays and maxEntriesPerBoard
+  - [ ] Export CSV/JSON for a board (optional)
+
+- [ ] Implementation
+  - [ ] `src/firebase/database.ts`: add `FirebaseLeaderboardStore` (levels/courses entries CRUD; settings)
+  - [ ] `src/main.ts`: hook updates after hole/course completion; read top-N for displays
+  - [ ] `src/editor/levelEditor.ts`: create board on new level save; wire to Course Creator for courses
+  - [ ] `src/main.ts` and overlays: new UI to view leaderboards; admin settings overlay under Admin Menu
+
+- [ ] Testing
+  - [ ] Unit tests for `FirebaseLeaderboardStore` (upsert, rank, prune)
+  - [ ] Admin settings/reset flows (role-gated)
+  - [ ] UI smoke tests for displays and rank highlighting
+
   - [ ] Allow placement overlapping fairway/water edges; draw above water; no collision mask
 - [x] Land bridge over water (static, no slope)
   - [x] Support narrow fairway rectangles spanning water with correct priority (fairway collision only on bridge)

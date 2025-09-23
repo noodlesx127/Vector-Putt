@@ -57,6 +57,34 @@ Goal: preserve the recognizable retro look while making the playfield more reada
   - Visual snapshot tests (adjacent terrain seams, long wall chains, hills both directions) — deferred for now per request.
   - QA pass on bundled and user levels for back-compat; capture before/after screenshots.
 
+# Leaderboards — Plan (2025-09-22)
+
+- Scope
+  - Level leaderboards: best strokes (tie-break by time, optional) per single level.
+  - Course leaderboards: best total strokes (tie-break by time, optional) per full course.
+  - Automatic board creation: when a user creates a new level or an admin creates a new course, the corresponding leaderboard is initialized.
+
+- Data Model (see `firebase.md` for schema)
+  - Levels: `/leaderboards/levels/{levelId}/entries/{userId}` → `{ userId, username, bestStrokes, bestTimeMs?, attempts, lastUpdated }`
+  - Courses: `/leaderboards/courses/{courseId}/entries/{userId}` → `{ userId, username, bestTotalStrokes, bestTimeMs?, attempts, lastUpdated }`
+  - Settings (admin): `/leaderboards/settings` → `{ resetsEnabled, retentionDays, visibility, allowTies, maxEntriesPerBoard }`
+
+- Admin Settings (Admin Menu → Leaderboards)
+  - Reset per-level/per-course/all boards (soft delete/archival option)
+  - Retention days and max entries pruning
+  - Visibility controls (public/friends/private) and tie behavior
+
+- Integration
+  - On hole complete: upsert per-level entry if improved
+  - On course complete: upsert per-course entry if improved
+  - Offline-safe queue and retry; debounce writes
+  - Editor: on Save/New, ensure `/leaderboards/levels/{levelId}` exists; Course Creator ensures `/leaderboards/courses/{courseId}` exists
+
+- Next Steps
+  - Implement `FirebaseLeaderboardStore` (CRUD + settings)
+  - Wire runtime update hooks and small UI surfaces (Post-Hole, Course Summary, Level Browser/Course Select)
+  - Add Admin Menu overlay for Leaderboard settings and resets (role-gated)
+
 # Project Progress — Vector Putt
 
 This file tracks current focus, next steps, decisions, and done items. Keep it short and living.

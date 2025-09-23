@@ -3885,18 +3885,23 @@ canvas.addEventListener('mousedown', (e) => {
           return;
         }
         if (hs.kind === 'defaults') {
-          // restore defaults locally (requires Save to persist)
-          gameSettingsState = { ...GAME_SETTINGS_DEFAULTS };
-          showUiToast('Reverted to default settings (Save to persist)');
+          (async () => {
+            const ok = await showUiConfirm('Reset all Game Settings to defaults? You can Save to persist or Cancel to discard.', 'Reset to Defaults');
+            if (!ok) return;
+            // restore defaults locally (requires Save to persist)
+            gameSettingsState = { ...GAME_SETTINGS_DEFAULTS };
+            showUiToast('Defaults applied (Save to persist)');
+          })();
           return;
         }
         if (hs.kind === 'previous') {
-          if (gameSettingsPrev) {
+          (async () => {
+            if (!gameSettingsPrev) { showUiToast('No previous settings snapshot'); return; }
+            const ok = await showUiConfirm('Restore the settings snapshot captured when you opened this screen? You can Save to persist or Cancel to discard.', 'Restore Previous');
+            if (!ok) return;
             gameSettingsState = { ...gameSettingsPrev } as any;
-            showUiToast('Reverted to previous settings (Save to persist)');
-          } else {
-            showUiToast('No previous settings snapshot');
-          }
+            showUiToast('Previous settings applied (Save to persist)');
+          })();
           return;
         }
         if (hs.kind === 'save') {

@@ -9,17 +9,25 @@ A classic mini golf recreation using TypeScript + Canvas with data‑driven leve
 ## Features
 
 - TypeScript + Canvas 2D, Vite dev server
+- **Firebase Realtime Database**: Complete cloud persistence for users, levels, settings, and scores with real-time synchronization
 - Tuned physics: friction, restitution, stop thresholds
 - Terrain zones: sand (higher friction), water (OOB penalty/reset)
 - Data‑driven levels: tee, cup, walls, decorations
 - Minimal HUD, pause overlay, keyboard shortcuts (R/N/Space/P/Esc)
 - Retro vector palette and clean course framing
+- In-game overlay dialogs (Confirm, Prompt, List) and Toast notifications replace browser alerts/prompts; overlays render above all UI, rebuild hotspots every frame, swallow input while active, and support Enter/Esc/Arrow keys.
+- Level Editor: top menubar with pull-down menus (File, Objects, Decorations, Editor Tools); tool palette and selection; Tee/Cup placement with 20px grid snapping; multi-level persistence (Save, Save As, Load, New, Delete) via Firebase Realtime Database; ownership metadata (authorId/authorName) with owner/admin overwrite/delete permissions; automatic migration from localStorage; in-editor grid preview; editor preview renders existing geometry (water, sand, bridges, hills, decorations, walls, polygon walls, posts) using play-mode visuals; interactive placement for Posts (click) and Walls/Bridges/Water/Sand/Hills (click-drag rectangles) with grid snapping and fairway clamping. Select Tool supports selection, movement, and deletion for polygon objects (`wallsPoly`, `waterPoly`, `sandPoly`). Undo/Redo (Ctrl+Z/Ctrl+Y) with 50-step history; Clipboard (Copy/Cut/Paste via Ctrl+C/Ctrl+X/Ctrl+V) across rects, posts, and polygons (translate-only for polys), paste at mouse cursor with grid snap and clamping.
+ - Level Editor: top menubar with pull-down menus (File, Objects, Decorations, Editor Tools); tool palette and selection; Tee/Cup placement with 20px grid snapping; multi-level persistence (Save, Save As, Load, New, Delete) via Firebase Realtime Database; ownership metadata (authorId/authorName) with owner/admin overwrite/delete permissions; automatic migration from localStorage; in-editor grid preview; editor preview renders existing geometry (water, sand, bridges, hills, decorations, walls, polygon walls, posts) using play-mode visuals; interactive placement for Posts (click) and Walls/Bridges/Water/Sand/Hills (click-drag rectangles) with grid snapping and fairway clamping. Select Tool supports selection, movement, and deletion for polygon objects (`wallsPoly`, `waterPoly`, `sandPoly`). Undo/Redo (Ctrl+Z/Ctrl+Y) with 50-step history; Clipboard (Copy/Cut/Paste via Ctrl+C/Ctrl+X/Ctrl+V) across rects, posts, and polygons (translate-only for polys), paste at mouse cursor with grid snap and clamping.
+ - Level Editor: Suggest Par (hybrid branching). K-best route generation with geometry-aware A* (walls/water blocked, bridges pass-through, posts as circular blockers). Renders colored candidate routes; click a route or choose from a list when multiple are near-equal. Uses tunable coefficients from Admin → Game Settings (Baseline Shot px, Turn Penalty, Hill Bump, Bank Weight, Friction K, Sand Multiplier).
+ - Import from Screenshot (Phase 2): File → "Import from Screenshot…" analyzes a level screenshot via Canvas HSV segmentation (fairway/walls/sand/water), traces contours, simplifies/snaps polygons, and composes draft geometry (`wallsPoly`, `sandPoly`, `waterPoly`) with cup heuristic and tee fallback.
+- Admin visibility: Admin users see all user-created levels (public + private) in Level Editor and Course Select.
+ - Admin-only Course Creator: an overlay in the Level Editor (Editor Tools → Course Creator) for listing, creating, renaming, reordering, and adding/removing levels in courses. Persists to Firebase via a `courses` path and `FirebaseCourseStore`; available only when `EditorEnv.getUserRole()` is `admin`.
 
 ## Stack
 
 - TypeScript, HTML5 Canvas 2D
 - Vite (dev/build)
-- Planned: Howler.js (audio), Vitest (tests)
+- Web Audio API (custom) for SFX; Howler.js optional later, Vitest (tests)
 
 ## Run locally
 
@@ -29,7 +37,51 @@ A classic mini golf recreation using TypeScript + Canvas with data‑driven leve
    - `npm run dev`
 3. Open the URL shown by Vite.
 
-See `TODO.md` for roadmap and `PROGRESS.md` for current focus.
+## Development
+
+```bash
+npm install
+npm run dev
+```
+
+Note (dev/test): The Test Overlay demo toggles with Shift+T to avoid conflicts while typing.
+
+## Database Maintenance
+
+The project includes a comprehensive Firebase database cleanup tool:
+
+```bash
+# Preview what would be cleaned (recommended first step)
+npm run cleanup:db:dry-run
+
+# Full database cleanup
+npm run cleanup:db
+
+# Remove only test data
+npm run cleanup:db:test-data
+```
+
+See [DATABASE_CLEANUP.md](docs/DATABASE_CLEANUP.md) for detailed documentation.
+
+## Testing
+
+- Run unit tests (Vitest):
+
+```bash
+npm run test
+```
+
+- Watch mode:
+
+```bash
+npm run test:watch
+```
+
+- Coverage report:
+
+```bash
+npm run coverage
+```
 
 ## Suggested GitHub Topics
 

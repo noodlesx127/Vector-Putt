@@ -1,6 +1,6 @@
 {
   "canvas": { "width": 800, "height": 600 },
-  "course": { "index": 2, "total": 3 },
+  "course": { "index": 2, "total": 8 },
   "par": 2,
   "tee": { "x": 100, "y": 300 },
   "cup": { "x": 520, "y": 300, "r": 12 },

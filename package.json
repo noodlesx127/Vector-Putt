@@ -1,15 +1,33 @@
 {
+  "$schema": "https://json.schemastore.org/package.json",
   "name": "vector-putt",
-  "version": "0.1.0",
+  "version": "0.3.27",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "build:ts": "tsc -p tsconfig.build.json",
+    "cleanup:db": "npm run build:ts && node scripts/cleanup-db.js",
+    "cleanup:db:dry-run": "npm run build:ts && node scripts/cleanup-db.js --dry-run",
+    "cleanup:db:test-data": "npm run build:ts && node scripts/cleanup-db.js --test-data-only",
+    "cleanup:db:preview": "npm run build:ts && node scripts/cleanup-db.js --dry-run --remove-test-data",
+    "migrate:levels": "npm run build:ts && node scripts/migrate-levels.js",
+    "migrate:levels:dry-run": "npm run build:ts && node scripts/migrate-levels.js --dry-run"
   },
   "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@vitest/coverage-v8": "^3.2.4",
+    "jsdom": "^27.0.0",
     "typescript": "^5.5.4",
-    "vite": "^5.3.1"
+    "vite": "^7.1.3",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "firebase": "^12.1.0"
   }
 }

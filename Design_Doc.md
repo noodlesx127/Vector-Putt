@@ -111,7 +111,47 @@ The game uses a minimalist, 2D vector art style.
 
     Colors: A bright, high-contrast color palette is used. Each terrain type has a distinct, solid color, making the course instantly readable.
 
+    Palette (as implemented in `src/main.ts` `COLORS`):
+
+        Table (background): #7a7b1e
+        Fairway:           #126a23
+        Fairway band:      #115e20
+        Fairway outline:   #0b3b14
+        Wall fill:         #e2e2e2
+        Wall stroke:       #bdbdbd
+        Hole fill:         #0a1a0b
+        Hole rim:          #0f3f19
+        HUD text:          #111111
+        HUD bg (dark):     #0d1f10
+
+    Notes:
+    - The fairway area is inset within the table background to mirror the reference look.
+    - HUD text is rendered directly over the table background in dark text for contrast.
+
     UI: The user interface elements are clean, with legible fonts and simple icons. There is no visual clutter.
+
+    4.1.1 Play Area Style Guide (Walls, Terrains, Hills, Cup, Ball, Bridge)
+
+    - Fairway: Solid `fairway` fill with subtle horizontal `fairwayBand` stripes. 2px `fairwayLine` outline for bridges and outer fairway frame where applicable.
+    - Water: Solid `waterFill` with a slightly darker rim from `waterStroke` using stroke-first-then-fill (see compositing). Optional faint white ripple texture for large bodies only.
+    - Sand: Solid `sandFill` with `sandStroke` rim via stroke-first-then-fill; subtle inner shadow to read as recessed.
+    - Walls & Posts: `wallFill` face with continuous rim `wallStroke` using bevel joins at chamfers. Add a subtle top/left white highlight (≈20–25% alpha) and a soft bottom/right shadow (≈30–35% alpha) for depth.
+    - Hills: Green directional gradient aligned to slope vector (dark → light downhill). Direction arrows use a simple glyph: white fill with dark outline, spaced sparsely so they read but do not clutter; respects the in‑game “Slope Arrows” visibility toggle.
+    - Cup: Dark `holeFill` interior with `holeRim` 2px stroke. Optional short starburst on spawn/sink for readability.
+    - Ball: White fill with a subtle radial highlight and soft drop shadow. Purely visual — physics unchanged.
+    - Bridge: Fairway‑colored plank spanning water; 1.5px `fairwayLine` outline, slight cast shadow onto water to appear raised.
+
+    4.1.2 Rendering & Compositing Rules (Seamless)
+
+    To eliminate seams between adjacent like‑typed shapes (e.g., two water polygons) and between wall segments, we standardize compositing:
+
+    - Terrains (water/sand): draw outlines first (stroke), then fill. For polygons, use a two-pass approach: stroke all polygons first, then fill all polygons. This eliminates hairline seams along shared edges.
+    - Walls/Posts: fill face, then stroke rim (source-over) with `lineJoin='bevel'` and a tuned `miterLimit` for crisp chamfers. Add top/left highlight and soft bottom/right shadow as accents.
+    - Use consistent stroke widths: Water/Sand polygons 2px; rects use an inset 1.5px; Walls/Posts 2px.
+    - Canonical render order target (runtime and editor preview):
+      1) Table background → 2) Fairway base + bands → 3) Water/Sand strokes → 4) Water/Sand fills → 5) Walls/Posts fills → 6) Wall/Post strokes + highlights/shadows → 7) Bridges → 8) Hills gradient + arrows → 9) Tee/Cup (rim last) → 10) Ball → 11) UI overlays.
+
+    Backward compatibility: This pass is visual only. No schema, persistence, or physics changes are required; existing levels render identically in layout while benefitting from improved polish.
 
 4.2 Sound Design
 

@@ -23,6 +23,25 @@
   - [x] Apply hill difficulty bump only when the path crosses hill cells, scaled by coverage.
   - [x] Added unit tests covering hill direction effects and bridge pass-through. (`src/__tests__/LevelHeuristics.test.ts`)
 
+## Suggest Par — Hybrid Branching (2025-09-23)
+
+- [x] Posts as blockers in grid with safety clearance
+  - Grid build (`buildGrid()` in `src/editor/levelHeuristics.ts`) now treats posts as circular blockers with a small clearance radius so A* paths cannot pass through posts.
+- [x] K-branch candidate generation (`suggestParK()`)
+  - Compute a best path with A*, then enumerate alternates by banning sampled cells along the best path (and pairs) to force diverse branches.
+  - Rank candidates by estimated strokes (physics-aware distance, sand/turn/bank penalties, hill bump). Ties broken by path length.
+  - Exported `CandidatePath` captures world polyline, length, turns, corridor contact, terrain counts, strokes, and derived par.
+- [x] Editor UI integration (hybrid selection)
+  - `File → Suggest Par` now invokes `suggestParK()` (K=4) and renders colored candidate routes on-canvas.
+  - Ambiguity policy: if top routes have equal par or near-equal strokes, present a list via `EditorEnv.showList()` and keep overlay visible for visual pick.
+  - Interactions: click near a colored route to select it and set its par; press Esc to dismiss overlay. Fallback confirm when no path exists.
+  - Visual Path Preview (`P`) still works; best-route preview is computed but the multi-route overlay is preferred when visible.
+  - Styling follows `UI_Design.md` overlay guidance; routes are clipped to the fairway for clarity.
+
+Notes
+- Coefficients wired from Admin → Game Settings: Baseline Shot px, Turn Penalty, Hill Bump, Bank Weight, Friction K, Sand Multiplier.
+- Candidate ranking uses the same cost model to ensure consistency with runtime tuning.
+
 ## Play Area Visual Refresh — Plan (2025-09-22)
 
 Goal: preserve the recognizable retro look while making the playfield more readable and polished. All changes are render-only and fully backward compatible with existing level JSON and Firebase data — no schema or physics changes.

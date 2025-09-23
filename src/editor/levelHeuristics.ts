@@ -18,6 +18,7 @@ export type LevelLike = {
   sandPoly?: Poly[];
   hills?: Array<{ x: number; y: number; w: number; h: number; dir?: string; strength?: number; falloff?: number }>;
   bridges?: Rect[];
+  posts?: Array<{ x: number; y: number; r: number }>; // NEW: treat posts as blockers
 };
 
 type GridCell = {
@@ -274,6 +275,7 @@ export function buildGrid(level: LevelLike, fairway: Fairway, cellSize: number):
   const sandsPoly = level.sandPoly || [];
   const hills = level.hills || [];
   const bridges = level.bridges || [];
+  const posts = level.posts || [];
   // bridges are passable (unblock water/wall under a bridge)
 
   const dirToVec = (dir?: string): { x: number; y: number } => {
@@ -293,12 +295,17 @@ export function buildGrid(level: LevelLike, fairway: Fairway, cellSize: number):
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const x = cx(c), y = cy(r);
-      // walls / water are blocked
+      // walls / water / posts are blocked
       let blocked = false;
       for (const w of walls) { if (pointInRect(x, y, w)) { blocked = true; break; } }
       if (!blocked) for (const wp of wallsPoly) { if (pointInPoly(x, y, wp.points)) { blocked = true; break; } }
       if (!blocked) for (const w of waters) { if (pointInRect(x, y, w)) { blocked = true; break; } }
       if (!blocked) for (const wp of watersPoly) { if (pointInPoly(x, y, wp.points)) { blocked = true; break; } }
+      // Posts: treat as circular blockers with safety clearance (~ball radius + a little)
+      if (!blocked && posts.length > 0) {
+        const CLEAR = Math.max(6, Math.round(cellSize * 0.4));
+        for (const p of posts) { if (Math.hypot(x - p.x, y - p.y) <= (p.r || 8) + CLEAR) { blocked = true; break; } }
+      }
       // Bridge overrides: if a bridge covers this point, it's passable
       if (blocked) {
         for (const b of bridges) { if (pointInRect(x, y, b)) { blocked = false; break; } }
@@ -560,4 +567,190 @@ export function estimatePar(
   if (blockedAvg > 0) notes.push(`corridor contact ~${blockedAvg.toFixed(2)}`);
 
   return { reachable: true, suggestedPar: suggested, pathLengthPx, notes };
+}
+
+// --- Branching paths (K-best) and hybrid selection helpers ---
+
+export type CandidatePath = {
+  path: Array<{ c: number; r: number }>;
+  worldPoints: Array<{ x: number; y: number }>;
+  lengthPx: number;
+  turns: number;
+  blockedAvg: number;
+  sandCells: number;
+  hillCells: number;
+  strokes: number;
+  par: number;
+};
+
+function pathSignature(path: Array<{ c: number; r: number }>): string {
+  if (!path || path.length === 0) return '';
+  let s = '';
+  for (let i = 0; i < path.length; i++) { const p = path[i]; s += p.c + ',' + p.r + (i + 1 < path.length ? ';' : ''); }
+  return s;
+}
+
+function computeCandidateForPath(
+  grid: GridCell[][], cols: number, rows: number,
+  fairway: Fairway, cellSize: number,
+  path: Array<{ c: number; r: number }>,
+  opts?: Parameters<typeof estimatePar>[3]
+): CandidatePath {
+  const toWorld = (c: number, r: number) => ({ x: fairway.x + c * cellSize + cellSize / 2, y: fairway.y + r * cellSize + cellSize / 2 });
+  const worldPoints = path.map(p => toWorld(p.c, p.r));
+  // length cost in pixel units
+  let lengthCost = 0;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1], b = path[i];
+    const diag = (a.c !== b.c) && (a.r !== b.r);
+    const step = diag ? Math.SQRT2 : 1;
+    const gc = grid[b.r][b.c].cost;
+    lengthCost += step * gc;
+  }
+  const lengthPx = lengthCost * cellSize;
+  // turns
+  let turns = 0;
+  for (let i = 2; i < path.length; i++) {
+    const a = path[i - 2], b = path[i - 1], c = path[i];
+    if ((b.c - a.c) !== (c.c - b.c) || (b.r - a.r) !== (c.r - b.r)) turns++;
+  }
+  // blocked neighbor average
+  const neighborBlockedCount = (cc: number, rr: number) => {
+    let cnt = 0;
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        if (dc === 0 && dr === 0) continue;
+        const nc = cc + dc, nr = rr + dr;
+        if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue;
+        if (grid[nr][nc].blocked) cnt++;
+      }
+    }
+    return cnt;
+  };
+  let blockedSum = 0;
+  for (const p of path) blockedSum += neighborBlockedCount(p.c, p.r);
+  const blockedAvg = blockedSum / Math.max(1, path.length);
+  // sand/hill cells
+  const sandCells = path.filter(p => !grid[p.r][p.c].blocked && !!grid[p.r][p.c].isSand).length;
+  const hillCells = path.filter(p => (grid[p.r][p.c].hillStrength ?? 0) > 0).length;
+
+  // Estimate strokes similar to estimatePar(), but for this fixed path
+  const D0 = opts?.baselineShotPx ?? 320;
+  const refK = Math.max(0.05, opts?.referenceFrictionK ?? 1.2);
+  const k = Math.max(0.05, opts?.frictionK ?? refK);
+  const frictionScale = refK / k;
+  const D = D0 * frictionScale;
+  let strokes = lengthPx / D;
+  const baseSandPenaltyPerCell = opts?.sandPenaltyPerCell ?? 0.01;
+  const sandMult = opts?.sandFrictionMultiplier ?? 6.0;
+  const sandPenalty = sandCells * baseSandPenaltyPerCell * (sandMult / 6.0);
+  const turnPenaltyPerTurn = opts?.turnPenaltyPerTurn ?? 0.08;
+  const turnPenaltyMax = opts?.turnPenaltyMax ?? 1.5;
+  const turnPenalty = Math.min(turnPenaltyMax, turns * turnPenaltyPerTurn);
+  const bankWeight = opts?.bankWeight ?? 0.12;
+  const bankPenaltyMax = opts?.bankPenaltyMax ?? 1.0;
+  const bankPenalty = Math.min(bankPenaltyMax, blockedAvg * bankWeight);
+  strokes = strokes + sandPenalty + turnPenalty + bankPenalty;
+  const hillBump = opts?.hillBump ?? 0.15;
+  if (hillCells > 0) {
+    const coverage = Math.min(1, hillCells / Math.max(1, Math.floor(path.length * 0.5)));
+    strokes += hillBump * (0.5 + 0.5 * coverage);
+  }
+  let par = Math.round(strokes + 1);
+  par = Math.max(2, Math.min(7, par));
+
+  return { path, worldPoints, lengthPx, turns, blockedAvg, sandCells, hillCells, strokes, par };
+}
+
+/**
+ * Compute up to K diverse candidate paths by banning cells along the current best path to force alternate branches.
+ * Deterministic and fast enough for editor use.
+ */
+export function suggestParK(
+  level: LevelLike,
+  fairway: Fairway,
+  cellSize: number,
+  K = 3,
+  opts?: Parameters<typeof estimatePar>[3]
+): { candidates: CandidatePath[]; bestIndex: number; par: number } {
+  const { grid, cols, rows } = buildGrid(level, fairway, cellSize);
+  const toCell = (x: number, y: number) => ({ c: clamp(Math.floor((x - fairway.x) / cellSize), 0, cols - 1), r: clamp(Math.floor((y - fairway.y) / cellSize), 0, rows - 1) });
+  const start = toCell(level.tee.x, level.tee.y);
+  const goal = toCell(level.cup.x, level.cup.y);
+
+  const base = aStar(grid, cols, rows, start, goal);
+  if (!base.found) {
+    // fallback to single-path estimate
+    const single = estimatePar(level, fairway, cellSize, opts);
+    return { candidates: [], bestIndex: 0, par: single.suggestedPar };
+  }
+
+  const candidates: CandidatePath[] = [];
+  const seen = new Set<string>();
+  const addCandidate = (path: Array<{ c: number; r: number }>) => {
+    const key = pathSignature(path);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    candidates.push(computeCandidateForPath(grid, cols, rows, fairway, cellSize, path, opts));
+  };
+
+  addCandidate(base.path);
+
+  // Generate alternates by banning sampled cells along the best path
+  const sampleStep = Math.max(3, Math.round(base.path.length / Math.max(2, Math.min(8, K * 2))));
+  for (let i = sampleStep; i < base.path.length - sampleStep && candidates.length < K; i += sampleStep) {
+    const banned = base.path[i];
+    // A* with banned cell
+    const alt = aStarWithBanned(grid, cols, rows, start, goal, new Set([banned.c + ',' + banned.r]));
+    if (alt.found) addCandidate(alt.path);
+  }
+
+  // If still lacking, try banning pairs near different sections (breadth)
+  if (candidates.length < K) {
+    for (let i = sampleStep; i < base.path.length - sampleStep && candidates.length < K; i += sampleStep) {
+      const bannedSet = new Set<string>();
+      const b1 = base.path[i]; bannedSet.add(b1.c + ',' + b1.r);
+      const j = Math.min(base.path.length - 2, i + Math.floor(sampleStep / 2));
+      const b2 = base.path[j]; bannedSet.add(b2.c + ',' + b2.r);
+      const alt2 = aStarWithBanned(grid, cols, rows, start, goal, bannedSet);
+      if (alt2.found) addCandidate(alt2.path);
+    }
+  }
+
+  // Rank by strokes ascending (best first) and truncate to K
+  candidates.sort((a, b) => a.strokes - b.strokes || a.lengthPx - b.lengthPx);
+  if (candidates.length > K) candidates.length = K;
+  const bestIndex = candidates.length > 0 ? 0 : -1;
+  const par = candidates.length > 0 ? candidates[0].par : Math.max(2, Math.min(7, Math.round((base.lengthCost * cellSize) / (opts?.baselineShotPx ?? 320) + 1)));
+  return { candidates, bestIndex, par };
+}
+
+function aStarWithBanned(
+  grid: GridCell[][],
+  cols: number,
+  rows: number,
+  start: { c: number; r: number },
+  goal: { c: number; r: number },
+  banned: Set<string>
+): { found: boolean; path: Array<{ c: number; r: number }>; lengthCost: number } {
+  // Shallow wrapper that treats banned cells as blocked
+  const key = (c: number, r: number) => `${c},${r}`;
+  const originalBlocked: boolean[] = [];
+  banned.forEach(k => {
+    const [c, r] = k.split(',').map(Number);
+    if (r >= 0 && r < rows && c >= 0 && c < cols) {
+      originalBlocked.push(grid[r][c].blocked ? 1 : 0 as any);
+      grid[r][c].blocked = true;
+    }
+  });
+  const res = aStar(grid, cols, rows, start, goal);
+  // restore
+  let idx = 0;
+  banned.forEach(k => {
+    const [c, r] = k.split(',').map(Number);
+    if (r >= 0 && r < rows && c >= 0 && c < cols) {
+      grid[r][c].blocked = !!originalBlocked[idx++];
+    }
+  });
+  return res;
 }

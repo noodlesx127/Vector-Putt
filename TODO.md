@@ -96,6 +96,11 @@ Notes:
     - [x] Path validation: grid A* over fairway (walls/water blocked; bridges pass-through) with corridor/bank scoring (`buildGrid()`/`aStar()` in `src/editor/levelHeuristics.ts`)
     - [x] Editor assist: auto-suggest 3–5 candidate cup positions; click marker to apply (Tools → Suggest Cup, `levelEditor.suggestCup()`)
     - [x] Lint rule to flag trivial/edge cases (`lintCupPath()` warns on nearly-straight low-contact paths and edge proximity)
+  - [x] Suggest Par hybrid branching
+    - [x] Pathfinding is geometry-aware (walls/water blocked; bridges pass-through; posts treated as circular blockers with safety clearance)
+    - [x] Generate up to K diverse candidate routes (`suggestParK()` in `src/editor/levelHeuristics.ts`), rank by strokes using physics-aware cost model
+    - [x] Editor UI: render colored candidate routes; click near a route to choose; show list selector when routes are near-equal; Esc to dismiss overlay
+    - [x] Coefficients pulled from Admin → Game Settings (Baseline Shot px, Turn Penalty, Hill Bump, Bank Weight, Friction K, Sand Multiplier)
  - [x] Course definition (ordered list of holes + par values)
  - [x] Author 3–5 MVP holes to validate mechanics (added level4, level5)
 - [x] Adjust L1 decorations to sit outside playfield

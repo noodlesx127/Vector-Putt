@@ -18,7 +18,7 @@ import { importLevelFromScreenshot } from './importScreenshot';
 import firebaseLevelStore from '../firebase/FirebaseLevelStore';
 import type { LevelEntry as FirebaseLevelEntry } from '../firebase/FirebaseLevelStore';
 import firebaseCourseStore from '../firebase/FirebaseCourseStore';
-import { estimatePar, suggestCupPositions as heuristicSuggestCups, lintCupPath, computePathDebug } from './levelHeuristics';
+import { estimatePar, suggestCupPositions as heuristicSuggestCups, lintCupPath, computePathDebug, suggestParK, type CandidatePath } from './levelHeuristics';
 import type { PathDebug } from './levelHeuristics';
 
 // Local palette for the editor module (matches docs/PALETTE.md and main.ts)
@@ -228,6 +228,9 @@ class LevelEditorImpl implements LevelEditor {
   // Visual Path Preview (computed from A* used in Suggest Par)
   private pathPreview: PathDebug | null = null;
   private showPathPreview: boolean = false;
+  // Par branching candidates overlay
+  private parCandidates: Array<{ candidate: CandidatePath; color: string }> | null = null;
+  private showParCandidates: boolean = false;
 
   // Undo/Redo system
   private undoStack: EditorSnapshot[] = [];
@@ -419,6 +422,24 @@ class LevelEditorImpl implements LevelEditor {
       console.error('openOverlayImage failed', e);
       try { this.env?.showToast('Failed to load overlay'); } catch {}
     }
+  }
+
+  // Compute minimum distance from a point to a polyline
+  private distanceToPolyline(pts: Array<{ x: number; y: number }>, x: number, y: number): number {
+    if (!pts || pts.length === 0) return Infinity;
+    if (pts.length === 1) return Math.hypot(x - pts[0].x, y - pts[0].y);
+    let best = Infinity;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1]; const b = pts[i];
+      const vx = b.x - a.x, vy = b.y - a.y;
+      const wx = x - a.x, wy = y - a.y;
+      const L2 = vx * vx + vy * vy || 1e-6;
+      const t = Math.max(0, Math.min(1, (wx * vx + wy * vy) / L2));
+      const px = a.x + t * vx, py = a.y + t * vy;
+      const d = Math.hypot(x - px, y - py);
+      if (d < best) best = d;
+    }
+    return best;
   }
 
   private resetOverlayTransform(env: EditorEnv): void {
@@ -2141,6 +2162,47 @@ class LevelEditorImpl implements LevelEditor {
       ctx.restore();
     }
 
+    // Par route candidates overlay (transient)
+    if (this.showParCandidates && this.parCandidates && this.parCandidates.length > 0) {
+      ctx.save();
+      // Clip to fairway for clean visuals
+      ctx.beginPath();
+      ctx.rect(fairX, fairY, fairW, fairH);
+      ctx.clip();
+      ctx.lineWidth = 3;
+      ctx.lineJoin = 'round';
+      for (let i = 0; i < this.parCandidates.length; i++) {
+        const { candidate, color } = this.parCandidates[i];
+        const pts = candidate.worldPoints;
+        if (!pts || pts.length === 0) continue;
+        // Stroke polyline
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        for (let j = 0; j < pts.length; j++) {
+          const p = pts[j];
+          if (j === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+        }
+        ctx.stroke();
+        // Small nodes
+        ctx.fillStyle = color;
+        for (const p of pts) {
+          ctx.beginPath(); ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2); ctx.fill();
+        }
+        // Label near midpoint
+        const mid = pts[Math.floor(pts.length / 2)];
+        if (mid) {
+          ctx.fillStyle = color;
+          ctx.beginPath(); ctx.arc(mid.x, mid.y, 7, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5; ctx.stroke();
+          ctx.fillStyle = '#111';
+          ctx.font = '11px system-ui, sans-serif';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(String(i + 1), mid.x, mid.y + 0.5);
+        }
+      }
+      ctx.restore();
+    }
+
     // Visual Path Preview overlay (debug)
     if (this.showPathPreview && this.pathPreview && this.pathPreview.found) {
       const pp = this.pathPreview;
@@ -3161,6 +3223,61 @@ class LevelEditorImpl implements LevelEditor {
     ctx.fillText(leftFitted, x + pad, y + barH / 2);
     ctx.textAlign = 'right';
     ctx.fillText(rightFitted, x + WIDTH - pad, y + barH / 2);
+    
+    // Route color legend (when Suggest Par candidates overlay is visible)
+    if (this.showParCandidates && this.parCandidates && this.parCandidates.length > 0) {
+      const items = Math.min(5, this.parCandidates.length);
+      // Measure legend total width (swatch + label per item + gaps)
+      const labelFor = (i: number) => `#${i + 1}`;
+      const sw = 12; // swatch size
+      const gapItem = 10;
+      const gapSwText = 6;
+      let legendW = 0;
+      for (let i = 0; i < items; i++) {
+        legendW += sw + gapSwText + Math.ceil(ctx.measureText(labelFor(i)).width);
+        if (i + 1 < items) legendW += gapItem;
+      }
+      // Compute available center span between left and right texts
+      const leftW = Math.ceil(ctx.measureText(leftFitted).width);
+      const rightW = Math.ceil(ctx.measureText(rightFitted).width);
+      const gap = 12;
+      const centerSpan = Math.max(0, WIDTH - 2 * pad - leftW - rightW - 2 * gap);
+      // If space is tight, fall back to compact labels without text (swatches only)
+      const useSwatchesOnly = legendW > centerSpan && centerSpan >= (items * (sw + gapItem) - gapItem);
+      if (useSwatchesOnly) {
+        legendW = items * (sw + gapItem) - gapItem;
+      }
+      const startX = x + pad + leftW + gap + Math.max(0, (centerSpan - legendW) / 2);
+      const cy = y + barH / 2;
+      // Draw legend centered between left and right text
+      let lx = startX;
+      ctx.textAlign = 'left';
+      for (let i = 0; i < items; i++) {
+        const { color } = this.parCandidates[i];
+        // swatch (rounded rect)
+        ctx.fillStyle = color;
+        const r = 2;
+        const sx = lx, sy = cy - sw / 2;
+        ctx.beginPath();
+        ctx.moveTo(sx + r, sy);
+        ctx.lineTo(sx + sw - r, sy);
+        ctx.quadraticCurveTo(sx + sw, sy, sx + sw, sy + r);
+        ctx.lineTo(sx + sw, sy + sw - r);
+        ctx.quadraticCurveTo(sx + sw, sy + sw, sx + sw - r, sy + sw);
+        ctx.lineTo(sx + r, sy + sw);
+        ctx.quadraticCurveTo(sx, sy + sw, sx, sy + sw - r);
+        ctx.lineTo(sx, sy + r);
+        ctx.quadraticCurveTo(sx, sy, sx + r, sy);
+        ctx.fill();
+        lx += sw + (useSwatchesOnly ? gapItem : gapSwText);
+        if (!useSwatchesOnly) {
+          ctx.fillStyle = '#ffffff';
+          const label = labelFor(i);
+          ctx.fillText(label, lx, cy);
+          lx += Math.ceil(ctx.measureText(label).width) + gapItem;
+        }
+      }
+    }
     ctx.restore();
   }
 
@@ -3452,6 +3569,32 @@ class LevelEditorImpl implements LevelEditor {
       this.measureStart = { x: px, y: py };
       this.measureEnd = { x: px, y: py };
       return;
+    }
+
+    // If par candidates overlay is visible, allow clicking near a colored route to select it
+    if (this.showParCandidates && this.parCandidates && this.parCandidates.length > 0) {
+      const threshold = 8; // px
+      let bestIdx = -1;
+      let bestD = Infinity;
+      for (let i = 0; i < this.parCandidates.length; i++) {
+        const d = this.distanceToPolyline(this.parCandidates[i].candidate.worldPoints, p.x, p.y);
+        if (d < bestD) { bestD = d; bestIdx = i; }
+      }
+      if (bestIdx >= 0 && bestD <= threshold) {
+        (async () => {
+          const chosen = this.parCandidates![bestIdx].candidate;
+          const ok = await env.showConfirm(`Use Route #${bestIdx + 1} — set Par to ${chosen.par}?`, 'Suggest Par');
+          if (ok) {
+            this.pushUndoSnapshot('Set par');
+            this.editorLevelData.par = chosen.par;
+            env.showToast(`Par set to ${chosen.par}`);
+          }
+          // Hide overlay either way to avoid lingering
+          this.showParCandidates = false;
+          this.parCandidates = null;
+        })();
+        return;
+      }
     }
 
     // If cup suggestions are visible, allow clicking a marker to apply
@@ -4907,6 +5050,8 @@ class LevelEditorImpl implements LevelEditor {
       this.postRadiusPicker = null;
       this.hillDirectionPicker = null;
       this.suggestedCupCandidates = null;
+      this.showParCandidates = false;
+      this.parCandidates = null;
       this.showPathPreview = false;
       this.resizeHandleIndex = null;
       this.resizeStartBounds = null;
@@ -5947,8 +6092,7 @@ class LevelEditorImpl implements LevelEditor {
     if (!this.env) return;
     const env = this.env;
     this.syncEditorDataFromGlobals(env);
-
-    // Use A* over a coarse grid derived from the fairway
+    // Use K-branch pathfinding over a coarse grid derived from the fairway
     const fair = env.fairwayRect();
     let cellSize = 20;
     try { const g = env.getGridSize(); if (typeof g === 'number' && g > 0) cellSize = Math.max(10, Math.min(40, g)); } catch {}
@@ -5963,7 +6107,8 @@ class LevelEditorImpl implements LevelEditor {
     const turnPenaltyPerTurn = typeof gsAll.turnPenaltyPerTurn === 'number' ? gsAll.turnPenaltyPerTurn : 0.08;
     const hillBump = typeof gsAll.hillBump === 'number' ? gsAll.hillBump : 0.2;
 
-    const { reachable, suggestedPar, pathLengthPx, notes } = estimatePar(this.editorLevelData, fair, cellSize, {
+    const K = 4; // number of branches to consider
+    const { candidates, bestIndex, par } = suggestParK(this.editorLevelData, fair, cellSize, K, {
       baselineShotPx,
       sandPenaltyPerCell: 0.01,
       turnPenaltyPerTurn,
@@ -5971,27 +6116,79 @@ class LevelEditorImpl implements LevelEditor {
       hillBump,
       bankWeight: 0.12,
       bankPenaltyMax: 1.0,
-      // Physics-aware scaling so D (px per stroke) adjusts with friction
       frictionK,
       referenceFrictionK: 1.2,
       sandFrictionMultiplier: sandMult
     });
-    // Compute debug path for overlay
-    this.pathPreview = computePathDebug(this.editorLevelData, fair, cellSize);
-    this.showPathPreview = !!this.pathPreview?.found;
 
-    const extra = [] as string[];
-    extra.push(reachable ? 'Path: reachable' : 'Path: no path (fallback heuristic)');
-    extra.push(`Path length ~${Math.round(pathLengthPx)} px`);
-    if (notes && notes.length) extra.push(...notes);
+    // No path fallback handled in suggestParK -> just confirm and apply
+    if (!candidates || candidates.length === 0 || bestIndex < 0) {
+      const msg = `Suggested par is ${par} (no reliable path found; fallback heuristic).`;
+      const ok = await env.showConfirm(msg, 'Suggest Par');
+      if (!ok) return;
+      this.pushUndoSnapshot('Set par');
+      this.editorLevelData.par = par;
+      env.showToast(`Par set to ${par}`);
+      return;
+    }
 
-    const message = `Suggested par is ${suggestedPar} (cell=${cellSize}).\n${extra.join('\n')}`;
-    const accept = await env.showConfirm(message, 'Suggest Par');
-    if (!accept) return;
-    this.pushUndoSnapshot('Set par');
-    this.editorLevelData.par = suggestedPar;
-    env.showToast(`Par set to ${suggestedPar}`);
-    env.showToast('Path Preview ON — press P to toggle');
+    // Prepare overlay and list for hybrid branching selection
+    const ROUTE_COLORS = ['#ffd24a', '#66d9ff', '#ff6ea6', '#7CFC00', '#ffa500'];
+    this.parCandidates = candidates.map((c, i) => ({ candidate: c, color: ROUTE_COLORS[i % ROUTE_COLORS.length] }));
+    this.showParCandidates = true;
+
+    // Also compute a single-path debug preview for the best route so 'P' toggles still work
+    this.pathPreview = {
+      found: true,
+      pathCells: candidates[bestIndex].path,
+      worldPoints: candidates[bestIndex].worldPoints,
+      cellSize,
+      cols: Math.max(1, Math.ceil(fair.w / cellSize)),
+      rows: Math.max(1, Math.ceil(fair.h / cellSize)),
+      sandAt: candidates[bestIndex].path.map(p => false),
+      hillAt: candidates[bestIndex].path.map(p => false)
+    };
+    this.showPathPreview = false; // prefer new overlay instead
+
+    // Hybrid policy: if ambiguous (same par or nearly same strokes), ask designer to pick.
+    const ambiguous = (candidates.length > 1) && (
+      candidates[1].par === candidates[0].par || Math.abs(candidates[1].strokes - candidates[0].strokes) < 0.25
+    );
+    const items = candidates.map((c, i) => ({
+      label: `#${i + 1}  Par ${c.par}  —  L ${Math.round(c.lengthPx)}px, turns ${c.turns}, corr ${c.blockedAvg.toFixed(2)}, sand ${c.sandCells}`,
+      value: i
+    }));
+
+    if (ambiguous) {
+      // Let the designer choose among top K
+      env.showToast('Suggest Par: multiple viable routes found. Click a colored route or pick from the list. Press Esc to hide.');
+      const pick = await env.showList('Suggest Par — Pick Route', items, Math.max(0, bestIndex));
+      if (pick && typeof pick.value === 'number') {
+        const idx = Math.max(0, Math.min(candidates.length - 1, pick.value));
+        const chosen = candidates[idx];
+        const ok = await env.showConfirm(`Use Route #${idx + 1} — set Par to ${chosen.par}?`, 'Suggest Par');
+        if (ok) {
+          this.pushUndoSnapshot('Set par');
+          this.editorLevelData.par = chosen.par;
+          env.showToast(`Par set to ${chosen.par}`);
+        }
+        // Hide overlay after an explicit selection
+        this.showParCandidates = false;
+        this.parCandidates = null;
+      }
+      return;
+    } else {
+      // Auto-pick best but allow override by clicking overlay
+      const best = candidates[bestIndex];
+      const ok = await env.showConfirm(`Suggested par is ${best.par} via Route #${bestIndex + 1}. Apply now?`, 'Suggest Par');
+      if (ok) {
+        this.pushUndoSnapshot('Set par');
+        this.editorLevelData.par = best.par;
+        env.showToast(`Par set to ${best.par}`);
+      }
+      env.showToast('Routes displayed — click a colored route to choose another; Esc to dismiss');
+      return;
+    }
   }
 
   async testLevel(): Promise<void> {

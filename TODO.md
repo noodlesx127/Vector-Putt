@@ -321,8 +321,7 @@ Goal: keep the recognizable retro style of the original while improving readabil
   - Fix: ensure arrows render for both rect and future poly hills; verify editor preview parity.
 
 - [x] Water polish
-  - Keep current blue; add subtle inner rim darken (2–3px) using `destination-over` stroke.
-  - Optional light ripple overlay (white at 6–10% alpha) in large bodies; disabled on small shapes by area threshold.
+  - Keep current blue; rim reads via stroke-first-then-fill. Optional light ripple overlay (white at 6–10% alpha) in large bodies; skip on small areas by threshold.
 
 - [x] Sand polish
   - Slight inner shadow (black 12–16% alpha) to read as recessed; maintain crisp outer stroke.
@@ -337,8 +336,8 @@ Goal: keep the recognizable retro style of the original while improving readabil
 - [x] Bridge polish
   - Raised plank look with thin edge cast shadow onto water and 1.5px fairway outline; ensure bridges render above water but below posts/ball.
 
-- [ ] Canonical render order (runtime and editor preview)
-  1) Table background → 2) Fairway base + bands → 3) Water/Sand fills → 4) Water/Sand strokes (destination-over) → 5) Walls/Posts fills → 6) Wall/Post strokes (destination-over) + highlights/shadows → 7) Bridges → 8) Hills gradient + arrows → 9) Tee/Cup (rim last) → 10) Ball → 11) UI overlays.
+- [x] Canonical render order (runtime and editor preview)
+  1) Table background → 2) Fairway base + bands → 3) Water/Sand strokes → 4) Water/Sand fills → 5) Walls/Posts fills → 6) Wall/Post strokes + highlights/shadows → 7) Bridges → 8) Hills gradient + arrows → 9) Tee/Cup (rim last) → 10) Ball → 11) UI overlays.
 
 - [ ] Acceptance criteria
   - No visible seams between adjacent like-typed terrains at 1× and 2×.

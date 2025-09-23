@@ -67,7 +67,7 @@ export type EditorTool =
   | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'walls45' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'water45' | 'sand' | 'sandPoly' | 'sand45' | 'hill' | 'decoration' | 'measure';
 
 export type EditorAction =
-  | 'save' | 'saveAs' | 'load' | 'import' | 'importScreenshot' | 'importAnnotate' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'previewFillOnClose' | 'previewDashedNext' | 'alignmentGuides' | 'guideDetailsToggle' | 'rulersToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'chamfer' | 'angledCorridor' | 'courseCreator'
+  | 'save' | 'saveAs' | 'load' | 'import' | 'importScreenshot' | 'importAnnotate' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'slopeArrowsToggle' | 'previewFillOnClose' | 'previewDashedNext' | 'alignmentGuides' | 'guideDetailsToggle' | 'rulersToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'chamfer' | 'angledCorridor' | 'courseCreator'
   // Overlay Screenshot actions (View menu + Tools launcher)
   | 'overlayOpen' | 'overlayToggle' | 'overlayOpacityUp' | 'overlayOpacityDown' | 'overlayZToggle' | 'overlayLockToggle' | 'overlaySnapToggle' | 'overlayFitFairway' | 'overlayFitCanvas' | 'overlayReset' | 'overlayFlipH' | 'overlayFlipV' | 'overlayThroughClick' | 'overlayAspectToggle' | 'overlayCalibrateScale' | 'overlayRemove'
   // Object-level snapping
@@ -274,6 +274,8 @@ class LevelEditorImpl implements LevelEditor {
   private showGuideDetails: boolean = true;
   // View option: show bottom information toolbar for tool hints/metrics
   private showToolInfoBar: boolean = true;
+  // View option: show hill slope direction arrows
+  private showSlopeArrows: boolean = true;
   // Importer guidance: require the user to click Tee (and optionally Cup) after screenshot import
   private pendingTeeConfirm: boolean = false;
   private pendingCupConfirm: boolean = false;
@@ -1507,6 +1509,7 @@ class LevelEditorImpl implements LevelEditor {
       items: [
         { label: 'Grid Toggle', item: { kind: 'action', action: 'gridToggle' } },
         { label: 'Object: Snap to Grid', item: { kind: 'action', action: 'objectSnapToggle' } },
+        { label: 'Slope Arrows', item: { kind: 'action', action: 'slopeArrowsToggle' } },
         { label: 'Preview Fill Only On Close', item: { kind: 'action', action: 'previewFillOnClose' } },
         { label: 'Dashed Next Segment', item: { kind: 'action', action: 'previewDashedNext' } },
         { label: 'Alignment Guides', item: { kind: 'action', action: 'alignmentGuides' } },
@@ -1808,6 +1811,100 @@ class LevelEditorImpl implements LevelEditor {
         ctx.fill();
       }
     }
+    // Decorations clipped to fairway (render before walls for consistent layering with runtime)
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(fairX, fairY, fairW, fairH);
+    ctx.clip();
+    for (const d of decorations) {
+      if (d.kind === 'flowers') {
+        const step = 16;
+        for (let y = d.y; y < d.y + d.h; y += step) {
+          for (let x = d.x; x < d.x + d.w; x += step) {
+            ctx.save();
+            ctx.translate(x + 8, y + 8);
+            ctx.fillStyle = '#ffffff';
+            for (let i = 0; i < 4; i++) {
+              const ang = (i * Math.PI) / 2;
+              ctx.beginPath();
+              ctx.arc(Math.cos(ang) * 5, Math.sin(ang) * 5, 3, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            ctx.fillStyle = '#d11e2a';
+            ctx.beginPath();
+            ctx.arc(0, 0, 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
+        }
+      }
+    }
+    ctx.restore();
+
+    // Walls (rects)
+    for (let i = 0; i < walls.length; i++) {
+      const w = walls[i];
+      const obj: SelectableObject = { type: 'wall', object: w, index: i };
+      this.renderWithRotation(ctx, obj, () => {
+        // soft shadow to the bottom-right for depth
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.fillRect(w.x + 2, w.y + 2, w.w, w.h);
+        // face
+        ctx.fillStyle = COLORS.wallFill;
+        ctx.fillRect(w.x, w.y, w.w, w.h);
+        // rim stroke (source-over) with bevel joins for chamfers
+        ctx.lineWidth = 2;
+        ctx.lineJoin = 'bevel';
+        ctx.miterLimit = 2.5;
+        ctx.strokeStyle = COLORS.wallStroke;
+        ctx.strokeRect(w.x + 1, w.y + 1, w.w - 2, w.h - 2);
+        // highlight (top/left)
+        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+        ctx.beginPath();
+        ctx.moveTo(w.x + 1, w.y + 1);
+        ctx.lineTo(w.x + w.w - 1, w.y + 1);
+        ctx.moveTo(w.x + 1, w.y + 1);
+        ctx.lineTo(w.x + 1, w.y + w.h - 1);
+        ctx.stroke();
+      });
+    }
+    // Polygon walls
+    for (const poly of polyWalls) {
+      const pts = poly.points;
+      if (!pts || pts.length < 6) continue;
+      // shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.moveTo(pts[0] + 2, pts[1] + 2);
+      for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i] + 2, pts[i + 1] + 2);
+      ctx.closePath();
+      ctx.fill();
+      // face
+      ctx.fillStyle = COLORS.wallFill;
+      ctx.beginPath();
+      ctx.moveTo(pts[0], pts[1]);
+      for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+      ctx.closePath();
+      ctx.fill();
+      // rim stroke (source-over) with bevel joins for chamfers
+      ctx.lineJoin = 'bevel';
+      ctx.miterLimit = 2.5;
+      ctx.strokeStyle = COLORS.wallStroke;
+      ctx.stroke();
+    }
+    // Posts
+    for (const p of posts) {
+      // shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath(); ctx.arc(p.x + 2, p.y + 2, p.r, 0, Math.PI * 2); ctx.fill();
+      // face
+      ctx.fillStyle = COLORS.wallFill;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+      // rim stroke (source-over)
+      ctx.strokeStyle = COLORS.wallStroke; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r - 1, 0, Math.PI * 2); ctx.stroke();
+    }
+
     // Bridges
     for (let i = 0; i < bridges.length; i++) {
       const r = bridges[i];
@@ -1845,138 +1942,76 @@ class LevelEditorImpl implements LevelEditor {
         ctx.fillRect(h.x, h.y, h.w, h.h);
 
         // Direction indicators: subtle arrows pointing downhill; density/alpha scale with strength
-        const dirX = (slopeDir.includes('E') ? 1 : 0) + (slopeDir.includes('W') ? -1 : 0);
-        const dirY = (slopeDir.includes('S') ? 1 : 0) + (slopeDir.includes('N') ? -1 : 0);
-        if (dirX !== 0 || dirY !== 0) {
-          const s = Math.max(0.5, Math.min(1.5, ((h as any).strength ?? 1)));
-          const step = Math.max(18, Math.min(28, 24 / s));
-          ctx.save();
-          const alpha = Math.max(0.18, Math.min(0.5, 0.22 + (s - 1) * 0.18));
-          // Draw dark outline then white stroke for clear glyph
-          const outlineStyle = 'rgba(0,30,0,0.75)';
-          const outlineWidth = 3;
-          const arrowWidth = 1.8;
-          // small arrow drawing helper (inline to avoid cross-module dependency)
-          const drawArrow = (cx: number, cy: number, dx: number, dy: number, size: number) => {
-            const len = Math.hypot(dx, dy) || 1;
-            const ux = dx / len;
-            const uy = dy / len;
-            const tipX = cx + ux * size;
-            const tipY = cy + uy * size;
-            const tailX = cx - ux * size;
-            const tailY = cy - uy * size;
-            ctx.beginPath();
-            ctx.moveTo(tailX, tailY);
-            ctx.lineTo(tipX, tipY);
-            ctx.stroke();
-            const head = Math.max(3, Math.min(6, size * 0.6));
-            const px = -uy; const py = ux;
-            ctx.beginPath();
-            ctx.moveTo(tipX, tipY);
-            ctx.lineTo(tipX - ux * head + px * head * 0.6, tipY - uy * head + py * head * 0.6);
-            ctx.moveTo(tipX, tipY);
-            ctx.lineTo(tipX - ux * head - px * head * 0.6, tipY - uy * head - py * head * 0.6);
-            ctx.stroke();
-          };
-          for (let yy = h.y + step * 0.5; yy < h.y + h.h; yy += step) {
-            for (let xx = h.x + step * 0.5; xx < h.x + h.w; xx += step) {
-              ctx.strokeStyle = outlineStyle; ctx.lineWidth = outlineWidth;
-              drawArrow(xx, yy, dirX, dirY, 7);
-              ctx.strokeStyle = `rgba(255,255,255,${alpha})`; ctx.lineWidth = arrowWidth;
-              drawArrow(xx, yy, dirX, dirY, 7);
-            }
-          }
-          ctx.restore();
-        }
-      });
-    }
-    // Decorations clipped to fairway
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(fairX, fairY, fairW, fairH);
-    ctx.clip();
-    for (const d of decorations) {
-      if (d.kind === 'flowers') {
-        const step = 16;
-        for (let y = d.y; y < d.y + d.h; y += step) {
-          for (let x = d.x; x < d.x + d.w; x += step) {
-            ctx.save();
-            ctx.translate(x + 8, y + 8);
-            ctx.fillStyle = '#ffffff';
-            for (let i = 0; i < 4; i++) {
-              const ang = (i * Math.PI) / 2;
+        if (this.showSlopeArrows) {
+          const dirX = (slopeDir.includes('E') ? 1 : 0) + (slopeDir.includes('W') ? -1 : 0);
+          const dirY = (slopeDir.includes('S') ? 1 : 0) + (slopeDir.includes('N') ? -1 : 0);
+          if (dirX !== 0 || dirY !== 0) {
+            const s = Math.max(0.5, Math.min(1.5, ((h as any).strength ?? 1)));
+            const step = Math.max(18, Math.min(28, 24 / s));
+            const inset = 6;
+            const innerW = Math.max(0, (h.w - inset * 2));
+            const innerH = Math.max(0, (h.h - inset * 2));
+            const cols = Math.max(1, Math.floor(innerW / step));
+            const rows = Math.max(1, Math.floor(innerH / step));
+            const cellW = cols > 0 ? innerW / cols : innerW;
+            const cellH = rows > 0 ? innerH / rows : innerH;
+            // helpers to avoid drawing over geometry/water/posts
+            const inRect = (x: number, y: number, r: Rect) => (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
+            const inPoly = (x: number, y: number, pts: number[]) => {
+              let inside = false; for (let i = 0, j = pts.length - 2; i < pts.length; i += 2) { const xi = pts[i], yi = pts[i + 1]; const xj = pts[j], yj = pts[j + 1]; const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-9) + xi); if (intersect) inside = !inside; j = i; } return inside;
+            };
+            const inPost = (x: number, y: number, p: { x: number; y: number; r: number }) => (Math.hypot(x - p.x, y - p.y) <= p.r + 1);
+            const arrowOverlapsGeometry = (x: number, y: number): boolean => {
+              // walls rects
+              for (const w of walls) if (inRect(x, y, w)) return true;
+              // walls polys
+              for (const pw of polyWalls) { const pts = pw.points; if (pts && pts.length >= 6 && inPoly(x, y, pts)) return true; }
+              // posts
+              for (const p of posts) if (inPost(x, y, p)) return true;
+              // water rects
+              for (const wr of waters) if (inRect(x, y, wr)) return true;
+              // water polys
+              for (const wp of watersPoly) { const pts = wp.points; if (pts && pts.length >= 6 && inPoly(x, y, pts)) return true; }
+              return false;
+            };
+            // Draw dark outline then white stroke for clear glyph
+            const outlineStyle = 'rgba(0,30,0,0.75)';
+            const outlineWidth = 3;
+            const arrowWidth = 1.8;
+            const drawArrow = (cx: number, cy: number, dx: number, dy: number, size: number) => {
+              const len = Math.hypot(dx, dy) || 1;
+              const ux = dx / len;
+              const uy = dy / len;
+              const lenPx = size;
+              const head = Math.max(3, size * 0.45);
               ctx.beginPath();
-              ctx.arc(Math.cos(ang) * 5, Math.sin(ang) * 5, 3, 0, Math.PI * 2);
-              ctx.fill();
+              ctx.moveTo(cx - ux * lenPx * 0.5, cy - uy * lenPx * 0.5);
+              ctx.lineTo(cx + ux * lenPx * 0.5, cy + uy * lenPx * 0.5);
+              const hx = cx + ux * lenPx * 0.35;
+              const hy = cy + uy * lenPx * 0.35;
+              ctx.moveTo(hx, hy);
+              ctx.lineTo(hx - uy * head * 0.6 - ux * head * 0.2, hy + ux * head * 0.6 - uy * head * 0.2);
+              ctx.moveTo(hx, hy);
+              ctx.lineTo(hx + uy * head * 0.6 - ux * head * 0.2, hy - ux * head * 0.6 - uy * head * 0.2);
+              ctx.stroke();
+            };
+            const alpha = Math.max(0.28, Math.min(0.65, 0.30 + (s - 1) * 0.22));
+            for (let yy = h.y + inset + cellH * 0.5; yy < h.y + h.h - inset; yy += cellH) {
+              for (let xx = h.x + inset + cellW * 0.5; xx < h.x + h.w - inset; xx += cellW) {
+                if (arrowOverlapsGeometry(xx, yy)) continue;
+                ctx.strokeStyle = outlineStyle; ctx.lineWidth = outlineWidth;
+                drawArrow(xx, yy, dirX, dirY, 7);
+                ctx.strokeStyle = `rgba(255,255,255,${alpha})`; ctx.lineWidth = arrowWidth;
+                drawArrow(xx, yy, dirX, dirY, 7);
+              }
             }
-            ctx.fillStyle = '#d11e2a';
-            ctx.beginPath();
-            ctx.arc(0, 0, 2, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
           }
         }
-      }
-    }
-    ctx.restore();
-
-    // Walls (rects)
-    for (let i = 0; i < walls.length; i++) {
-      const w = walls[i];
-      const obj: SelectableObject = { type: 'wall', object: w, index: i };
-      this.renderWithRotation(ctx, obj, () => {
-        ctx.fillStyle = 'rgba(0,0,0,0.25)';
-        ctx.fillRect(w.x + 2, w.y + 2, w.w, w.h);
-        ctx.fillStyle = COLORS.wallFill;
-        ctx.fillRect(w.x, w.y, w.w, w.h);
-        // Rim stroke (source-over) with bevel joins for chamfers
-        ctx.lineWidth = 2;
-        ctx.lineJoin = 'bevel';
-        ctx.miterLimit = 2.5;
-        ctx.strokeStyle = COLORS.wallStroke;
-        ctx.strokeRect(w.x + 1, w.y + 1, w.w - 2, w.h - 2);
-        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-        ctx.beginPath();
-        ctx.moveTo(w.x + 1, w.y + 1);
-        ctx.lineTo(w.x + w.w - 1, w.y + 1);
-        ctx.moveTo(w.x + 1, w.y + 1);
-        ctx.lineTo(w.x + 1, w.y + w.h - 1);
-        ctx.stroke();
       });
     }
-    // Polygon walls
-    ctx.lineWidth = 2;
-    for (const poly of polyWalls) {
-      const pts = poly.points;
-      if (!pts || pts.length < 6) continue;
-      ctx.fillStyle = 'rgba(0,0,0,0.25)';
-      ctx.beginPath();
-      ctx.moveTo(pts[0] + 2, pts[1] + 2);
-      for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i] + 2, pts[i + 1] + 2);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = COLORS.wallFill;
-      ctx.beginPath();
-      ctx.moveTo(pts[0], pts[1]);
-      for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
-      ctx.closePath();
-      ctx.fill();
-      // Rim stroke (source-over) with bevel joins for chamfers
-      ctx.lineJoin = 'bevel';
-      ctx.miterLimit = 2.5;
-      ctx.strokeStyle = COLORS.wallStroke;
-      ctx.stroke();
-    }
-    // Posts
-    for (const p of posts) {
-      ctx.fillStyle = 'rgba(0,0,0,0.25)';
-      ctx.beginPath(); ctx.arc(p.x + 2, p.y + 2, p.r, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = COLORS.wallFill;
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
-      // Rim stroke (source-over)
-      ctx.strokeStyle = COLORS.wallStroke; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.r - 1, 0, Math.PI * 2); ctx.stroke();
-    }
+    // (decorations moved before walls)
+
+    // (walls/posts drawn earlier for canonical order)
 
     // Tee marker (ball)
     {
@@ -2855,6 +2890,9 @@ class LevelEditorImpl implements LevelEditor {
             case 'gridToggle':
               displayLabel = this.showGrid ? 'Grid On' : 'Grid Off';
               break;
+            case 'slopeArrowsToggle':
+              displayLabel = `Slope Arrows: ${this.showSlopeArrows ? 'On' : 'Off'}`;
+              break;
             case 'previewFillOnClose':
               displayLabel = `Preview Fill Only On Close: ${this.previewFillOnClose ? 'On' : 'Off'}`;
               break;
@@ -3557,6 +3595,9 @@ class LevelEditorImpl implements LevelEditor {
                 env.setShowGrid?.(newShow);
                 this.showGrid = newShow; // keep local state in sync in case env doesn't repaint immediately
               } catch {}
+            } else if (item.action === 'slopeArrowsToggle') {
+              this.showSlopeArrows = !this.showSlopeArrows;
+              try { env.showToast(`Slope Arrows ${this.showSlopeArrows ? 'ON' : 'OFF'}`); } catch {}
             } else if (item.action === 'objectSnapToggle') {
               this.objectSnapToGrid = !this.objectSnapToGrid;
               try { env.showToast(`Object Snap to Grid ${this.objectSnapToGrid ? 'ON' : 'OFF'}`); } catch {}

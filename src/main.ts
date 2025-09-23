@@ -7050,43 +7050,7 @@ function draw() {
       ctx.fill();
     }
   }
-  // bridges (fairway rectangles spanning water)
-  for (const r of bridges) {
-    ctx.fillStyle = COLORS.fairway;
-    ctx.fillRect(r.x, r.y, r.w, r.h);
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = COLORS.fairwayLine;
-    ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
-    // subtle cast shadow to read as raised above water
-    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
-    ctx.beginPath();
-    ctx.moveTo(r.x + 1, r.y + r.h - 0.5);
-    ctx.lineTo(r.x + r.w - 1, r.y + r.h - 0.5);
-    ctx.moveTo(r.x + r.w - 0.5, r.y + 1);
-    ctx.lineTo(r.x + r.w - 0.5, r.y + r.h - 1);
-    ctx.stroke();
-  }
-  // hills (visualize gradient underlay)
-  for (const h of hills) {
-    const grad = (() => {
-      const d = h.dir;
-      let x0 = h.x, y0 = h.y, x1 = h.x + h.w, y1 = h.y + h.h;
-      if (d === 'N') { x0 = h.x; y0 = h.y + h.h; x1 = h.x; y1 = h.y; }
-      else if (d === 'S') { x0 = h.x; y0 = h.y; x1 = h.x; y1 = h.y + h.h; }
-      else if (d === 'W') { x0 = h.x + h.w; y0 = h.y; x1 = h.x; y1 = h.y; }
-      else if (d === 'E') { x0 = h.x; y0 = h.y; x1 = h.x + h.w; y1 = h.y; }
-      else if (d === 'NE') { x0 = h.x; y0 = h.y + h.h; x1 = h.x + h.w; y1 = h.y; }
-      else if (d === 'NW') { x0 = h.x + h.w; y0 = h.y + h.h; x1 = h.x; y1 = h.y; }
-      else if (d === 'SE') { x0 = h.x; y0 = h.y; x1 = h.x + h.w; y1 = h.y + h.h; }
-      else /* SW */ { x0 = h.x + h.w; y0 = h.y; x1 = h.x; y1 = h.y + h.h; }
-      return ctx.createLinearGradient(x0, y0, x1, y1);
-    })();
-    grad.addColorStop(0, 'rgba(255,255,255,0.10)');
-    grad.addColorStop(1, 'rgba(0,0,0,0.10)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(h.x, h.y, h.w, h.h);
-
-  }
+  // (bridges and hills are drawn later, after walls)
 
   // decorations (non-colliding visuals) — clip to fairway so they don't draw on mustard HUD/table
   ctx.save();
@@ -7168,6 +7132,45 @@ function draw() {
     // rim (source-over)
     ctx.strokeStyle = COLORS.wallStroke; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(p.x, p.y, p.r - 1, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  // bridges (fairway rectangles spanning water)
+  for (const r of bridges) {
+    ctx.fillStyle = COLORS.fairway;
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = COLORS.fairwayLine;
+    ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+    // subtle cast shadow to read as raised above water
+    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+    ctx.beginPath();
+    ctx.moveTo(r.x + 1, r.y + r.h - 0.5);
+    ctx.lineTo(r.x + r.w - 1, r.y + r.h - 0.5);
+    ctx.moveTo(r.x + r.w - 0.5, r.y + 1);
+    ctx.lineTo(r.x + r.w - 0.5, r.y + r.h - 1);
+    ctx.stroke();
+  }
+
+  // hills (visualize gradient underlay)
+  for (const h of hills) {
+    const grad = (() => {
+      const d = h.dir;
+      let x0 = h.x, y0 = h.y, x1 = h.x + h.w, y1 = h.y + h.h;
+      if (d === 'N') { x0 = h.x; y0 = h.y + h.h; x1 = h.x; y1 = h.y; }
+      else if (d === 'S') { x0 = h.x; y0 = h.y; x1 = h.x; y1 = h.y + h.h; }
+      else if (d === 'W') { x0 = h.x + h.w; y0 = h.y; x1 = h.x; y1 = h.y; }
+      else if (d === 'E') { x0 = h.x; y0 = h.y; x1 = h.x + h.w; y1 = h.y; }
+      else if (d === 'NE') { x0 = h.x; y0 = h.y + h.h; x1 = h.x + h.w; y1 = h.y; }
+      else if (d === 'NW') { x0 = h.x + h.w; y0 = h.y + h.h; x1 = h.x; y1 = h.y; }
+      else if (d === 'SE') { x0 = h.x; y0 = h.y; x1 = h.x + h.w; y1 = h.y + h.h; }
+      else /* SW */ { x0 = h.x + h.w; y0 = h.y; x1 = h.x; y1 = h.y + h.h; }
+      return ctx.createLinearGradient(x0, y0, x1, y1);
+    })();
+    grad.addColorStop(0, 'rgba(255,255,255,0.10)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.10)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(h.x, h.y, h.w, h.h);
+
   }
 
   // Hill direction arrows overlay (high-visibility, masked): draw above geometry

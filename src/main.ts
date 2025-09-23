@@ -1800,7 +1800,7 @@ let adminMenuHotspots: AdminMenuHotspot[] = [];
 
 // Admin Game Settings state
 type GameSettingsField = 'slope' | 'friction' | 'sand' | 'baseline' | 'turnPenalty' | 'hillBump' | 'bankWeight';
-type GameSettingsHotspot = { kind: 'minus' | 'plus' | 'slider' | 'save' | 'cancel' | 'back'; field?: GameSettingsField; x: number; y: number; w: number; h: number };
+type GameSettingsHotspot = { kind: 'minus' | 'plus' | 'slider' | 'save' | 'cancel' | 'back' | 'defaults' | 'previous'; field?: GameSettingsField; x: number; y: number; w: number; h: number };
 let gameSettingsHotspots: GameSettingsHotspot[] = [];
 let gameSettingsState: { slopeAccel: number; frictionK: number; sandMultiplier: number; baselineShotPx: number; turnPenaltyPerTurn: number; hillBump: number; bankWeight: number } = {
   slopeAccel: 720,
@@ -1811,6 +1811,18 @@ let gameSettingsState: { slopeAccel: number; frictionK: number; sandMultiplier: 
   hillBump: 0.2,
   bankWeight: 0.12
 };
+
+// Defaults and previous snapshot
+const GAME_SETTINGS_DEFAULTS: { slopeAccel: number; frictionK: number; sandMultiplier: number; baselineShotPx: number; turnPenaltyPerTurn: number; hillBump: number; bankWeight: number } = {
+  slopeAccel: 720,
+  frictionK: 1.2,
+  sandMultiplier: 6.0,
+  baselineShotPx: 320,
+  turnPenaltyPerTurn: 0.08,
+  hillBump: 0.2,
+  bankWeight: 0.12
+};
+let gameSettingsPrev: { slopeAccel: number; frictionK: number; sandMultiplier: number; baselineShotPx: number; turnPenaltyPerTurn: number; hillBump: number; bankWeight: number } | null = null;
 
 // Level Management state and hotspots
 type LevelManagementHotspot = {
@@ -3806,6 +3818,16 @@ canvas.addEventListener('mousedown', (e) => {
                 gameSettingsState.frictionK = physicsFrictionK;
                 gameSettingsState.sandMultiplier = physicsSandMultiplier;
               }
+              // snapshot previous for quick revert
+              gameSettingsPrev = {
+                slopeAccel: gameSettingsState.slopeAccel,
+                frictionK: gameSettingsState.frictionK,
+                sandMultiplier: gameSettingsState.sandMultiplier,
+                baselineShotPx: gameSettingsState.baselineShotPx,
+                turnPenaltyPerTurn: gameSettingsState.turnPenaltyPerTurn,
+                hillBump: gameSettingsState.hillBump,
+                bankWeight: gameSettingsState.bankWeight,
+              };
               gameState = 'gameSettings';
             } catch (e) {
               console.error('Failed to load game settings', e);
@@ -3860,6 +3882,21 @@ canvas.addEventListener('mousedown', (e) => {
         }
         if (hs.kind === 'slider' && hs.field) {
           applySlider(hs.field, p.x);
+          return;
+        }
+        if (hs.kind === 'defaults') {
+          // restore defaults locally (requires Save to persist)
+          gameSettingsState = { ...GAME_SETTINGS_DEFAULTS };
+          showUiToast('Reverted to default settings (Save to persist)');
+          return;
+        }
+        if (hs.kind === 'previous') {
+          if (gameSettingsPrev) {
+            gameSettingsState = { ...gameSettingsPrev } as any;
+            showUiToast('Reverted to previous settings (Save to persist)');
+          } else {
+            showUiToast('No previous settings snapshot');
+          }
           return;
         }
         if (hs.kind === 'save') {
@@ -5860,14 +5897,17 @@ function draw() {
     
     const baseY = panelY + 100;
     drawSetting('Hill Acceleration (px/s²)', 'slope', baseY, 200, 2000, 20, v => `${Math.round(v)}`);
-    drawSetting('Hill Bump', 'hillBump', baseY + 70, 0.00, 1.00, 0.02, (v)=>v.toFixed(2));
-    drawSetting('Bank Weight', 'bankWeight', baseY + 140, 0.00, 0.50, 0.01, (v)=>v.toFixed(2));
-    drawSetting('Sand Multiplier (×K)', 'sand', baseY + 210, 1.0, 10.0, 0.2, v => v.toFixed(2));
+    drawSetting('Ball Friction (K)', 'friction', baseY + 70, 0.20, 2.00, 0.05, (v)=>v.toFixed(2));
+    drawSetting('Hill Bump', 'hillBump', baseY + 140, 0.00, 1.00, 0.02, (v)=>v.toFixed(2));
+    drawSetting('Bank Weight', 'bankWeight', baseY + 210, 0.00, 0.50, 0.01, (v)=>v.toFixed(2));
+    drawSetting('Sand Multiplier (×K)', 'sand', baseY + 280, 1.0, 10.0, 0.2, v => v.toFixed(2));
     
     // Buttons
     const btnW = 120, btnH = 32;
     const saveX = panelX + panelW - btnW - 30;
     const backX = saveX - btnW - 14;
+    const prevX = backX - btnW - 14;
+    const defX = prevX - btnW - 14;
     const by = panelY + panelH - btnH - 24;
     ctx.fillStyle = 'rgba(255,255,255,0.10)';
     ctx.fillRect(backX, by, btnW, btnH);
@@ -5875,6 +5915,18 @@ function draw() {
     ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '15px system-ui, sans-serif';
     ctx.fillText('Back', backX + btnW/2, by + btnH/2 + 0.5);
     gameSettingsHotspots.push({ kind: 'back', x: backX, y: by, w: btnW, h: btnH });
+    // Previous
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
+    ctx.fillRect(prevX, by, btnW, btnH);
+    ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(prevX, by, btnW, btnH);
+    ctx.fillStyle = '#ffffff'; ctx.fillText('Previous', prevX + btnW/2, by + btnH/2 + 0.5);
+    gameSettingsHotspots.push({ kind: 'previous', x: prevX, y: by, w: btnW, h: btnH });
+    // Defaults
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
+    ctx.fillRect(defX, by, btnW, btnH);
+    ctx.strokeStyle = '#cfd2cf'; ctx.lineWidth = 1; ctx.strokeRect(defX, by, btnW, btnH);
+    ctx.fillStyle = '#ffffff'; ctx.fillText('Defaults', defX + btnW/2, by + btnH/2 + 0.5);
+    gameSettingsHotspots.push({ kind: 'defaults', x: defX, y: by, w: btnW, h: btnH });
     
     ctx.fillStyle = 'rgba(100,150,200,0.80)';
     ctx.fillRect(saveX, by, btnW, btnH);

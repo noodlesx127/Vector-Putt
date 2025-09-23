@@ -52,6 +52,7 @@ Goal: preserve the recognizable retro look while making the playfield more reada
     - Optional faint water ripple overlay for large bodies (runtime and editor)
   - Canonical render order implemented across runtime and editor: walls/posts before bridges and hills; editor decorations moved before walls to match runtime. Editor gained View → "Slope Arrows" toggle; arrows skip rendering under walls/posts/water.
   - Docs updated: `Design_Doc.md`, `docs/PALETTE.md`, and `TODO.md` aligned with stroke-first terrains and canonical order.
+  - Admin → Game Settings: added Ball Friction (K) control; added Defaults and Previous buttons for safe revert.
 
  - Next
   - Visual snapshot tests (adjacent terrain seams, long wall chains, hills both directions) — deferred for now per request.

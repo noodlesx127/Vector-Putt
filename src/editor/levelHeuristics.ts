@@ -788,13 +788,14 @@ export function suggestParK(
   const seen = new Set<string>();
   const addCandidate = (path: Array<{ c: number; r: number }>) => {
     const key = pathSignature(path);
-    if (!key || SIGNATURES.has(key)) return null;
-    SIGNATURES.add(key);
+    if (!key || seen.has(key)) return null;
+    seen.add(key);
     const candidate = computeCandidateForPath(grid, cols, rows, fairway, cellSize, path, opts);
     let isDuplicate = false;
     for (let i = 0; i < candidates.length; i++) {
       const existing = candidates[i];
       const overlap = pathOverlapFraction(candidate, existing);
+      const SIMILARITY_THRESHOLD = 0.66;
       if (overlap >= SIMILARITY_THRESHOLD) {
         const momentumGap = Math.abs(candidate.downhillMomentum - existing.downhillMomentum);
         const autoGap = Math.abs(candidate.autoAssistSegments - existing.autoAssistSegments);
@@ -827,64 +828,8 @@ export function suggestParK(
     const alt = aStarWithBanned(grid, cols, rows, start, goal, new Set([banned.c + ',' + banned.r]));
     if (alt.found) addCandidate(alt.path);
   }
-
-    for (let i = sampleStep; i < path.length - sampleStep && candidates.length < MAX_POOL; i += sampleStep) {
-      const banned = path[i];
-      const alt = aStarWithBanned(grid, cols, rows, start, goal, new Set([banned.c + ',' + banned.r]));
-      if (!alt.found) continue;
-      const added = considerCandidate(alt.path);
-      if (added && depth < MAX_DEPTH && queue.length < MAX_POOL) {
-        queue.push({ path: alt.path.slice(), depth: depth + 1 });
-      }
-
-      if (i > 0) {
-        const prev = path[i - 1];
-        const edgeBan = new Set<string>();
-        edgeBan.add(edgeKey(prev, banned));
-        edgeBan.add(edgeKey(banned, prev));
-        const altEdge = aStarWithBannedEdges(grid, cols, rows, start, goal, edgeBan);
-        if (altEdge.found) {
-          const addedEdge = considerCandidate(altEdge.path);
-          if (addedEdge && depth < MAX_DEPTH && queue.length < MAX_POOL) {
-            queue.push({ path: altEdge.path.slice(), depth: depth + 1 });
-          }
-        }
-      }
-    }
-
-    if (candidates.length >= MAX_POOL) break;
-
-    if (path.length >= 6) {
-      for (let i = sampleStep; i < path.length - sampleStep && candidates.length < MAX_POOL; i += sampleStep) {
-        const bannedSet = new Set<string>();
-        const first = path[i];
-        const second = path[Math.min(path.length - 2, i + Math.max(1, Math.floor(sampleStep / 2)))];
-        bannedSet.add(first.c + ',' + first.r);
-        bannedSet.add(second.c + ',' + second.r);
-        const altPair = aStarWithBanned(grid, cols, rows, start, goal, bannedSet);
-        if (!altPair.found) continue;
-        const added = considerCandidate(altPair.path);
-        if (added && depth < MAX_DEPTH && queue.length < MAX_POOL) {
-          queue.push({ path: altPair.path.slice(), depth: depth + 1 });
-        }
-
-        if (i > 0) {
-          const prev = path[i - 1];
-          const edgeBan = new Set<string>();
-          edgeBan.add(edgeKey(prev, first));
-          edgeBan.add(edgeKey(first, prev));
-          const altPairEdge = aStarWithBannedEdges(grid, cols, rows, start, goal, edgeBan);
-          if (altPairEdge.found) {
-            const addedEdge = considerCandidate(altPairEdge.path);
-            if (addedEdge && depth < MAX_DEPTH && queue.length < MAX_POOL) {
-              queue.push({ path: altPairEdge.path.slice(), depth: depth + 1 });
-            }
-          }
-        }
-      }
-    }
-  }
-
+  
+  
   // Rank by strokes ascending (best first) and truncate to K
   candidates.sort((a, b) => a.strokes - b.strokes || a.lengthPx - b.lengthPx);
   if (candidates.length > K) candidates.length = K;

@@ -34,20 +34,20 @@ This file tracks current focus, next steps, decisions, and planned work. Complet
 
 ## Plans & Epics
 
-## Suggest Par — Hybrid Branching (2025-09-23)
+## Suggest Par — Hybrid Branching (2025-09-24)
 
 - [x] Posts as blockers in grid with safety clearance
-  - Grid build (`buildGrid()` in `src/editor/levelHeuristics.ts`) now treats posts as circular blockers with a small clearance radius so A* paths cannot pass through posts.
+  - Grid build (`buildGrid()` in `src/editor/levelHeuristics.ts`) treats posts as circular blockers with a small clearance radius so A* paths cannot pass through posts.
 - [x] K-branch candidate generation (`suggestParK()`)
-  - Compute a best path with A*, then enumerate alternates by banning sampled cells along the best path (and pairs) to force diverse branches.
-  - Rank candidates by estimated strokes (physics-aware distance, sand/turn/bank penalties, hill bump). Ties broken by path length.
-  - Exported `CandidatePath` captures world polyline, length, turns, corridor contact, terrain counts, strokes, and derived par.
-- [x] Editor UI integration (hybrid selection)
-  - `File → Suggest Par` now invokes `suggestParK()` (K=4) and renders colored candidate routes on-canvas.
-  - Ambiguity policy: if top routes have equal par or near-equal strokes, present a list via `EditorEnv.showList()` and keep overlay visible for visual pick.
-  - Interactions: click near a colored route to select it and set its par; press Esc to dismiss overlay. Fallback confirm when no path exists.
-  - Visual Path Preview (`P`) still works; best-route preview is computed but the multi-route overlay is preferred when visible.
-  - Styling follows `UI_Design.md` overlay guidance; routes are clipped to the fairway for clarity.
+  - Compute an initial best path, then generate alternates by banning sampled cells (and pairs) and queueing the resulting paths up to a configurable depth.
+  - Added `pathOverlapFraction()` plus per-path `cellSet` bookkeeping to skip near-duplicate routes; retain the lower-strokes option when overlap is high.
+  - Rank candidates by estimated strokes (physics-aware distance, sand/turn/bank penalties, hill bump) with path length as secondary sort.
+  - Exported `CandidatePath` now carries cell metadata (`cellKeys`, `cellSet`) for overlap analysis and future UI use.
+- [x] Editor UI integration (hybrid selection + summary panel)
+  - `File → Suggest Par` invokes `suggestParK()` (K=4) and renders colored candidate routes on canvas, clipped to the fairway.
+  - Added `renderParCandidatesSummary()` in `src/editor/levelEditor.ts` to draw a top-right popup listing each route number, color, strokes, and suggested par.
+  - Ambiguity policy: if top routes have equal par or near-equal strokes, prompt via `EditorEnv.showList()` while keeping overlay active; otherwise confirm best route with summary visible.
+  - Interactions: click near a colored route or press `1..K` to select; Esc dismisses overlay. Visual Path Preview (`P`) remains available but is hidden while the multi-route overlay is active.
 
 Notes
 - Coefficients wired from Admin → Game Settings: Baseline Shot px, Turn Penalty, Hill Bump, Bank Weight, Friction K, Sand Multiplier.

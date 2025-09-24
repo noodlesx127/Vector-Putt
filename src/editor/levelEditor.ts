@@ -379,6 +379,73 @@ class LevelEditorImpl implements LevelEditor {
     return { x: prevX + sx * len, y: prevY + sy * len };
   }
 
+  private renderParCandidatesSummary(env: EditorEnv): void {
+    if (!this.showParCandidates || !this.parCandidates || this.parCandidates.length === 0) return;
+
+    const entries = this.parCandidates.slice(0, Math.min(6, this.parCandidates.length));
+    const { ctx, width: WIDTH } = env;
+    const fair = env.fairwayRect();
+
+    ctx.save();
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+
+    const header = 'Suggest Par Routes';
+    const swatchSize = 12;
+    const gap = 8;
+    const lineHeight = 20;
+    const pad = 10;
+    const lines = entries.map((entry, idx) => {
+      const strokes = entry.candidate.strokes.toFixed(1);
+      return `#${idx + 1} · Par ${entry.candidate.par} (${strokes} strokes)`;
+    });
+
+    const headerWidth = ctx.measureText(header).width;
+    let contentWidth = headerWidth;
+    for (const line of lines) {
+      contentWidth = Math.max(contentWidth, ctx.measureText(line).width);
+    }
+
+    const panelWidth = Math.ceil(pad * 2 + swatchSize + gap + contentWidth);
+    const headerHeight = 22;
+    const panelHeight = Math.ceil(pad * 2 + headerHeight + lines.length * lineHeight + (lines.length > 0 ? 4 : 0));
+    const panelX = Math.min(Math.max(fair.x + fair.w - panelWidth - 16, 8), WIDTH - panelWidth - 8);
+    const panelY = Math.max(fair.y + 16, 48);
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.strokeStyle = '#cfd2cf';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.rect(panelX, panelY, panelWidth, panelHeight);
+    ctx.fill();
+    ctx.stroke();
+
+    let textY = panelY + pad + headerHeight / 2;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(header, panelX + pad, textY);
+    textY += headerHeight / 2 + 6;
+
+    for (let i = 0; i < lines.length; i++) {
+      const entry = entries[i];
+      const cy = textY + i * lineHeight + lineHeight / 2;
+      const swatchX = panelX + pad;
+      const swatchY = cy - swatchSize / 2;
+      ctx.fillStyle = entry.color;
+      ctx.beginPath();
+      ctx.rect(swatchX, swatchY, swatchSize, swatchSize);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(swatchX, swatchY, swatchSize, swatchSize);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(lines[i], swatchX + swatchSize + gap, cy);
+    }
+
+    ctx.restore();
+  }
+
   // ----- Overlay helpers -----
   private async openOverlayImage(): Promise<void> {
     if (!this.env) return;
@@ -2201,6 +2268,8 @@ class LevelEditorImpl implements LevelEditor {
         }
       }
       ctx.restore();
+
+      this.renderParCandidatesSummary(env);
     }
 
     // Visual Path Preview overlay (debug)

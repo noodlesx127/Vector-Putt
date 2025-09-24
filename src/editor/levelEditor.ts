@@ -3154,7 +3154,7 @@ class LevelEditorImpl implements LevelEditor {
         metrics = `L=${len.toFixed(1)} px  θ=${ang.toFixed(1)}°  •  Vertices: ${n}`;
       }
       leftText = `${toolLabel}${metrics ? ' — ' + metrics : ''}`;
-      rightText = `Enter: Close  •  Esc: Cancel  •  Backspace: Undo  •  Shift: Angle Snap  •  Ctrl: Grid-only  •  Alt: Disable Guides  •  Snap: Grid ${gridOn ? 'On' : 'Off'}, Guides ${guidesOn ? 'On' : 'Off'}`;
+      rightText = `Enter: Close  •  Esc: Cancel  •  Backspace: Undo  •  Shift: Angle Snap  •  Ctrl: Grid-only  •  Alt: Disable Guides • Toggle Join Bevel  •  Snap: Grid ${gridOn ? 'On' : 'Off'}, Guides ${guidesOn ? 'On' : 'Off'}`;
     } else if (this.selectedTool === 'measure') {
       if (this.measureStart && this.measureEnd) {
         const a = this.measureStart, b = this.measureEnd;
@@ -3165,16 +3165,32 @@ class LevelEditorImpl implements LevelEditor {
       } else {
         leftText = `${toolLabel} — Click to start, move to measure`;
       }
-      rightText = `Enter: Pin  •  Esc: Cancel  •  Right-click: Clear`;
+      rightText = `Enter: Pin  •  Esc: Cancel  •  Right-click: Clear  •  Double‑click: Clear Pinned`;
     } else if (this.selectedTool === 'select') {
       const n = this.selectedObjects.length;
       if (n > 0) {
         const b = this.getSelectionBounds();
         leftText = `${toolLabel} — ${n} selected  •  ${b.w}×${b.h}`;
       } else {
-        leftText = `${toolLabel} — Click or drag to select`;
+        leftText = `${toolLabel} — Click or drag to select (Contain; Alt=Intersect)`;
       }
-      rightText = `Arrows: Nudge  •  Shift: Axis Lock  •  Ctrl: Grid-only  •  Alt: Disable Guides`;
+      const hasPolySel = this.selectedObjects.some(o => o.type === 'wallsPoly' || o.type === 'waterPoly' || o.type === 'sandPoly');
+      const overlaySel = (this.selectedObjects.length === 1 && (this.selectedObjects[0] as any).type === 'overlay');
+      const postSel = (this.selectedObjects.length === 1 && (this.selectedObjects[0] as any).type === 'post');
+      const hints: string[] = [
+        'Arrows: Nudge',
+        'Shift: Axis Lock',
+        'Ctrl: Grid-only',
+        'Alt: Disable Guides'
+      ];
+      if (hasPolySel) {
+        hints.push('Alt+Click Vertex: Remove', 'Double‑click Edge: Insert Vertex');
+      } else if (overlaySel) {
+        hints.push('=/−: Scale', ',/.: Rotate');
+      } else if (postSel) {
+        hints.push('Double‑click: Change Radius');
+      }
+      rightText = hints.join('  •  ');
     } else if (this.selectedTool === 'post') {
       // Preview post center at snapped mouse with default radius until placed
       const gOn = (() => { try { return this.objectSnapToGrid && this.showGrid && env.getShowGrid(); } catch { return false; } })();
@@ -3923,13 +3939,16 @@ class LevelEditorImpl implements LevelEditor {
                 const items: Array<{ label: string; value: string }> = [
                   { label: 'Global — Esc: Cancel current action; Enter: Confirm (varies by tool)', value: 'global' },
                   { label: 'Selection — Arrows: Nudge • Shift: Axis Lock • Ctrl: Grid-only • Alt: Disable Guides', value: 'select' },
+                  { label: 'Selection — Marquee: Contain by default; hold Alt for Intersect', value: 'marquee' },
                   { label: 'Grid/Rulers/Guides — View menu toggles; Ctrl forces grid-only during interactions', value: 'guides' },
                   { label: 'Polygons — Click to add vertices • Enter/Click near start: Close • Backspace: Undo last', value: 'poly' },
-                  { label: 'Polygons — Shift: Angle Snap • Ctrl: Grid-only • Alt: Disable Guides', value: 'poly2' },
-                  { label: 'Measure — Click-drag to measure • Enter: Pin • Esc: Cancel • Right-click: Clear', value: 'measure' },
+                  { label: 'Polygons — Shift: Angle Snap • Ctrl: Grid-only • Alt: Disable Guides; Vertex edit: Alt+Click removes (min 3) • Double‑click near edge inserts and starts drag', value: 'poly2' },
+                  { label: '45° Poly Tools — Segments constrained to 0/45/90; Ctrl: Free angle', value: 'poly45' },
+                  { label: 'Measure — Click-drag to measure • Enter: Pin • Esc: Cancel • Right-click: Clear • Double‑click: Clear Pinned', value: 'measure' },
                   { label: 'Posts — Click to place • Double-click (Select): Change Radius', value: 'posts' },
                   { label: 'Rect Tools — Click-drag to place walls/water/sand/bridge/hill • Shift: Axis Lock', value: 'rect' },
-                  { label: 'Overlay Screenshot — See View → Overlay controls; select overlay to move/resize/rotate', value: 'overlay' },
+                  { label: 'Overlay Screenshot — [ / ]: Opacity ±5% (Shift=±10%) • =/−: Scale • ,/.: Rotate • Select overlay to move/resize/rotate; Through‑click in View menu', value: 'overlay' },
+                  { label: 'Edit — Undo/Redo: Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y • Copy/Cut/Paste/Duplicate: Ctrl+C/X/V/D • Delete: Delete/Backspace', value: 'edit' },
                   { label: 'Tool Info Bar — Bottom toolbar shows live metrics and shortcuts by tool', value: 'infobar' }
                 ];
                 try { await env.showList('Level Editor Help', items, 0); } catch {}

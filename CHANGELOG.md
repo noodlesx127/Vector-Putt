@@ -23,7 +23,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Level Editor • Help menu: new top-level Help menu with “Keyboard Shortcuts & Tool Guide…”. Opens a panelized overlay (same family as Pause/Options) listing global shortcuts and per‑tool tips, implemented via the existing overlay list UI. (`src/editor/levelEditor.ts`, `src/main.ts`)
 
+- Level Editor • Info Bar & Help audit: ensured all recent features are surfaced in-context and discoverable.
+  - Bottom Tool Info Bar now shows:
+    - Polygon drafting: join bevel toggle hint (Alt), full snap state (Grid/Guides), and live metrics.
+    - Selection: marquee behavior clarified (Contain by default; Alt switches to Intersect).
+    - Contextual hints: polygon vertex edit (Alt+Click remove; Double‑click edge insert), overlay quick keys (=/− scale, ,/. rotate), and post quick edit (Double‑click to change radius).
+    - Measure tool: Double‑click to clear pinned measurements.
+  - Help overlay expanded with:
+    - Polygon vertex add/remove instructions; 45° poly tool note (Ctrl free-angle).
+    - Marquee Contain/Intersect behavior.
+    - Overlay quick keys ([/], =/−, ,/.) and Through‑click note.
+    - Standard Edit shortcuts: Undo/Redo, Copy/Cut/Paste/Duplicate, Delete.
+  - Implementation in `src/editor/levelEditor.ts` (renderToolInfoBar, Help menu handler).
+  
+  - Level Editor • Selection & Polygon Editing:
+    - Polygons — Vertex insert/remove actions: Alt+Click removes a vertex (min 3); Double‑click near an edge inserts a vertex at the closest point and begins dragging.
+
 ### Changed
+- Selection — Marquee default is now Contain; hold Alt to switch to Intersect during drag/finalize. (`src/editor/levelEditor.ts`)
 - Level Editor • Suggest Par heuristics: improved accuracy by incorporating directional hill effects and bridge pass‑through.
   - Grid now encodes a hill vector field (direction + strength) so A* penalizes uphill segments and slightly eases downhill ones.
   - Bridges now unblock water/wall cells they cover so paths can cross correctly.
@@ -42,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Removed: “Overlay: Transform Mode → Move/Resize/Rotate”.
 
 ### Fixed
+- Polygons — Vertex hit-testing prioritizes vertices on the selected polygon and then the nearest vertex within threshold, reducing accidental grabs of adjacent polygons. (`src/editor/levelEditor.ts`)
 - Level Editor • Overlay Screenshot: fixed a drag release bug where, after adding an overlay image and moving it, the image continued to move because mouseup did not clear the drag state. Finalization now occurs in `handleMouseUp()` and a safety check in `handleMouseMove()` ends overlay interactions if `e.buttons === 0`. (`src/editor/levelEditor.ts`)
 - Level Editor • Overlay Screenshot: fixed menu items not clickable when Overlay was Above. Overlay now does not swallow clicks over menu hotspots, and overlay interactions do not start when clicking menus. (`src/editor/levelEditor.ts` `handleMouseDown()`)
 - Level Editor • Posts movement parity: fixed an issue where posts could not be moved like tees/cups via drag or arrow keys. Drag‑move commit now clamps/snaps the post center like tee/cup, and arrow key nudges no longer apply radius edge‑aligned snapping that cancelled small steps. Movement respects the View → "Object: Snap to Grid" toggle. (`src/editor/levelEditor.ts`)

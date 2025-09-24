@@ -353,14 +353,13 @@ export function aStar(
   cols: number,
   rows: number,
   start: { c: number; r: number },
-  goal: { c: number; r: number }
+  goal: { c: number; r: number },
+  opts?: AStarOptions
 ): { found: boolean; path: Array<{ c: number; r: number }>; lengthCost: number } {
-  const key = (c: number, r: number) => `${c},${r}`;
-  const open: Array<{ c: number; r: number; g: number; f: number }>[] = [] as any;
-  const startNode = { c: start.c, r: start.r, g: 0, f: 0 };
-  open.push([startNode]);
   const came: Record<string, string | undefined> = {};
-  const gScore: Record<string, number> = { [key(start.c, start.r)]: 0 };
+  const gScore: Record<string, number> = { [nodeKey(start.c, start.r)]: 0 };
+  const bannedNodes = opts?.bannedNodes;
+  const bannedEdges = opts?.bannedEdges;
 
   const dirs = [
     { dc: 1, dr: 0, w: 1 }, { dc: -1, dr: 0, w: 1 }, { dc: 0, dr: 1, w: 1 }, { dc: 0, dr: -1, w: 1 },
@@ -381,7 +380,11 @@ export function aStar(
     let bestIdx = 0;
     for (let i = 1; i < openSet.length; i++) if (openSet[i].f < openSet[bestIdx].f) bestIdx = i;
     const current = openSet.splice(bestIdx, 1)[0];
-    const ck = key(current.c, current.r);
+    const ck = nodeKey(current.c, current.r);
+
+    if (bannedNodes && bannedNodes.has(ck)) {
+      continue;
+    }
 
     if (current.c === goal.c && current.r === goal.r) {
       // reconstruct
@@ -416,7 +419,7 @@ export function aStar(
         if (n1?.blocked || n2?.blocked) continue;
       }
 
-      const neighborK = key(nc, nr);
+      const neighborK = nodeKey(nc, nr);
       // Base cost (accounts for sand/hill base cost) using avg cell cost
       let moveCost = d.w * ((grid[nr][nc].cost + grid[current.r][current.c].cost) * 0.5);
       // Directional hill penalty/reward: penalize moving uphill, slight reward for downhill
@@ -465,6 +468,11 @@ export function estimatePar(
     frictionK?: number;               // global ball friction K (from gameplay), higher = more friction
     referenceFrictionK?: number;      // reference K that baselineShotPx was tuned for (default 1.2)
     sandFrictionMultiplier?: number;  // gameplay sand multiplier (default 6.0)
+    // Downhill / auto-assist tuning
+    downhillBonusFactor?: number;
+    autoAssistMomentumThreshold?: number;
+    autoAssistBonus?: number;
+    autoAssistSegmentThreshold?: number;
   }
 ): {
   reachable: boolean;
@@ -581,13 +589,79 @@ export type CandidatePath = {
   hillCells: number;
   strokes: number;
   par: number;
+  cellKeys: string[];
+  cellSet: Set<string>;
+  downhillMomentum: number;
+  uphillResistance: number;
+  autoAssistSegments: number;
 };
+
+type AStarOptions = {
+  bannedNodes?: Set<string>;
+  bannedEdges?: Set<string>;
+};
+
+const nodeKey = (c: number, r: number) => `${c},${r}`;
+const edgeKey = (from: { c: number; r: number }, to: { c: number; r: number }) => `${from.c},${from.r}->${to.c},${to.r}`;
 
 function pathSignature(path: Array<{ c: number; r: number }>): string {
   if (!path || path.length === 0) return '';
   let s = '';
   for (let i = 0; i < path.length; i++) { const p = path[i]; s += p.c + ',' + p.r + (i + 1 < path.length ? ';' : ''); }
   return s;
+}
+
+function analyzePathTraversal(
+  path: Array<{ c: number; r: number }>,
+  grid: GridCell[][]
+): { lengthCost: number; downhillMomentum: number; uphillResistance: number; autoAssistSegments: number } {
+  let lengthCost = 0;
+  let downhillMomentum = 0;
+  let uphillResistance = 0;
+  let autoAssistSegments = 0;
+  if (!path || path.length < 2) {
+    return { lengthCost, downhillMomentum, uphillResistance, autoAssistSegments };
+  }
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1], b = path[i];
+    const dc = b.c - a.c;
+    const dr = b.r - a.r;
+    const diag = (dc !== 0) && (dr !== 0);
+    const step = diag ? Math.SQRT2 : 1;
+    const gc = grid[b.r][b.c].cost;
+    lengthCost += step * gc;
+
+    const h1 = grid[a.r][a.c];
+    const h2 = grid[b.r][b.c];
+    const hx = ((h1.hillVX ?? 0) + (h2.hillVX ?? 0)) * 0.5;
+    const hy = ((h1.hillVY ?? 0) + (h2.hillVY ?? 0)) * 0.5;
+    const hStr = ((h1.hillStrength ?? 0) + (h2.hillStrength ?? 0)) * 0.5;
+    if (hStr > 0 && (hx !== 0 || hy !== 0)) {
+      const sx = dc / step;
+      const sy = dr / step;
+      const dot = hx * sx + hy * sy;
+      if (dot > 0.05) {
+        const boost = dot * hStr * step;
+        downhillMomentum += boost;
+        if (boost >= 0.6) autoAssistSegments++;
+      } else if (dot < -0.05) {
+        uphillResistance += (-dot) * hStr * step;
+      }
+    }
+  }
+  return { lengthCost, downhillMomentum, uphillResistance, autoAssistSegments };
+}
+
+function pathOverlapFraction(a: CandidatePath, b: CandidatePath): number {
+  if (!a || !b) return 0;
+  const sizeA = a.cellSet.size;
+  const sizeB = b.cellSet.size;
+  if (!sizeA || !sizeB) return 0;
+  let overlap = 0;
+  for (const key of a.cellSet) {
+    if (b.cellSet.has(key)) overlap++;
+  }
+  return overlap / Math.min(sizeA, sizeB);
 }
 
 function computeCandidateForPath(
@@ -598,15 +672,10 @@ function computeCandidateForPath(
 ): CandidatePath {
   const toWorld = (c: number, r: number) => ({ x: fairway.x + c * cellSize + cellSize / 2, y: fairway.y + r * cellSize + cellSize / 2 });
   const worldPoints = path.map(p => toWorld(p.c, p.r));
-  // length cost in pixel units
-  let lengthCost = 0;
-  for (let i = 1; i < path.length; i++) {
-    const a = path[i - 1], b = path[i];
-    const diag = (a.c !== b.c) && (a.r !== b.r);
-    const step = diag ? Math.SQRT2 : 1;
-    const gc = grid[b.r][b.c].cost;
-    lengthCost += step * gc;
-  }
+  const cellKeys = path.map(p => `${p.c},${p.r}`);
+  const cellSet = new Set<string>(cellKeys);
+  // length cost in pixel units + hill momentum metrics
+  const { lengthCost, downhillMomentum, uphillResistance, autoAssistSegments } = analyzePathTraversal(path, grid);
   const lengthPx = lengthCost * cellSize;
   // turns
   let turns = 0;
@@ -656,10 +725,40 @@ function computeCandidateForPath(
     const coverage = Math.min(1, hillCells / Math.max(1, Math.floor(path.length * 0.5)));
     strokes += hillBump * (0.5 + 0.5 * coverage);
   }
+
+  const downhillBonusFactor = opts?.downhillBonusFactor ?? 0.18;
+  const autoAssistThreshold = opts?.autoAssistMomentumThreshold ?? 1.35;
+  const autoAssistBonus = opts?.autoAssistBonus ?? 0.45;
+  const autoAssistSegmentThreshold = opts?.autoAssistSegmentThreshold ?? 3;
+
+  if (downhillMomentum > 0) {
+    const downhillBonus = Math.min(1.6, downhillMomentum * downhillBonusFactor);
+    strokes = Math.max(0.35, strokes - downhillBonus);
+  }
+  const netMomentum = downhillMomentum - uphillResistance;
+  if (downhillMomentum > 0 && (autoAssistSegments >= autoAssistSegmentThreshold || netMomentum > autoAssistThreshold)) {
+    strokes = Math.max(0.35, strokes - autoAssistBonus);
+  }
+
   let par = Math.round(strokes + 1);
   par = Math.max(2, Math.min(7, par));
 
-  return { path, worldPoints, lengthPx, turns, blockedAvg, sandCells, hillCells, strokes, par };
+  return {
+    path,
+    worldPoints,
+    lengthPx,
+    turns,
+    blockedAvg,
+    sandCells,
+    hillCells,
+    strokes,
+    par,
+    cellKeys,
+    cellSet,
+    downhillMomentum,
+    uphillResistance,
+    autoAssistSegments
+  };
 }
 
 /**
@@ -689,9 +788,33 @@ export function suggestParK(
   const seen = new Set<string>();
   const addCandidate = (path: Array<{ c: number; r: number }>) => {
     const key = pathSignature(path);
-    if (!key || seen.has(key)) return;
-    seen.add(key);
-    candidates.push(computeCandidateForPath(grid, cols, rows, fairway, cellSize, path, opts));
+    if (!key || SIGNATURES.has(key)) return null;
+    SIGNATURES.add(key);
+    const candidate = computeCandidateForPath(grid, cols, rows, fairway, cellSize, path, opts);
+    let isDuplicate = false;
+    for (let i = 0; i < candidates.length; i++) {
+      const existing = candidates[i];
+      const overlap = pathOverlapFraction(candidate, existing);
+      if (overlap >= SIMILARITY_THRESHOLD) {
+        const momentumGap = Math.abs(candidate.downhillMomentum - existing.downhillMomentum);
+        const autoGap = Math.abs(candidate.autoAssistSegments - existing.autoAssistSegments);
+        if (momentumGap >= 0.6 || autoGap >= 2) {
+          // treat as distinct due to materially different hill behavior
+          continue;
+        }
+        if (candidate.strokes + 0.05 < existing.strokes) {
+          candidates[i] = candidate;
+          return candidate;
+        }
+        isDuplicate = true;
+        break;
+      }
+    }
+    if (!isDuplicate) {
+      candidates.push(candidate);
+      return candidate;
+    }
+    return null;
   };
 
   addCandidate(base.path);
@@ -705,15 +828,60 @@ export function suggestParK(
     if (alt.found) addCandidate(alt.path);
   }
 
-  // If still lacking, try banning pairs near different sections (breadth)
-  if (candidates.length < K) {
-    for (let i = sampleStep; i < base.path.length - sampleStep && candidates.length < K; i += sampleStep) {
-      const bannedSet = new Set<string>();
-      const b1 = base.path[i]; bannedSet.add(b1.c + ',' + b1.r);
-      const j = Math.min(base.path.length - 2, i + Math.floor(sampleStep / 2));
-      const b2 = base.path[j]; bannedSet.add(b2.c + ',' + b2.r);
-      const alt2 = aStarWithBanned(grid, cols, rows, start, goal, bannedSet);
-      if (alt2.found) addCandidate(alt2.path);
+    for (let i = sampleStep; i < path.length - sampleStep && candidates.length < MAX_POOL; i += sampleStep) {
+      const banned = path[i];
+      const alt = aStarWithBanned(grid, cols, rows, start, goal, new Set([banned.c + ',' + banned.r]));
+      if (!alt.found) continue;
+      const added = considerCandidate(alt.path);
+      if (added && depth < MAX_DEPTH && queue.length < MAX_POOL) {
+        queue.push({ path: alt.path.slice(), depth: depth + 1 });
+      }
+
+      if (i > 0) {
+        const prev = path[i - 1];
+        const edgeBan = new Set<string>();
+        edgeBan.add(edgeKey(prev, banned));
+        edgeBan.add(edgeKey(banned, prev));
+        const altEdge = aStarWithBannedEdges(grid, cols, rows, start, goal, edgeBan);
+        if (altEdge.found) {
+          const addedEdge = considerCandidate(altEdge.path);
+          if (addedEdge && depth < MAX_DEPTH && queue.length < MAX_POOL) {
+            queue.push({ path: altEdge.path.slice(), depth: depth + 1 });
+          }
+        }
+      }
+    }
+
+    if (candidates.length >= MAX_POOL) break;
+
+    if (path.length >= 6) {
+      for (let i = sampleStep; i < path.length - sampleStep && candidates.length < MAX_POOL; i += sampleStep) {
+        const bannedSet = new Set<string>();
+        const first = path[i];
+        const second = path[Math.min(path.length - 2, i + Math.max(1, Math.floor(sampleStep / 2)))];
+        bannedSet.add(first.c + ',' + first.r);
+        bannedSet.add(second.c + ',' + second.r);
+        const altPair = aStarWithBanned(grid, cols, rows, start, goal, bannedSet);
+        if (!altPair.found) continue;
+        const added = considerCandidate(altPair.path);
+        if (added && depth < MAX_DEPTH && queue.length < MAX_POOL) {
+          queue.push({ path: altPair.path.slice(), depth: depth + 1 });
+        }
+
+        if (i > 0) {
+          const prev = path[i - 1];
+          const edgeBan = new Set<string>();
+          edgeBan.add(edgeKey(prev, first));
+          edgeBan.add(edgeKey(first, prev));
+          const altPairEdge = aStarWithBannedEdges(grid, cols, rows, start, goal, edgeBan);
+          if (altPairEdge.found) {
+            const addedEdge = considerCandidate(altPairEdge.path);
+            if (addedEdge && depth < MAX_DEPTH && queue.length < MAX_POOL) {
+              queue.push({ path: altPairEdge.path.slice(), depth: depth + 1 });
+            }
+          }
+        }
+      }
     }
   }
 
@@ -733,24 +901,16 @@ function aStarWithBanned(
   goal: { c: number; r: number },
   banned: Set<string>
 ): { found: boolean; path: Array<{ c: number; r: number }>; lengthCost: number } {
-  // Shallow wrapper that treats banned cells as blocked
-  const key = (c: number, r: number) => `${c},${r}`;
-  const originalBlocked: boolean[] = [];
-  banned.forEach(k => {
-    const [c, r] = k.split(',').map(Number);
-    if (r >= 0 && r < rows && c >= 0 && c < cols) {
-      originalBlocked.push(grid[r][c].blocked ? 1 : 0 as any);
-      grid[r][c].blocked = true;
-    }
-  });
-  const res = aStar(grid, cols, rows, start, goal);
-  // restore
-  let idx = 0;
-  banned.forEach(k => {
-    const [c, r] = k.split(',').map(Number);
-    if (r >= 0 && r < rows && c >= 0 && c < cols) {
-      grid[r][c].blocked = !!originalBlocked[idx++];
-    }
-  });
-  return res;
+  return aStar(grid, cols, rows, start, goal, { bannedNodes: banned });
+}
+
+function aStarWithBannedEdges(
+  grid: GridCell[][],
+  cols: number,
+  rows: number,
+  start: { c: number; r: number },
+  goal: { c: number; r: number },
+  bannedEdges: Set<string>
+): { found: boolean; path: Array<{ c: number; r: number }>; lengthCost: number } {
+  return aStar(grid, cols, rows, start, goal, { bannedEdges });
 }

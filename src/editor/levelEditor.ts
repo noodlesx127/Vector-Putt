@@ -3119,8 +3119,9 @@ class LevelEditorImpl implements LevelEditor {
 
     const titleize = (s: string) => s.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()).trim();
     const toolLabel = titleize(this.selectedTool);
+    const showingParOverlay = !!(this.showParCandidates && this.parCandidates && this.parCandidates.length > 0);
 
-    let leftText = `${toolLabel}`;
+    let leftText = '';
     let rightText = '';
 
     const fitText = (text: string, maxW: number) => {
@@ -3139,7 +3140,18 @@ class LevelEditorImpl implements LevelEditor {
 
     // Populate content by tool
     const polyTools: EditorTool[] = ['wallsPoly','waterPoly','sandPoly','walls45','water45','sand45'];
-    if (polyTools.includes(this.selectedTool)) {
+    if (showingParOverlay) {
+      const total = this.parCandidates!.length;
+      const best = this.parCandidates![0]?.candidate;
+      const bestPar = best ? `Par ${best.par} (${best.strokes.toFixed(1)} strokes)` : '';
+      let extras: string[] = [];
+      if (best && best.autoAssistSegments >= 2) extras.push('auto-assist lanes');
+      if (best && best.downhillMomentum - best.uphillResistance > 1) extras.push('hill boost');
+      const extrasText = extras.length > 0 ? ` • ${extras.join(', ')}` : '';
+      leftText = `Suggest Par — ${total} routes • ${bestPar}${extrasText}`;
+      const k = Math.min(9, total);
+      rightText = `Click or press 1..${k} to choose • Esc: Dismiss`;
+    } else if (polyTools.includes(this.selectedTool)) {
       const pts = this.polygonInProgress?.points || [];
       let metrics = '';
       if (pts.length >= 2) {
@@ -3191,7 +3203,7 @@ class LevelEditorImpl implements LevelEditor {
       if (gOn) { px = Math.round(px / g) * g; py = Math.round(py / g) * g; }
       const radius = this.selectedTool === 'tee' ? 8 : 12;
       leftText = `${toolLabel} — Center=(${Math.round(px)}, ${Math.round(py)})  •  r=${radius}`;
-      rightText = `Click: Place  •  Ctrl: Grid‑only  •  Alt: Disable Guides`;
+      rightText = `Click: Place  •  Ctrl: Grid-only  •  Alt: Disable Guides`;
     } else if (this.selectedTool === 'wall' || this.selectedTool === 'water' || this.selectedTool === 'sand' || this.selectedTool === 'bridge' || this.selectedTool === 'hill') {
       // Rectangle drag tools
       if (this.isEditorDragging && this.editorDragTool === this.selectedTool && this.editorDragStart && this.editorDragCurrent) {
@@ -3199,15 +3211,15 @@ class LevelEditorImpl implements LevelEditor {
         const h = Math.abs(this.editorDragCurrent.y - this.editorDragStart.y);
         leftText = `${toolLabel} — ${Math.round(w)}×${Math.round(h)}`;
       } else {
-        leftText = `${toolLabel} — Click‑drag to place`;
+        leftText = `${toolLabel} — Click-drag to place`;
       }
       if (this.selectedTool === 'hill' && this.hillDirectionPicker && this.hillDirectionPicker.visible) {
         leftText += '  •  Pick Direction…';
       }
-      rightText = `Shift: Axis Lock  •  Ctrl: Grid‑only  •  Alt: Disable Guides`;
+      rightText = `Shift: Axis Lock  •  Ctrl: Grid-only  •  Alt: Disable Guides`;
     } else if (this.selectedTool === 'decoration') {
       leftText = `${toolLabel} — 32×32  •  ${this.selectedDecoration}`;
-      rightText = `Click: Place  •  Ctrl: Grid‑only`;
+      rightText = `Click: Place  •  Ctrl: Grid-only`;
     } else {
       leftText = `${toolLabel}`;
       rightText = `Ctrl: Grid-only  •  Alt: Disable Guides  •  Snap: Grid ${gridOn ? 'On' : 'Off'}`;
@@ -3225,7 +3237,7 @@ class LevelEditorImpl implements LevelEditor {
     ctx.fillText(rightFitted, x + WIDTH - pad, y + barH / 2);
     
     // Route color legend (when Suggest Par candidates overlay is visible)
-    if (this.showParCandidates && this.parCandidates && this.parCandidates.length > 0) {
+    if (showingParOverlay && this.parCandidates) {
       const items = Math.min(5, this.parCandidates.length);
       // Measure legend total width (swatch + label per item + gaps)
       const labelFor = (i: number) => `#${i + 1}`;
@@ -3253,7 +3265,7 @@ class LevelEditorImpl implements LevelEditor {
       let lx = startX;
       ctx.textAlign = 'left';
       for (let i = 0; i < items; i++) {
-        const { color } = this.parCandidates[i];
+        const { color } = this.parCandidates![i];
         // swatch (rounded rect)
         ctx.fillStyle = color;
         const r = 2;

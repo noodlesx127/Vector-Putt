@@ -81,6 +81,10 @@ async function ensureUserSyncedWithFirebase(): Promise<void> {
     console.error('ensureUserSyncedWithFirebase failed:', e);
   }
 }
+function getUsername(): string {
+  return (userProfile.name || '').trim() || 'Player';
+}
+
 // End ensureUserSyncedWithFirebase
 
 // Multilevel persistence (vp.levels.v1)
@@ -2642,7 +2646,13 @@ async function playUserLevel(level: UserLevelEntry): Promise<void> {
     gameState = 'play';
     currentLevelIndex = 0;
     courseScores = [];
-    
+    courseTimes = [];
+    levelBoardIds = [level.name || `user-${Date.now()}`];
+    courseStartMs = null;
+    holeStartMs = null;
+    activeCourseId = null;
+    summaryOrigin = 'userLevels';
+
     // Load level data directly
     await loadLevelFromData(levelData);
     
@@ -2938,6 +2948,252 @@ const CLICK_SWALLOW_MS = 180; // shorten delay for snappier feel
 
 let previousGameState: 'menu' | 'course' | 'options' | 'users' | 'changelog' | 'loading' | 'play' | 'sunk' | 'summary' | 'levelEditor' | 'adminMenu' | 'levelManagement' = 'menu';
 
+type SummaryMode = 'course' | 'level';
+let summaryMode: SummaryMode = 'course';
+let summaryOrigin: 'courseSelect' | 'userLevels' | null = null;
+type SummaryHotspot = { action: 'restart' | 'mainMenu' | 'backToUserLevels' | 'backToCourseSelect'; x: number; y: number; w: number; h: number };
+let summaryHotspots: SummaryHotspot[] = [];
+let summaryFocusIndex = 0;
+
+function resetSummaryHotspots(): void {
+  summaryHotspots = [];
+  summaryFocusIndex = 0;
+}
+
+function renderSummaryScreen(ctx: CanvasRenderingContext2D): void {
+  ctx.fillStyle = 'rgba(8, 12, 18, 0.88)';
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+  const panelW = Math.min(780, WIDTH - 80);
+  const panelH = Math.min(540, HEIGHT - 120);
+  const panelX = Math.floor((WIDTH - panelW) / 2);
+  const panelY = Math.floor((HEIGHT - panelH) / 2);
+
+  ctx.fillStyle = 'rgba(20, 30, 40, 0.95)';
+  ctx.fillRect(panelX, panelY, panelW, panelH);
+  ctx.strokeStyle = 'rgba(100, 150, 200, 0.55)';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(panelX + 0.5, panelY + 0.5, panelW - 1, panelH - 1);
+
+  const title = summaryMode === 'course' ? 'Course Summary' : 'Level Summary';
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.font = '28px system-ui, sans-serif';
+  ctx.fillText(title, panelX + panelW / 2, panelY + 18);
+
+  const username = (userProfile?.name || 'Player').trim() || 'Player';
+  ctx.textAlign = 'left';
+  ctx.font = '16px system-ui, sans-serif';
+  ctx.fillStyle = '#cfd2cf';
+  let metaY = panelY + 62;
+  const metaX = panelX + 28;
+  ctx.fillText(`Player: ${username}`, metaX, metaY);
+  metaY += 20;
+  if (summaryMode === 'course') {
+    const elapsed = courseTimes.reduce((sum, t) => sum + (typeof t === 'number' ? t : 0), 0);
+    const durationText = elapsed > 0 ? `${Math.floor(elapsed / 60000)}m ${(Math.floor(elapsed / 1000) % 60).toString().padStart(2, '0')}s` : '—';
+    ctx.fillText(`Course: ${courseInfo.title || 'Untitled Course'}`, metaX, metaY);
+    metaY += 20;
+    ctx.fillText(`Total Time: ${durationText}`, metaX, metaY);
+  } else {
+    ctx.fillText(`Level: ${courseInfo.title || 'User Level'}`, metaX, metaY);
+    metaY += 20;
+    const s = courseScores[currentLevelIndex] ?? strokes;
+    ctx.fillText(`Strokes: ${s}`, metaX, metaY);
+    metaY += 20;
+    ctx.fillText(`Par: ${courseInfo.par}`, metaX, metaY);
+  }
+
+  const contentX = panelX + 24;
+  const contentY = panelY + 130;
+  const contentW = Math.floor(panelW * 0.55);
+  const contentH = panelH - 220;
+
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+  ctx.fillRect(contentX, contentY, contentW, contentH);
+  ctx.strokeStyle = 'rgba(100, 150, 200, 0.35)';
+  ctx.strokeRect(contentX + 0.5, contentY + 0.5, contentW - 1, contentH - 1);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(contentX, contentY, contentW, contentH);
+  ctx.clip();
+
+  if (summaryMode === 'course') {
+    ctx.font = '16px system-ui, sans-serif';
+    let rowY = contentY + 12;
+    for (let i = 0; i < levelPaths.length; i++) {
+      const s = courseScores[i] ?? 0;
+      const p = coursePars[i] ?? 0;
+      const d = s - p;
+      const deltaText = d === 0 ? 'E' : (d > 0 ? `+${d}` : `${d}`);
+      const color = d === 0 ? '#ffffff' : (d > 0 ? '#ff9a9a' : '#9aff9a');
+      ctx.fillStyle = color;
+      ctx.fillText(`Hole ${i + 1}`, contentX + 16, rowY);
+      ctx.fillStyle = '#cfd2cf';
+      ctx.fillText(`Par ${p}`, contentX + 110, rowY);
+      ctx.fillText(`Strokes ${s}`, contentX + 194, rowY);
+      ctx.fillStyle = color;
+      ctx.fillText(deltaText, contentX + 320, rowY);
+      rowY += 22;
+    }
+
+    const total = courseScores.reduce((a, b) => a + (b ?? 0), 0);
+    const parTotal = coursePars.reduce((a, b) => a + (b ?? 0), 0);
+    const totalDelta = total - parTotal;
+    const totalDeltaText = totalDelta === 0 ? 'E' : (totalDelta > 0 ? `+${totalDelta}` : `${totalDelta}`);
+    const totalColor = totalDelta === 0 ? '#ffffff' : (totalDelta > 0 ? '#ff9a9a' : '#9aff9a');
+    ctx.fillStyle = totalColor;
+    ctx.fillText(`Total: ${total} (Par ${parTotal}, ${totalDeltaText})`, contentX + 16, contentY + contentH - 40);
+  } else {
+    ctx.font = '18px system-ui, sans-serif';
+    const s = courseScores[currentLevelIndex] ?? strokes;
+    const p = coursePars[currentLevelIndex] ?? courseInfo.par;
+    const d = s - p;
+    const deltaText = d === 0 ? 'Even Par' : (d > 0 ? `${d} Over` : `${Math.abs(d)} Under`);
+    const color = d === 0 ? '#ffffff' : (d > 0 ? '#ff9a9a' : '#9aff9a');
+    ctx.fillStyle = color;
+    ctx.fillText(`Final Score: ${s} (Par ${p})`, contentX + 16, contentY + 18);
+    ctx.fillText(deltaText, contentX + 16, contentY + 48);
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.fillStyle = '#cfd2cf';
+    ctx.fillText('Time tracking not yet available for single-level runs.', contentX + 16, contentY + 88);
+  }
+
+  ctx.restore();
+
+  const leaderboardW = panelW - contentW - 48;
+  const leaderboardX = contentX + contentW + 24;
+  const leaderboardY = panelY + 130;
+  const leaderboardTitle = summaryMode === 'course' ? 'Course Leaderboard' : 'Level Leaderboard';
+  const boardId = summaryMode === 'course' ? activeCourseId : (levelBoardIds[currentLevelIndex] || null);
+  const rows = summaryMode === 'course'
+    ? (activeCourseId && courseLeaderboardCourseId === activeCourseId ? courseLeaderboardRows : [])
+    : (boardId && levelLeaderboardBoardId === boardId ? levelLeaderboardRows : []);
+  const loading = summaryMode === 'course'
+    ? (activeCourseId ? (courseLeaderboardCourseId === activeCourseId ? courseLeaderboardLoading : false) : false)
+    : (boardId ? (levelLeaderboardBoardId === boardId ? levelLeaderboardLoading : false) : false);
+
+  drawLeaderboardPanel(ctx, {
+    x: leaderboardX,
+    y: leaderboardY,
+    width: Math.max(280, leaderboardW),
+    title: leaderboardTitle,
+    rows,
+    loading,
+    emptyMessage: 'No entries yet',
+    maxRows: 6
+  });
+
+  renderSummaryButtons(ctx, panelX, panelY, panelW, panelH);
+}
+
+function renderSummaryButtons(ctx: CanvasRenderingContext2D, panelX: number, panelY: number, panelW: number, panelH: number): void {
+  const buttonY = panelY + panelH - 68;
+  const buttons: Array<{ label: string; action: SummaryHotspot['action']; primary?: boolean }> = [];
+
+  buttons.push({ label: 'Restart', action: 'restart', primary: true });
+  if (summaryOrigin === 'userLevels') {
+    buttons.push({ label: 'User Levels', action: 'backToUserLevels' });
+  } else if (summaryOrigin === 'courseSelect' && summaryMode === 'course') {
+    buttons.push({ label: 'Course Select', action: 'backToCourseSelect' });
+  }
+  buttons.push({ label: 'Main Menu', action: 'mainMenu' });
+
+  const buttonGap = 16;
+  const buttonWidth = 150;
+  const totalWidth = buttons.length * buttonWidth + (buttons.length - 1) * buttonGap;
+  let x = Math.floor(panelX + (panelW - totalWidth) / 2);
+
+  summaryHotspots = [];
+
+  buttons.forEach((btn, index) => {
+    const w = buttonWidth;
+    const h = 40;
+    const focused = summaryFocusIndex === index;
+    ctx.fillStyle = btn.primary ? 'rgba(120, 190, 255, 0.25)' : 'rgba(255,255,255,0.08)';
+    if (focused) ctx.fillStyle = 'rgba(120, 190, 255, 0.35)';
+    ctx.fillRect(x, buttonY, w, h);
+    ctx.strokeStyle = btn.primary ? '#7abfff' : '#cfd2cf';
+    ctx.lineWidth = focused ? 2 : 1.5;
+    ctx.strokeRect(x + 0.5, buttonY + 0.5, w - 1, h - 1);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(btn.label, x + w / 2, buttonY + h / 2 + 0.5);
+    summaryHotspots.push({ action: btn.action, x, y: buttonY, w, h });
+    x += w + buttonGap;
+  });
+
+  if (summaryHotspots.length > 0) {
+    summaryFocusIndex = Math.max(0, Math.min(summaryFocusIndex, summaryHotspots.length - 1));
+  }
+}
+
+function handleSummaryAction(action: SummaryHotspot['action']): void {
+  switch (action) {
+    case 'restart':
+      restartFromSummary();
+      break;
+    case 'mainMenu':
+      goToMainMenuFromSummary();
+      break;
+    case 'backToUserLevels':
+      summaryTimer = null;
+      paused = false;
+      isAiming = false;
+      summaryOrigin = null;
+      gameState = 'userLevels';
+      resetSummaryHotspots();
+      break;
+    case 'backToCourseSelect':
+      summaryTimer = null;
+      paused = false;
+      isAiming = false;
+      summaryOrigin = null;
+      gameState = 'course';
+      resetSummaryHotspots();
+      break;
+  }
+}
+
+function restartFromSummary(): void {
+  paused = false;
+  isAiming = false;
+  summaryTimer = null;
+  transitioning = false;
+  courseStartMs = null;
+  courseScores = [];
+  courseTimes = [];
+  coursePars = [];
+  if (!singleLevelMode) {
+    currentLevelIndex = 0;
+    preloadLevelByIndex(1);
+    loadLevelByIndex(currentLevelIndex).catch(console.error);
+  } else if (currentLevelPath) {
+    loadLevel(currentLevelPath).catch(console.error);
+  }
+  gameState = 'play';
+  resetSummaryHotspots();
+}
+
+function goToMainMenuFromSummary(): void {
+  paused = false;
+  isAiming = false;
+  ball.vx = 0;
+  ball.vy = 0;
+  ball.moving = false;
+  summaryTimer = null;
+  transitioning = false;
+  holeRecorded = true;
+  singleLevelMode = false;
+  summaryOrigin = null;
+  gameState = 'menu';
+  resetSummaryHotspots();
+}
+
 // Hover state trackers for various panels
 let hoverUsersBtnKind: UsersHotspot['kind'] | null = null;
 let hoverUsersListIndex: number | null = null;
@@ -3063,7 +3319,14 @@ function advanceAfterSunk() {
   const isLastHole = courseInfo.index >= courseInfo.total;
   if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
   if (isLastHole) {
+    summaryMode = singleLevelMode ? 'level' : 'course';
+    const totalStrokes = courseScores.reduce((sum, value) => sum + (typeof value === 'number' ? value : 0), 0);
+    const totalTimeFromHoles = courseTimes.reduce((sum, value) => sum + (typeof value === 'number' ? value : 0), 0);
+    const fallbackCourseTime = courseStartMs != null ? Math.max(0, Date.now() - courseStartMs) : null;
+    const totalTimeMs = totalTimeFromHoles > 0 ? totalTimeFromHoles : fallbackCourseTime;
+    submitCourseLeaderboard(totalStrokes, totalTimeMs);
     gameState = 'summary';
+    resetSummaryHotspots();
     transitioning = false;
   } else if (!singleLevelMode) {
     const next = currentLevelIndex + 1;
@@ -3086,6 +3349,7 @@ async function startCourseFromFile(courseJsonPath: string): Promise<void> {
       courseScores = [];
       coursePars = [];
       currentLevelIndex = 0;
+      summaryOrigin = 'courseSelect';
       gameState = 'loading';
       // Ensure first two levels are loaded before switching to play
       await Promise.all([
@@ -3174,6 +3438,7 @@ async function startDevCourseFromFirebase(): Promise<void> {
   coursePars = [];
   currentLevelIndex = 0;
   singleLevelMode = false;
+  summaryOrigin = 'courseSelect';
   gameState = 'loading';
   await loadLevel(levelPaths[0]);
   gameState = 'play';
@@ -4274,9 +4539,9 @@ canvas.addEventListener('mousemove', (e) => {
     return;
   }
   if (gameState === 'summary') {
-    const back = getCourseBackRect();
-    hoverSummaryBack = p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h;
-    canvas.style.cursor = hoverSummaryBack ? 'pointer' : 'default';
+    const hovering = summaryHotspots.some(hs => p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h);
+    hoverSummaryBack = hovering;
+    canvas.style.cursor = hovering ? 'pointer' : 'default';
     return;
   }
   if (gameState === 'options') {
@@ -7575,55 +7840,8 @@ function draw() {
     ctx.textBaseline = 'top';
   }
   // Course summary overlay (only on final hole and after recording)
-  if (gameState === 'summary' && currentLevelIndex >= levelPaths.length - 1 && holeRecorded) {
-    ctx.fillStyle = 'rgba(0,0,0,0.65)';
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.font = '26px system-ui, sans-serif';
-    ctx.fillText('Course Summary', WIDTH/2, 40);
-    const total = courseScores.reduce((a, b) => a + (b ?? 0), 0);
-    const parTotal = coursePars.reduce((a, b) => a + (b ?? 0), 0);
-    const totalDelta = total - parTotal;
-    ctx.font = '16px system-ui, sans-serif';
-    let y = 80;
-    for (let i = 0; i < levelPaths.length; i++) {
-      const s = courseScores[i] ?? 0;
-      const p = coursePars[i] ?? 0;
-      const d = s - p;
-      const deltaText = d === 0 ? 'E' : (d > 0 ? `+${d}` : `${d}`);
-      const line = `Hole ${i+1}: ${s} (Par ${p}, ${deltaText})`;
-      const color = d === 0 ? '#ffffff' : (d > 0 ? '#ff9a9a' : '#9aff9a');
-      ctx.fillStyle = color;
-      ctx.fillText(line, WIDTH/2, y);
-      ctx.fillStyle = '#ffffff';
-      y += 22;
-    }
-    y += 10;
-    ctx.font = '18px system-ui, sans-serif';
-    const totalDeltaText = totalDelta === 0 ? 'E' : (totalDelta > 0 ? `+${totalDelta}` : `${totalDelta}`);
-    const totalColor = totalDelta === 0 ? '#ffffff' : (totalDelta > 0 ? '#ff9a9a' : '#9aff9a');
-    ctx.fillStyle = totalColor;
-    ctx.fillText(`Total: ${total} (Par ${parTotal}, ${totalDeltaText})`, WIDTH/2, y);
-    ctx.fillStyle = '#ffffff';
-    y += 28;
-    ctx.font = '14px system-ui, sans-serif';
-    ctx.fillText('Click or Press Enter to Restart Game', WIDTH/2, y);
-    // Back to Main Menu button (bottom center)
-    const back = getCourseBackRect();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = hoverSummaryBack ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = hoverSummaryBack ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
-    ctx.fillRect(back.x, back.y, back.w, back.h);
-    ctx.strokeRect(back.x, back.y, back.w, back.h);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '16px system-ui, sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('Main Menu', back.x + back.w/2, back.y + back.h/2 + 0.5);
-    // restore defaults
-    ctx.textAlign = 'start';
-    ctx.textBaseline = 'top';
+  if (gameState === 'summary' && holeRecorded) {
+    renderSummaryScreen(ctx);
   }
   
   // Pause overlay (render last so it sits on top)
@@ -9795,14 +10013,19 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (gameState === 'summary') {
-    if (e.code === 'Enter' || e.code === 'NumpadEnter') {
-      courseScores = [];
-      currentLevelIndex = 0;
-      gameState = 'play';
-      loadLevelByIndex(currentLevelIndex).catch(console.error);
-    }
-    if (e.code === 'Escape' || e.code === 'KeyM') {
-      gameState = 'menu';
+    if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space') {
+      const btn = summaryHotspots[summaryFocusIndex];
+      if (btn) handleSummaryAction(btn.action);
+    } else if (e.code === 'ArrowRight' || (e.code === 'Tab' && !e.shiftKey)) {
+      if (summaryHotspots.length > 0) {
+        summaryFocusIndex = (summaryFocusIndex + 1) % summaryHotspots.length;
+      }
+    } else if (e.code === 'ArrowLeft' || (e.code === 'Tab' && e.shiftKey)) {
+      if (summaryHotspots.length > 0) {
+        summaryFocusIndex = (summaryFocusIndex - 1 + summaryHotspots.length) % summaryHotspots.length;
+      }
+    } else if (e.code === 'Escape' || e.code === 'KeyM') {
+      goToMainMenuFromSummary();
     }
     return;
   }

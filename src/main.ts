@@ -4950,8 +4950,12 @@ canvas.addEventListener('mousedown', (e) => {
   }
   // Click-to-continue via mousedown for immediate feedback
   if (!paused && gameState === 'sunk') { advanceAfterSunk(); return; }
-  // Do not handle summary actions on mousedown to avoid double-trigger with click
-  if (!paused && gameState === 'summary') { return; }
+  // Handle summary actions on mousedown for snappy UX
+  if (!paused && gameState === 'summary') {
+    const target = summaryHotspots.find(hs => p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h);
+    if (target) { handleSummaryAction(target.action); return; }
+    return;
+  }
   if (paused || gameState !== 'play') return; // disable while paused or not in play state
   if (ball.moving) return;
   const pp = canvasToPlayCoords(p);
@@ -10612,27 +10616,29 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (gameState === 'sunk') {
+    // Space: Replay current hole (single-level or course)
     if (e.code === 'Space') {
       e.preventDefault();
-      if (!singleLevelMode && currentLevelIndex + 1 < levelPaths.length) {
-        currentLevelIndex++;
-        gameState = 'play';
-        loadLevelByIndex(currentLevelIndex);
-        preloadLevelByIndex(currentLevelIndex + 1);
+      // Clear any pending summary timer and stay off the banner
+      if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
+      gameState = 'play';
+      if (singleLevelMode) {
+        if (currentLevelPath) {
+          loadLevel(currentLevelPath).catch(console.error);
+        } else {
+          loadLevelByIndex(currentLevelIndex).catch(console.error);
+        }
       } else {
-        restartFromSummary();
+        loadLevelByIndex(currentLevelIndex).catch(console.error);
+        preloadLevelByIndex(currentLevelIndex + 1);
       }
       return;
     }
-    if (e.code === 'Enter') {
-      if (!singleLevelMode && currentLevelIndex + 1 < levelPaths.length) {
-        currentLevelIndex++;
-        gameState = 'play';
-        loadLevelByIndex(currentLevelIndex);
-        preloadLevelByIndex(currentLevelIndex + 1);
-      } else {
-        gameState = 'summary';
-      }
+    // Enter or N: advance (Next hole or open Summary on last hole)
+    if (e.code === 'Enter' || e.code === 'KeyN') {
+      if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
+      advanceAfterSunk();
+      return;
     }
     if (e.code === 'Escape') {
       paused = !paused;

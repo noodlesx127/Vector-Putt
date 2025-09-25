@@ -2770,7 +2770,6 @@ let hoverCourseDev = false;
 let hoverCourseUserLevels = false;
 let hoverCourseBack = false;
 let hoverChangelogBack = false;
-let hoverSummaryBack = false;
 let hoverOptionsBack = false;
 let hoverOptionsVolMinus = false;
 let hoverOptionsVolPlus = false;
@@ -3291,6 +3290,16 @@ async function loadLevelFromData(levelData: any): Promise<void> {
     // Store in level cache and load
     const tempPath = `user-level-${Date.now()}`;
     levelCache.set(tempPath, tempLevel);
+
+    // Configure single-level session state
+    singleLevelMode = true;
+    activeCourseId = null;
+    levelPaths = [tempPath];
+    levelBoardIds = [null];
+    currentLevelIndex = 0;
+    courseScores = [];
+    courseTimes = [];
+    coursePars = [tempLevel.par ?? 3];
     await loadLevel(tempPath);
     
     console.log('Loaded user level data successfully');
@@ -3548,7 +3557,8 @@ function renderSummaryScreen(ctx: CanvasRenderingContext2D): void {
     const s = courseScores[currentLevelIndex] ?? strokes;
     ctx.fillText(`Strokes: ${s}`, metaX, metaY);
     metaY += 20;
-    ctx.fillText(`Par: ${courseInfo.par}`, metaX, metaY);
+    const parValue = coursePars[currentLevelIndex] ?? courseInfo.par;
+    ctx.fillText(`Par: ${parValue ?? '—'}`, metaX, metaY);
   }
 
   const contentX = panelX + 24;
@@ -5122,9 +5132,13 @@ canvas.addEventListener('mousemove', (e) => {
     return;
   }
   if (gameState === 'summary') {
-    const hovering = summaryHotspots.some(hs => p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h);
-    hoverSummaryBack = hovering;
-    canvas.style.cursor = hovering ? 'pointer' : 'default';
+    let hoverIndex = -1;
+    for (let i = 0; i < summaryHotspots.length; i++) {
+      const hs = summaryHotspots[i];
+      if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) { hoverIndex = i; break; }
+    }
+    if (hoverIndex >= 0) summaryFocusIndex = hoverIndex;
+    canvas.style.cursor = hoverIndex >= 0 ? 'pointer' : 'default';
     return;
   }
   if (gameState === 'options') {
@@ -5362,31 +5376,10 @@ canvas.addEventListener('click', (e) => {
     advanceAfterSunk();
   } else if (gameState === 'summary') {
     const p = worldFromEvent(e); // canvas coords
-    const back = getCourseBackRect();
-    // If clicking the Main Menu button, go to menu instead of restart
-    if (p.x >= back.x && p.x <= back.x + back.w && p.y >= back.y && p.y <= back.y + back.h) {
-      // Reset summary-specific state and return to main menu cleanly
-      paused = false;
-      isAiming = false;
-      ball.vx = 0; ball.vy = 0; ball.moving = false;
-      summaryTimer = null;
-      transitioning = false;
-      holeRecorded = true;
-      gameState = 'menu';
-      return;
+    const target = summaryHotspots.find(hs => p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h);
+    if (target) {
+      handleSummaryAction(target.action);
     }
-    // Otherwise restart course
-    paused = false;
-    isAiming = false;
-    summaryTimer = null;
-    transitioning = false;
-    courseScores = [];
-    courseTimes = [];
-    courseStartMs = null;
-    currentLevelIndex = 0;
-    gameState = 'play';
-    preloadLevelByIndex(1);
-    loadLevelByIndex(currentLevelIndex).catch(console.error);
   }
 });
 
@@ -10619,8 +10612,20 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (gameState === 'sunk') {
-    if (e.code === 'Space' || e.code === 'Enter') {
-      if (currentLevelIndex + 1 < levelPaths.length) {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (!singleLevelMode && currentLevelIndex + 1 < levelPaths.length) {
+        currentLevelIndex++;
+        gameState = 'play';
+        loadLevelByIndex(currentLevelIndex);
+        preloadLevelByIndex(currentLevelIndex + 1);
+      } else {
+        restartFromSummary();
+      }
+      return;
+    }
+    if (e.code === 'Enter') {
+      if (!singleLevelMode && currentLevelIndex + 1 < levelPaths.length) {
         currentLevelIndex++;
         gameState = 'play';
         loadLevelByIndex(currentLevelIndex);

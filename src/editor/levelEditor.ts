@@ -78,7 +78,7 @@ export type EditorAction =
   | 'showHelp'
   | 'alignLeft' | 'alignRight' | 'alignTop' | 'alignBottom' | 'alignCenterH' | 'alignCenterV' | 'distributeH' | 'distributeV';
 
-export type EditorMenuId = 'file' | 'edit' | 'view' | 'objects' | 'decorations' | 'tools' | 'help';
+export type EditorMenuId = 'file' | 'edit' | 'view' | 'objects' | 'decorations' | 'tools' | 'overlaySettings' | 'help';
 
 export type EditorMenuItem =
   | { kind: 'tool'; tool: EditorTool }
@@ -1731,23 +1731,7 @@ class LevelEditorImpl implements LevelEditor {
         { label: 'Alignment Guides', item: { kind: 'action', action: 'alignmentGuides' } },
         { label: 'Guide Details', item: { kind: 'action', action: 'guideDetailsToggle' } },
         { label: 'Rulers', item: { kind: 'action', action: 'rulersToggle' } },
-        { label: 'Tool Info Bar', item: { kind: 'action', action: 'toolInfoBarToggle' } },
-        // Overlay Screenshot options
-        { label: 'Overlay: Show/Hide', item: { kind: 'action', action: 'overlayToggle' } },
-        { label: 'Overlay: Opacity +', item: { kind: 'action', action: 'overlayOpacityUp' } },
-        { label: 'Overlay: Opacity -', item: { kind: 'action', action: 'overlayOpacityDown' } },
-        { label: 'Overlay: Z-Order (Above/Below)', item: { kind: 'action', action: 'overlayZToggle' } },
-        { label: 'Overlay: Lock', item: { kind: 'action', action: 'overlayLockToggle' } },
-        { label: 'Overlay: Snap to Grid', item: { kind: 'action', action: 'overlaySnapToggle' } },
-        { label: 'Overlay: Fit to Fairway', item: { kind: 'action', action: 'overlayFitFairway' } },
-        { label: 'Overlay: Fit to Canvas', item: { kind: 'action', action: 'overlayFitCanvas' } },
-        { label: 'Overlay: Reset Transform', item: { kind: 'action', action: 'overlayReset' } },
-        { label: 'Overlay: Preserve Aspect', item: { kind: 'action', action: 'overlayAspectToggle' } },
-        { label: 'Overlay: Flip Horizontal', item: { kind: 'action', action: 'overlayFlipH' } },
-        { label: 'Overlay: Flip Vertical', item: { kind: 'action', action: 'overlayFlipV' } },
-        { label: 'Overlay: Through-click (Above)', item: { kind: 'action', action: 'overlayThroughClick' } },
-        { label: 'Overlay: Calibrate Scale…', item: { kind: 'action', action: 'overlayCalibrateScale' } },
-        { label: 'Overlay: Remove', item: { kind: 'action', action: 'overlayRemove' } }
+        { label: 'Tool Info Bar', item: { kind: 'action', action: 'toolInfoBarToggle' } }
       ]
     },
     objects: {
@@ -1783,7 +1767,6 @@ class LevelEditorImpl implements LevelEditor {
       items: [
         { label: 'Select Tool', item: { kind: 'tool', tool: 'select' } },
         { label: 'Measure Tool', item: { kind: 'tool', tool: 'measure' } },
-        { label: 'Overlay Screenshot…', item: { kind: 'action', action: 'overlayOpen' } },
         { label: 'Metadata', item: { kind: 'action', action: 'metadata' } },
         { label: 'Suggest Par', item: { kind: 'action', action: 'suggestPar' } },
         { label: 'Suggest Cup Positions', item: { kind: 'action', action: 'suggestCup' } },
@@ -1792,6 +1775,27 @@ class LevelEditorImpl implements LevelEditor {
         { label: 'Angled Corridor…', item: { kind: 'action', action: 'angledCorridor' } },
         // Admin-only tool entry (conditionally rendered at runtime)
         { label: 'Course Creator', item: { kind: 'action', action: 'courseCreator' }, separator: true }
+      ]
+    },
+    overlaySettings: {
+      title: 'Overlay Settings',
+      items: [
+        { label: 'Overlay Screenshot…', item: { kind: 'action', action: 'overlayOpen' } },
+        { label: 'Show / Hide Overlay', item: { kind: 'action', action: 'overlayToggle' } },
+        { label: 'Opacity + (Shift=+10%)', item: { kind: 'action', action: 'overlayOpacityUp' } },
+        { label: 'Opacity - (Shift=-10%)', item: { kind: 'action', action: 'overlayOpacityDown' } },
+        { label: 'Z-Order (Above / Below)', item: { kind: 'action', action: 'overlayZToggle' } },
+        { label: 'Lock / Unlock', item: { kind: 'action', action: 'overlayLockToggle' } },
+        { label: 'Snap to Grid', item: { kind: 'action', action: 'overlaySnapToggle' } },
+        { label: 'Fit to Fairway', item: { kind: 'action', action: 'overlayFitFairway' } },
+        { label: 'Fit to Canvas', item: { kind: 'action', action: 'overlayFitCanvas' } },
+        { label: 'Reset Transform', item: { kind: 'action', action: 'overlayReset' } },
+        { label: 'Preserve Aspect', item: { kind: 'action', action: 'overlayAspectToggle' } },
+        { label: 'Flip Horizontal', item: { kind: 'action', action: 'overlayFlipH' } },
+        { label: 'Flip Vertical', item: { kind: 'action', action: 'overlayFlipV' } },
+        { label: 'Through-click (When Above)', item: { kind: 'action', action: 'overlayThroughClick' } },
+        { label: 'Calibrate Scale…', item: { kind: 'action', action: 'overlayCalibrateScale' } },
+        { label: 'Remove Overlay', item: { kind: 'action', action: 'overlayRemove' } }
       ]
     },
     help: {
@@ -3077,7 +3081,7 @@ class LevelEditorImpl implements LevelEditor {
     ctx.font = '14px system-ui, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    const menuIds: EditorMenuId[] = ['file', 'edit', 'view', 'objects', 'decorations', 'tools', 'help'];
+    const menuIds: EditorMenuId[] = ['file', 'edit', 'view', 'objects', 'decorations', 'tools', 'overlaySettings', 'help'];
     let mx = 8; const my = menubarH / 2;
     for (const menuId of menuIds) {
       const menu = this.EDITOR_MENUS[menuId];

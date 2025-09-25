@@ -53,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Play • HUD: Standardized the main play HUD to a dark top strip with a bottom border and white text per `UI_Design.md`. (`src/main.ts`)
 - Play • Pause/Esc Menu: Redesigned to a centered 800×600 panel with dim backdrop, `#cfd2cf` border, and standardized button styles/positions (Options, Replay, Back to Main Menu, Close). (`src/main.ts`)
 - UI • Consistency refresh: Standardized panel borders to `#cfd2cf` with `1.5px` stroke and backdrop `rgba(0,0,0,0.85)` across Course Select, User Made Levels, and admin overlays (Edit Course/Course Creator). Unified scrollbar track borders, row borders, preview/thumbnail frames, and Annotate Screenshot overlay tool palette/canvas borders to `#cfd2cf` while preserving semantic highlight colors. (`src/main.ts`)
+- Level Editor • Menus: Added dedicated `Overlay Settings` menu (between `Editor Tools` and `Help`) that centralizes overlay screenshot actions previously split between View/Tools. Labels refreshed for clarity (e.g., "Show / Hide Overlay", "Opacity ±", "Through-click"). (`src/editor/levelEditor.ts`)
 
 ### Removed
 - Level Editor • Overlay Screenshot: Removed dedicated transform modes and their View menu items:

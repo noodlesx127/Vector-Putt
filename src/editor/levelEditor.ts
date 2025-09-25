@@ -379,6 +379,134 @@ class LevelEditorImpl implements LevelEditor {
     return { x: prevX + sx * len, y: prevY + sy * len };
   }
 
+  // Help overlay: hierarchical pages with back navigation
+  private async openHelpOverlay(env: EditorEnv): Promise<void> {
+    const indexItems: Array<{ label: string; value: string }> = [
+      { label: 'Global', value: 'global' },
+      { label: 'Selection', value: 'selection' },
+      { label: 'Marquee', value: 'marquee' },
+      { label: 'Grid / Rulers / Guides', value: 'grid' },
+      { label: 'Polygons', value: 'polygons' },
+      { label: '45° Poly Tools', value: 'poly45' },
+      { label: 'Measure', value: 'measure' },
+      { label: 'Posts', value: 'posts' },
+      { label: 'Rect Tools', value: 'rect' },
+      { label: 'Overlay Screenshot', value: 'overlay' },
+      { label: 'Edit & Shortcuts', value: 'edit' },
+      { label: 'Tool Info Bar', value: 'infobar' }
+    ];
+
+    let page: 'index' | string = 'index';
+    let startIndex = 0;
+    while (true) {
+      if (page === 'index') {
+        const res = await env.showList('Level Editor Help — Tools', indexItems, startIndex);
+        if (!res) break;
+        page = String((res as any).value || 'index');
+        startIndex = Math.max(0, indexItems.findIndex(i => i.value === page));
+        continue;
+      }
+
+      const lines: string[] = [];
+      switch (page) {
+        case 'global':
+          lines.push(
+            'Esc: Cancel current action',
+            'Enter: Confirm (varies by tool)'
+          );
+          break;
+        case 'selection':
+          lines.push(
+            'Click or drag to select (Contain; Alt=Intersect)',
+            'Arrows: Nudge',
+            'Shift: Axis Lock',
+            'Ctrl: Grid-only',
+            'Alt: Disable Guides',
+            'Polygon edit (selection): Alt+Click Vertex removes; Double‑click Edge inserts'
+          );
+          break;
+        case 'marquee':
+          lines.push(
+            'Marquee selection is Contain by default',
+            'Hold Alt to switch to Intersect during drag'
+          );
+          break;
+        case 'grid':
+          lines.push(
+            'View menu toggles: Grid, Rulers, Guides',
+            'Ctrl forces Grid-only during interactions'
+          );
+          break;
+        case 'polygons':
+          lines.push(
+            'Click to add vertices; Enter/Click near start closes; Backspace: Undo last',
+            'Shift: Angle Snap  •  Ctrl: Grid-only  •  Alt: Disable Guides',
+            'Alt+Click Vertex: Remove  •  Double‑click near edge: Insert Vertex',
+            'Join Bevel: toggle while drafting (see Info Bar)'
+          );
+          break;
+        case 'poly45':
+          lines.push(
+            'Segments constrained to 0/45/90 degrees',
+            'Ctrl: Free angle override while placing'
+          );
+          break;
+        case 'measure':
+          lines.push(
+            'Click-drag to measure; Enter: Pin; Esc: Cancel',
+            'Right-click: Clear current; Double‑click: Clear pinned'
+          );
+          break;
+        case 'posts':
+          lines.push(
+            'Click to place post; Double‑click (when selected) to change radius',
+            'Ctrl: Grid-only  •  Alt: Disable Guides'
+          );
+          break;
+        case 'rect':
+          lines.push(
+            'Click-drag to place Walls/Water/Sand/Bridge/Hill',
+            'Shift: Axis Lock  •  Ctrl: Grid-only  •  Alt: Disable Guides'
+          );
+          break;
+        case 'overlay':
+          lines.push(
+            '[ / ]: Opacity ±5% (Shift=±10%)',
+            '=/−: Scale  •  ,/. : Rotate',
+            'Select overlay to Move/Resize/Rotate',
+            'Through‑click, Fit/Reset, Lock, Preserve Aspect, Flip H/V, Calibrate Scale: see View/Tools menu'
+          );
+          break;
+        case 'edit':
+          lines.push(
+            'Undo/Redo: Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y',
+            'Copy/Cut/Paste/Duplicate: Ctrl+C / X / V / D',
+            'Delete: Delete / Backspace'
+          );
+          break;
+        case 'infobar':
+          lines.push(
+            'Bottom toolbar shows live metrics and shortcuts per-tool',
+            'Suppresses obstructive in-canvas bubbles when active'
+          );
+          break;
+        default:
+          lines.push('No details available');
+          break;
+      }
+
+      const detailItems = lines.map((s, i) => ({ label: s, value: `line:${i}` }));
+      detailItems.push({ label: 'Back', value: 'back' });
+      const back = await env.showList(
+        `Help — ${indexItems.find(i => i.value === page)?.label || ''}`,
+        detailItems,
+        Math.max(0, detailItems.length - 1)
+      );
+      if (!back || (back as any).value === 'back') { page = 'index'; continue; }
+      // Stay on same page for any non-Back selection
+    }
+  }
+
   private renderParCandidatesSummary(env: EditorEnv): void {
     if (!this.showParCandidates || !this.parCandidates || this.parCandidates.length === 0) return;
 
@@ -3235,7 +3363,7 @@ class LevelEditorImpl implements LevelEditor {
         metrics = `L=${len.toFixed(1)} px  θ=${ang.toFixed(1)}°  •  Vertices: ${n}`;
       }
       leftText = `${toolLabel}${metrics ? ' — ' + metrics : ''}`;
-      rightText = `Enter: Close  •  Esc: Cancel  •  Backspace: Undo  •  Shift: Angle Snap  •  Ctrl: Grid-only  •  Alt: Disable Guides • Toggle Join Bevel  •  Snap: Grid ${gridOn ? 'On' : 'Off'}, Guides ${guidesOn ? 'On' : 'Off'}`;
+      rightText = `Enter: Close  •  Esc: Cancel  •  Backspace: Undo  •  Shift: Angle Snap  •  Ctrl: Grid-only  •  Alt: Disable Guides  •  Alt+Click Vertex: Remove  •  Double‑click Edge: Insert  •  Toggle Join Bevel  •  Snap: Grid ${gridOn ? 'On' : 'Off'}, Guides ${guidesOn ? 'On' : 'Off'}`;
     } else if (this.selectedTool === 'measure') {
       if (this.measureStart && this.measureEnd) {
         const a = this.measureStart, b = this.measureEnd;
@@ -4015,24 +4143,8 @@ class LevelEditorImpl implements LevelEditor {
             } else if (item.action === 'delete') {
               void this.openDeletePicker();
             } else if (item.action === 'showHelp') {
-              // Help overlay: list of shortcuts and tool descriptions
               (async () => {
-                const items: Array<{ label: string; value: string }> = [
-                  { label: 'Global — Esc: Cancel current action; Enter: Confirm (varies by tool)', value: 'global' },
-                  { label: 'Selection — Arrows: Nudge • Shift: Axis Lock • Ctrl: Grid-only • Alt: Disable Guides', value: 'select' },
-                  { label: 'Selection — Marquee: Contain by default; hold Alt for Intersect', value: 'marquee' },
-                  { label: 'Grid/Rulers/Guides — View menu toggles; Ctrl forces grid-only during interactions', value: 'guides' },
-                  { label: 'Polygons — Click to add vertices • Enter/Click near start: Close • Backspace: Undo last', value: 'poly' },
-                  { label: 'Polygons — Shift: Angle Snap • Ctrl: Grid-only • Alt: Disable Guides; Vertex edit: Alt+Click removes (min 3) • Double‑click near edge inserts and starts drag', value: 'poly2' },
-                  { label: '45° Poly Tools — Segments constrained to 0/45/90; Ctrl: Free angle', value: 'poly45' },
-                  { label: 'Measure — Click-drag to measure • Enter: Pin • Esc: Cancel • Right-click: Clear • Double‑click: Clear Pinned', value: 'measure' },
-                  { label: 'Posts — Click to place • Double-click (Select): Change Radius', value: 'posts' },
-                  { label: 'Rect Tools — Click-drag to place walls/water/sand/bridge/hill • Shift: Axis Lock', value: 'rect' },
-                  { label: 'Overlay Screenshot — [ / ]: Opacity ±5% (Shift=±10%) • =/−: Scale • ,/.: Rotate • Select overlay to move/resize/rotate; Through‑click in View menu', value: 'overlay' },
-                  { label: 'Edit — Undo/Redo: Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y • Copy/Cut/Paste/Duplicate: Ctrl+C/X/V/D • Delete: Delete/Backspace', value: 'edit' },
-                  { label: 'Tool Info Bar — Bottom toolbar shows live metrics and shortcuts by tool', value: 'infobar' }
-                ];
-                try { await env.showList('Level Editor Help', items, 0); } catch {}
+                try { await this.openHelpOverlay(env); } catch {}
               })();
             } else if (item.action === 'undo') {
               if (this.canUndo()) this.performUndo();

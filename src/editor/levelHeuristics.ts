@@ -591,9 +591,12 @@ export type CandidatePath = {
   par: number;
   cellKeys: string[];
   cellSet: Set<string>;
+<<<<<<< HEAD
   downhillMomentum: number;
   uphillResistance: number;
   autoAssistSegments: number;
+=======
+>>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
 };
 
 type AStarOptions = {
@@ -611,6 +614,7 @@ function pathSignature(path: Array<{ c: number; r: number }>): string {
   return s;
 }
 
+<<<<<<< HEAD
 function analyzePathTraversal(
   path: Array<{ c: number; r: number }>,
   grid: GridCell[][]
@@ -652,6 +656,8 @@ function analyzePathTraversal(
   return { lengthCost, downhillMomentum, uphillResistance, autoAssistSegments };
 }
 
+=======
+>>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
 function pathOverlapFraction(a: CandidatePath, b: CandidatePath): number {
   if (!a || !b) return 0;
   const sizeA = a.cellSet.size;
@@ -674,8 +680,20 @@ function computeCandidateForPath(
   const worldPoints = path.map(p => toWorld(p.c, p.r));
   const cellKeys = path.map(p => `${p.c},${p.r}`);
   const cellSet = new Set<string>(cellKeys);
+<<<<<<< HEAD
   // length cost in pixel units + hill momentum metrics
   const { lengthCost, downhillMomentum, uphillResistance, autoAssistSegments } = analyzePathTraversal(path, grid);
+=======
+  // length cost in pixel units
+  let lengthCost = 0;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1], b = path[i];
+    const diag = (a.c !== b.c) && (a.r !== b.r);
+    const step = diag ? Math.SQRT2 : 1;
+    const gc = grid[b.r][b.c].cost;
+    lengthCost += step * gc;
+  }
+>>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
   const lengthPx = lengthCost * cellSize;
   // turns
   let turns = 0;
@@ -743,6 +761,7 @@ function computeCandidateForPath(
   let par = Math.round(strokes + 1);
   par = Math.max(2, Math.min(7, par));
 
+<<<<<<< HEAD
   return {
     path,
     worldPoints,
@@ -759,6 +778,9 @@ function computeCandidateForPath(
     uphillResistance,
     autoAssistSegments
   };
+=======
+  return { path, worldPoints, lengthPx, turns, blockedAvg, sandCells, hillCells, strokes, par, cellKeys, cellSet };
+>>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
 }
 
 /**
@@ -784,10 +806,15 @@ export function suggestParK(
     return { candidates: [], bestIndex: 0, par: single.suggestedPar };
   }
 
+  const MAX_POOL = Math.max(K * 6, K + 2);
+  const MAX_DEPTH = 2;
+  const SIMILARITY_THRESHOLD = 0.72;
+  const SIGNATURES = new Set<string>();
   const candidates: CandidatePath[] = [];
-  const seen = new Set<string>();
-  const addCandidate = (path: Array<{ c: number; r: number }>) => {
+
+  const considerCandidate = (path: Array<{ c: number; r: number }>): CandidatePath | null => {
     const key = pathSignature(path);
+<<<<<<< HEAD
     if (!key || seen.has(key)) return null;
     seen.add(key);
     const candidate = computeCandidateForPath(grid, cols, rows, fairway, cellSize, path, opts);
@@ -803,10 +830,21 @@ export function suggestParK(
           // treat as distinct due to materially different hill behavior
           continue;
         }
+=======
+    if (!key || SIGNATURES.has(key)) return null;
+    SIGNATURES.add(key);
+    const candidate = computeCandidateForPath(grid, cols, rows, fairway, cellSize, path, opts);
+    for (let i = 0; i < candidates.length; i++) {
+      const existing = candidates[i];
+      const overlap = pathOverlapFraction(candidate, existing);
+      if (overlap >= SIMILARITY_THRESHOLD) {
+        // Keep the lower-stroke option when paths are nearly identical
+>>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
         if (candidate.strokes + 0.05 < existing.strokes) {
           candidates[i] = candidate;
           return candidate;
         }
+<<<<<<< HEAD
         isDuplicate = true;
         break;
       }
@@ -816,10 +854,20 @@ export function suggestParK(
       return candidate;
     }
     return null;
+=======
+        return null;
+      }
+    }
+    candidates.push(candidate);
+    return candidate;
+>>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
   };
 
-  addCandidate(base.path);
+  const baseCandidate = considerCandidate(base.path);
+  const queue: Array<{ path: Array<{ c: number; r: number }>; depth: number }> = [];
+  if (baseCandidate) queue.push({ path: base.path.slice(), depth: 0 });
 
+<<<<<<< HEAD
   // Generate alternates by banning sampled cells along the best path
   const sampleStep = Math.max(3, Math.round(base.path.length / Math.max(2, Math.min(8, K * 2))));
   for (let i = sampleStep; i < base.path.length - sampleStep && candidates.length < K; i += sampleStep) {
@@ -831,11 +879,49 @@ export function suggestParK(
   
   
   // Rank by strokes ascending (best first) and truncate to K
+=======
+  let queueIndex = 0;
+  while (queueIndex < queue.length && candidates.length < MAX_POOL) {
+    const { path, depth } = queue[queueIndex++];
+    if (path.length < 4) continue;
+    const sampleStep = Math.max(2, Math.round(path.length / Math.max(3, K * 2)));
+
+    for (let i = sampleStep; i < path.length - sampleStep && candidates.length < MAX_POOL; i += sampleStep) {
+      const banned = path[i];
+      const alt = aStarWithBanned(grid, cols, rows, start, goal, new Set([banned.c + ',' + banned.r]));
+      if (!alt.found) continue;
+      const added = considerCandidate(alt.path);
+      if (added && depth < MAX_DEPTH && queue.length < MAX_POOL) {
+        queue.push({ path: alt.path.slice(), depth: depth + 1 });
+      }
+    }
+
+    if (candidates.length >= MAX_POOL) break;
+
+    if (path.length >= 6) {
+      for (let i = sampleStep; i < path.length - sampleStep && candidates.length < MAX_POOL; i += sampleStep) {
+        const bannedSet = new Set<string>();
+        const first = path[i];
+        const second = path[Math.min(path.length - 2, i + Math.max(1, Math.floor(sampleStep / 2)))];
+        bannedSet.add(first.c + ',' + first.r);
+        bannedSet.add(second.c + ',' + second.r);
+        const altPair = aStarWithBanned(grid, cols, rows, start, goal, bannedSet);
+        if (!altPair.found) continue;
+        const added = considerCandidate(altPair.path);
+        if (added && depth < MAX_DEPTH && queue.length < MAX_POOL) {
+          queue.push({ path: altPair.path.slice(), depth: depth + 1 });
+        }
+      }
+    }
+  }
+
+>>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
   candidates.sort((a, b) => a.strokes - b.strokes || a.lengthPx - b.lengthPx);
-  if (candidates.length > K) candidates.length = K;
-  const bestIndex = candidates.length > 0 ? 0 : -1;
-  const par = candidates.length > 0 ? candidates[0].par : Math.max(2, Math.min(7, Math.round((base.lengthCost * cellSize) / (opts?.baselineShotPx ?? 320) + 1)));
-  return { candidates, bestIndex, par };
+  const finalCandidates = candidates.slice(0, K);
+  const bestIndex = finalCandidates.length > 0 ? 0 : -1;
+  const fallbackPar = Math.max(2, Math.min(7, Math.round((base.lengthCost * cellSize) / (opts?.baselineShotPx ?? 320) + 1)));
+  const par = finalCandidates.length > 0 ? finalCandidates[0].par : fallbackPar;
+  return { candidates: finalCandidates, bestIndex, par };
 }
 
 function aStarWithBanned(

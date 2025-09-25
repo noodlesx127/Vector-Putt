@@ -115,7 +115,8 @@ Notes:
     - [x] Axis lock for drag-move (Shift constrains)
     - [x] Align/Distribute commands for multi-select (Align Left/Right/Top/Bottom/Center H/V; Distribute H/V)
     - [x] Numeric readout for drafting via bottom Tool Info Bar; in-canvas bubbles minimized to avoid obstruction
-    - [x] Ruler guide lines (drag out from rulers; double-click ruler to clear)
+    - [x] Ruler guide lines (drag out from rulers; double-click ruler to clear)
+    - [x] Info Bar & Help audit: surface polygon vertex add/remove, marquee Contain/Intersect, overlay quick keys, measure double-click clear, and standard Edit shortcuts in the Info Bar and Help overlay (2025-09-24)
   - [x] Load/Save `levels/*.json` with schema-aware validation
   - [ ] Dev/Admin-only Course Creator (Editor → Editor Tools → "Course Creator")
     - [ ] Dedicated UI listing all levels with thumbnail and metadata (name, author, par)
@@ -242,7 +243,7 @@ Notes:
   - [ ] Export CSV/JSON for a board (optional)
 
 - [ ] Implementation
-  - [ ] `src/firebase/database.ts`: add `FirebaseLeaderboardStore` (levels/courses entries CRUD; settings)
+  - [x] `src/firebase/database.ts`: add `FirebaseLeaderboardStore` (levels/courses entries CRUD; settings)
   - [ ] `src/main.ts`: hook updates after hole/course completion; read top-N for displays
   - [ ] `src/editor/levelEditor.ts`: create board on new level save; wire to Course Creator for courses
   - [ ] `src/main.ts` and overlays: new UI to view leaderboards; admin settings overlay under Admin Menu
@@ -504,3 +505,4 @@ Implementation follow-ups:
 - [ ] Cosmetics/unlocks (non-pay)
 - [ ] Mobile touch optimization
 - [ ] Advanced camera work (cinematic replays)
+

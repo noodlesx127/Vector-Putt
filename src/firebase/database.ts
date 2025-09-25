@@ -10,7 +10,8 @@ const PATHS = {
   scores: 'scores',
   settings: 'settings',
   courses: 'courses',
-  gameSettings: 'gameSettings'
+  gameSettings: 'gameSettings',
+  leaderboards: 'leaderboards'
 } as const;
 
 // User data interface
@@ -74,6 +75,34 @@ export interface FirebaseGameSettings {
   hillBump?: number;             // default 0.2
   bankWeight?: number;           // default 0.12
   lastModified: number;    // Unix timestamp
+}
+
+export type LeaderboardKind = 'levels' | 'courses';
+
+export interface FirebaseLeaderboardEntry {
+  userId: string;
+  username: string;
+  bestStrokes: number;
+  bestTimeMs?: number;
+  attempts: number;
+  lastUpdated: number;
+}
+
+export interface FirebaseLeaderboardBoard {
+  id: string;
+  kind: LeaderboardKind;
+  entries: Record<string, FirebaseLeaderboardEntry>;
+  createdAt: number;
+  lastUpdated: number;
+}
+
+export interface FirebaseLeaderboardSettings {
+  resetsEnabled: boolean;
+  retentionDays: number;
+  visibility: 'public' | 'friends' | 'private';
+  allowTies: boolean;
+  maxEntriesPerBoard: number;
+  lastModified: number;
 }
 
 // Generic database operations
@@ -315,6 +344,106 @@ export class FirebaseDatabase {
       ...score,
       timestamp: Date.now()
     });
+  }
+
+  // Leaderboards
+  private static leaderboardPath(kind: LeaderboardKind, boardId?: string): string {
+    if (!boardId) return `${PATHS.leaderboards}/${kind}`;
+    return `${PATHS.leaderboards}/${kind}/${boardId}`;
+  }
+
+  static async getLeaderboard(kind: LeaderboardKind, boardId: string): Promise<FirebaseLeaderboardBoard | null> {
+    const snapshot = await get(ref(database, this.leaderboardPath(kind, boardId)));
+    if (!snapshot.exists()) return null;
+
+    const value = snapshot.val();
+    return {
+      id: boardId,
+      kind,
+      entries: value.entries || {},
+      createdAt: value.createdAt ?? Date.now(),
+      lastUpdated: value.lastUpdated ?? Date.now()
+    };
+  }
+
+  static async getLeaderboards(kind: LeaderboardKind): Promise<Record<string, FirebaseLeaderboardBoard>> {
+    const snapshot = await get(ref(database, this.leaderboardPath(kind)));
+    if (!snapshot.exists()) return {};
+    const raw = snapshot.val() as Record<string, FirebaseLeaderboardBoard>;
+    const result: Record<string, FirebaseLeaderboardBoard> = {};
+    for (const [boardId, board] of Object.entries(raw)) {
+      if (!board || typeof board !== 'object') continue;
+      result[boardId] = {
+        id: boardId,
+        kind,
+        entries: board.entries ?? {},
+        createdAt: (board as any).createdAt ?? 0,
+        lastUpdated: (board as any).lastUpdated ?? 0
+      } as FirebaseLeaderboardBoard;
+    }
+    return result;
+  }
+
+  static async ensureLeaderboard(kind: LeaderboardKind, boardId: string): Promise<void> {
+    const boardRef = ref(database, this.leaderboardPath(kind, boardId));
+    const snapshot = await get(boardRef);
+    if (snapshot.exists()) return;
+
+    const now = Date.now();
+    await set(boardRef, {
+      entries: {},
+      createdAt: now,
+      lastUpdated: now
+    });
+  }
+
+  static async upsertLeaderboardEntry(kind: LeaderboardKind, boardId: string, userId: string, entry: FirebaseLeaderboardEntry): Promise<void> {
+    const entryRef = ref(database, `${this.leaderboardPath(kind, boardId)}/entries/${userId}`);
+    await set(entryRef, { ...entry, lastUpdated: Date.now() });
+    await update(ref(database, this.leaderboardPath(kind, boardId)), { lastUpdated: Date.now() });
+  }
+
+  static async removeLeaderboardEntry(kind: LeaderboardKind, boardId: string, userId: string): Promise<void> {
+    await remove(ref(database, `${this.leaderboardPath(kind, boardId)}/entries/${userId}`));
+    await update(ref(database, this.leaderboardPath(kind, boardId)), { lastUpdated: Date.now() });
+  }
+
+  static async pruneLeaderboard(kind: LeaderboardKind, boardId: string, keepUserIds: Set<string>): Promise<void> {
+    const board = await this.getLeaderboard(kind, boardId);
+    if (!board) return;
+    const deletions: Promise<void>[] = [];
+    for (const userId of Object.keys(board.entries)) {
+      if (!keepUserIds.has(userId)) {
+        deletions.push(this.removeLeaderboardEntry(kind, boardId, userId));
+      }
+    }
+    if (deletions.length > 0) {
+      await Promise.allSettled(deletions);
+    }
+  }
+
+  static async removeLeaderboard(kind: LeaderboardKind, boardId: string): Promise<void> {
+    await remove(ref(database, this.leaderboardPath(kind, boardId)));
+  }
+
+  static async getLeaderboardEntries(kind: LeaderboardKind, boardId: string): Promise<Record<string, FirebaseLeaderboardEntry>> {
+    const board = await this.getLeaderboard(kind, boardId);
+    return board?.entries ?? {};
+  }
+
+  static async getLeaderboardSettings(): Promise<FirebaseLeaderboardSettings | null> {
+    const snapshot = await get(ref(database, `${PATHS.leaderboards}/settings`));
+    if (!snapshot.exists()) return null;
+    return snapshot.val() as FirebaseLeaderboardSettings;
+  }
+
+  static async saveLeaderboardSettings(settings: FirebaseLeaderboardSettings): Promise<void> {
+    const payload = { ...settings, lastModified: Date.now() } as FirebaseLeaderboardSettings;
+    await set(ref(database, `${PATHS.leaderboards}/settings`), payload);
+  }
+
+  static async updateLeaderboardSettings(updates: Partial<FirebaseLeaderboardSettings>): Promise<void> {
+    await update(ref(database, `${PATHS.leaderboards}/settings`), { ...updates, lastModified: Date.now() });
   }
 
   // Settings

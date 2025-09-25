@@ -1,5 +1,6 @@
  import CHANGELOG_RAW from '../CHANGELOG.md?raw';
-import firebaseManager from './firebase';
+import firebaseManager, { firebaseLeaderboardStore } from './firebase';
+import type { LeaderboardEntry, LeaderboardSettings, LeaderboardBoard } from './firebase/FirebaseLeaderboardStore';
 import { levelEditor } from './editor/levelEditor';
 import { computePolysFromThresholds, buildDefaultThresholds, importLevelFromAnnotations, AnnotationData, AnnotationOptions, findAnnotationAtPoint } from './editor/importScreenshot';
 
@@ -81,6 +82,10 @@ async function ensureUserSyncedWithFirebase(): Promise<void> {
     console.error('ensureUserSyncedWithFirebase failed:', e);
   }
 }
+<<<<<<< HEAD
+=======
+
+>>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
 function getUsername(): string {
   return (userProfile.name || '').trim() || 'Player';
 }
@@ -219,6 +224,82 @@ function showUiConfirm(message: string, title = 'Confirm'): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     uiOverlay = { kind: 'confirm', title, message, resolve, cancelable: true };
   });
+}
+
+function formatLeaderboardTime(timeMs?: number): string {
+  if (typeof timeMs !== 'number' || !Number.isFinite(timeMs) || timeMs <= 0) return '';
+  const totalSeconds = Math.floor(timeMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function drawLeaderboardPanel(
+  renderCtx: CanvasRenderingContext2D,
+  options: {
+    x: number;
+    y: number;
+    width: number;
+    title: string;
+    rows: LeaderboardDisplayRow[];
+    loading: boolean;
+    emptyMessage: string;
+    maxRows?: number;
+  }
+): number {
+  const { x, y, width, title, rows, loading, emptyMessage, maxRows = 5 } = options;
+  const pad = 12;
+  const headerHeight = 26;
+  const rowHeight = 20;
+  const visibleRows = Math.min(rows.length, maxRows);
+  const bodyLines = loading || visibleRows === 0 ? 1 : visibleRows;
+  const panelHeight = headerHeight + pad * 2 + bodyLines * rowHeight;
+
+  renderCtx.save();
+  renderCtx.fillStyle = 'rgba(0, 0, 0, 0.78)';
+  renderCtx.fillRect(x, y, width, panelHeight);
+  renderCtx.strokeStyle = '#cfd2cf';
+  renderCtx.lineWidth = 1.5;
+  renderCtx.strokeRect(x + 0.5, y + 0.5, width - 1, panelHeight - 1);
+
+  renderCtx.fillStyle = '#ffffff';
+  renderCtx.font = '16px system-ui, sans-serif';
+  renderCtx.textAlign = 'center';
+  renderCtx.textBaseline = 'top';
+  renderCtx.fillText(title, x + width / 2, y + pad);
+
+  renderCtx.font = '14px system-ui, sans-serif';
+  renderCtx.textBaseline = 'top';
+  let rowY = y + pad + headerHeight;
+
+  if (loading) {
+    renderCtx.textAlign = 'left';
+    renderCtx.fillText('Loading…', x + pad, rowY);
+  } else if (visibleRows === 0) {
+    renderCtx.textAlign = 'left';
+    renderCtx.fillText(emptyMessage, x + pad, rowY);
+  } else {
+    for (let i = 0; i < visibleRows; i++) {
+      const row = rows[i];
+      if (row.isSelf) {
+        renderCtx.fillStyle = 'rgba(110, 255, 110, 0.25)';
+        renderCtx.fillRect(x + 4, rowY - 2, width - 8, rowHeight);
+        renderCtx.fillStyle = '#ffffff';
+      }
+      renderCtx.textAlign = 'left';
+      const nameText = `${row.rank}. ${row.username}`;
+      renderCtx.fillText(nameText, x + pad, rowY);
+      renderCtx.textAlign = 'right';
+      const timeText = formatLeaderboardTime(row.timeMs);
+      const detailText = timeText ? `${row.strokes} • ${timeText}` : `${row.strokes}`;
+      renderCtx.fillText(detailText, x + width - pad, rowY);
+      rowY += rowHeight;
+      renderCtx.fillStyle = '#ffffff';
+    }
+  }
+
+  renderCtx.restore();
+  return panelHeight;
 }
 
 // Annotation overlay: allows manual tracing of level elements
@@ -1797,10 +1878,65 @@ let usersUiHotspots: UsersHotspot[] = [];
 
 // Admin Menu state and hotspots
 type AdminMenuHotspot = {
-  kind: 'levelManagement' | 'userManagement' | 'gameSettings' | 'back';
+  kind: 'levelManagement' | 'userManagement' | 'gameSettings' | 'leaderboards' | 'back';
   x: number; y: number; w: number; h: number;
 };
 let adminMenuHotspots: AdminMenuHotspot[] = [];
+
+type LeaderboardTab = 'levels' | 'courses';
+type LeaderboardsAdminHotspot = {
+  kind:
+    | 'back'
+    | 'tabLevels'
+    | 'tabCourses'
+    | 'refresh'
+    | 'boardItem'
+    | 'resetBoard'
+    | 'pruneBoard'
+    | 'applyRetention'
+    | 'saveSettings'
+    | 'reloadSettings'
+    | 'toggleResets'
+    | 'toggleAllowTies'
+    | 'cycleVisibility'
+    | 'retentionMinus'
+    | 'retentionPlus'
+    | 'maxMinus'
+    | 'maxPlus';
+  x: number; y: number; w: number; h: number;
+  boardId?: string;
+  index?: number;
+};
+let leaderboardsAdminHotspots: LeaderboardsAdminHotspot[] = [];
+let leaderboardsAdminState: {
+  tab: LeaderboardTab;
+  boards: LeaderboardBoard[];
+  selectedIndex: number;
+  scrollOffset: number;
+  loadingBoards: boolean;
+  loadingSettings: boolean;
+  savingSettings: boolean;
+  message: string;
+} = {
+  tab: 'levels',
+  boards: [],
+  selectedIndex: -1,
+  scrollOffset: 0,
+  loadingBoards: false,
+  loadingSettings: false,
+  savingSettings: false,
+  message: ''
+};
+let leaderboardsSettingsDraft: LeaderboardSettings = {
+  resetsEnabled: true,
+  retentionDays: 365,
+  visibility: 'public',
+  allowTies: false,
+  maxEntriesPerBoard: 100,
+  lastModified: 0
+};
+let leaderboardsAdminBoardsToken: symbol | null = null;
+let leaderboardsAdminSettingsToken: symbol | null = null;
 
 // Admin Game Settings state
 type GameSettingsField = 'slope' | 'friction' | 'sand' | 'baseline' | 'turnPenalty' | 'hillBump' | 'bankWeight';
@@ -1841,6 +1977,275 @@ let levelManagementState = {
   scrollOffset: 0,
   levels: [] as Array<{ id: string; title: string; author: string; authorId?: string; lastModified: number; data: any }>
 };
+let leaderboardsAdminHoverIndex: number | null = null;
+let leaderboardsAdminHoverAction: string | null = null;
+
+type LeaderboardKind = 'levels' | 'courses';
+
+const LEADERBOARD_ITEM_HEIGHT = 50;
+const LEADERBOARD_ITEM_GAP = 4;
+const LEADERBOARD_RETENTION_STEP = 30; // days
+const LEADERBOARD_MAX_STEP = 5;
+
+function getLeaderboardsVisibleCount(): number {
+  return Math.max(1, Math.floor(360 / (LEADERBOARD_ITEM_HEIGHT + LEADERBOARD_ITEM_GAP)));
+}
+
+function clampLeaderboardsScroll(): void {
+  const maxScroll = Math.max(0, leaderboardsAdminState.boards.length - getLeaderboardsVisibleCount());
+  if (leaderboardsAdminState.scrollOffset < 0) leaderboardsAdminState.scrollOffset = 0;
+  if (leaderboardsAdminState.scrollOffset > maxScroll) leaderboardsAdminState.scrollOffset = maxScroll;
+}
+
+function leaderboardKindForTab(tab: LeaderboardTab): LeaderboardKind {
+  return tab === 'levels' ? 'levels' : 'courses';
+}
+
+function getSelectedLeaderboardBoard(): LeaderboardBoard | null {
+  const idx = leaderboardsAdminState.selectedIndex;
+  if (idx < 0 || idx >= leaderboardsAdminState.boards.length) return null;
+  return leaderboardsAdminState.boards[idx];
+}
+
+function markLeaderboardsSettingsDirty(message = 'Settings modified — Save to persist'): void {
+  leaderboardsAdminState.message = message;
+}
+
+function switchLeaderboardsTab(tab: LeaderboardTab): void {
+  if (leaderboardsAdminState.tab === tab && leaderboardsAdminState.loadingBoards) return;
+  leaderboardsAdminState.selectedIndex = -1;
+  leaderboardsAdminState.scrollOffset = 0;
+  leaderboardsAdminState.boards = [];
+  leaderboardsAdminState.tab = tab;
+  leaderboardsAdminState.message = `Loading ${tab === 'levels' ? 'level' : 'course'} leaderboards…`;
+  refreshLeaderboardsAdminBoards(tab);
+}
+
+function setLeaderboardsSelectedIndex(index: number): void {
+  if (index < 0 || index >= leaderboardsAdminState.boards.length) return;
+  leaderboardsAdminState.selectedIndex = index;
+  ensureLeaderboardSelectionVisible();
+  const board = leaderboardsAdminState.boards[index];
+  leaderboardsAdminState.message = `Selected ${board.kind === 'levels' ? 'Level' : 'Course'} board ${board.id}`;
+}
+
+function toggleLeaderboardsResets(): void {
+  leaderboardsSettingsDraft.resetsEnabled = !leaderboardsSettingsDraft.resetsEnabled;
+  markLeaderboardsSettingsDirty();
+}
+
+function toggleLeaderboardsAllowTies(): void {
+  leaderboardsSettingsDraft.allowTies = !leaderboardsSettingsDraft.allowTies;
+  markLeaderboardsSettingsDirty();
+}
+
+function cycleLeaderboardsVisibility(): void {
+  const order: Array<LeaderboardSettings['visibility']> = ['public', 'friends', 'private'];
+  const idx = order.indexOf(leaderboardsSettingsDraft.visibility);
+  const next = order[(idx + 1) % order.length];
+  leaderboardsSettingsDraft.visibility = next;
+  markLeaderboardsSettingsDirty(`Visibility set to ${next}. Save to persist.`);
+}
+
+function adjustLeaderboardsRetentionDays(delta: number): void {
+  const minDays = 0;
+  const maxDays = 1095;
+  const next = Math.max(minDays, Math.min(maxDays, leaderboardsSettingsDraft.retentionDays + delta));
+  if (next === leaderboardsSettingsDraft.retentionDays) return;
+  leaderboardsSettingsDraft.retentionDays = next;
+  markLeaderboardsSettingsDirty(`Retention set to ${next} day${next === 1 ? '' : 's'}. Save to persist.`);
+}
+
+function adjustLeaderboardsMaxEntries(delta: number): void {
+  const minEntries = 5;
+  const maxEntries = 500;
+  const next = Math.max(minEntries, Math.min(maxEntries, leaderboardsSettingsDraft.maxEntriesPerBoard + delta));
+  if (next === leaderboardsSettingsDraft.maxEntriesPerBoard) return;
+  leaderboardsSettingsDraft.maxEntriesPerBoard = next;
+  markLeaderboardsSettingsDirty(`Max entries set to ${next}. Save to persist.`);
+}
+
+function ensureLeaderboardSelectionVisible(): void {
+  if (leaderboardsAdminState.selectedIndex < 0) return;
+  const visibleItems = getLeaderboardsVisibleCount();
+  const minIndex = leaderboardsAdminState.scrollOffset;
+  const maxIndex = leaderboardsAdminState.scrollOffset + visibleItems - 1;
+  if (leaderboardsAdminState.selectedIndex < minIndex) {
+    leaderboardsAdminState.scrollOffset = leaderboardsAdminState.selectedIndex;
+  } else if (leaderboardsAdminState.selectedIndex > maxIndex) {
+    leaderboardsAdminState.scrollOffset = leaderboardsAdminState.selectedIndex - visibleItems + 1;
+  }
+  clampLeaderboardsScroll();
+}
+
+async function refreshLeaderboardsAdminBoards(tab: LeaderboardTab = leaderboardsAdminState.tab): Promise<void> {
+  if (!firebaseReady) {
+    showUiToast('Firebase services are not ready yet.');
+    leaderboardsAdminState.message = 'Firebase not ready.';
+    return;
+  }
+  const token = Symbol('leaderboardsBoards');
+  leaderboardsAdminBoardsToken = token;
+  leaderboardsAdminState.loadingBoards = true;
+  leaderboardsAdminState.tab = tab;
+  const previousSelectedId = getSelectedLeaderboardBoard()?.id ?? null;
+  try {
+    const kind = leaderboardKindForTab(tab);
+    const boards = await firebaseLeaderboardStore.listBoards(kind);
+    if (leaderboardsAdminBoardsToken !== token) return;
+    boards.sort((a, b) => (b.lastUpdated ?? 0) - (a.lastUpdated ?? 0));
+    leaderboardsAdminState.boards = boards;
+    let nextIndex = -1;
+    if (previousSelectedId) {
+      nextIndex = boards.findIndex(board => board.id === previousSelectedId);
+    }
+    if (nextIndex < 0 && boards.length > 0) {
+      nextIndex = 0;
+    }
+    leaderboardsAdminState.selectedIndex = nextIndex;
+    leaderboardsAdminState.scrollOffset = 0;
+    clampLeaderboardsScroll();
+    ensureLeaderboardSelectionVisible();
+    const count = boards.length;
+    leaderboardsAdminState.message = count > 0 ? `${count} leaderboard${count === 1 ? '' : 's'} loaded.` : 'No leaderboards found for this tab.';
+  } catch (error) {
+    if (leaderboardsAdminBoardsToken !== token) return;
+    console.error('Failed to load leaderboards list', error);
+    leaderboardsAdminState.message = 'Failed to load leaderboards.';
+    showUiToast('Failed to load leaderboards.');
+  } finally {
+    if (leaderboardsAdminBoardsToken === token) {
+      leaderboardsAdminState.loadingBoards = false;
+    }
+  }
+}
+
+async function refreshLeaderboardsAdminSettings(): Promise<void> {
+  if (!firebaseReady) return;
+  const token = Symbol('leaderboardsSettings');
+  leaderboardsAdminSettingsToken = token;
+  leaderboardsAdminState.loadingSettings = true;
+  try {
+    const settings = await firebaseLeaderboardStore.getSettings();
+    if (leaderboardsAdminSettingsToken !== token) return;
+    leaderboardsSettingsDraft = { ...settings };
+    leaderboardsAdminState.message = 'Leaderboard settings loaded.';
+  } catch (error) {
+    if (leaderboardsAdminSettingsToken !== token) return;
+    console.error('Failed to load leaderboard settings', error);
+    leaderboardsAdminState.message = 'Failed to load settings.';
+    showUiToast('Failed to load leaderboard settings.');
+  } finally {
+    if (leaderboardsAdminSettingsToken === token) {
+      leaderboardsAdminState.loadingSettings = false;
+    }
+  }
+}
+
+function openLeaderboardsAdminPanel(): void {
+  if (!firebaseReady) {
+    showUiToast('Firebase services are not ready yet.');
+    return;
+  }
+  leaderboardsAdminState = {
+    tab: 'levels',
+    boards: [],
+    selectedIndex: -1,
+    scrollOffset: 0,
+    loadingBoards: false,
+    loadingSettings: false,
+    savingSettings: false,
+    message: 'Loading leaderboards…'
+  };
+  leaderboardsSettingsDraft = {
+    resetsEnabled: true,
+    retentionDays: 365,
+    visibility: 'public',
+    allowTies: false,
+    maxEntriesPerBoard: 100,
+    lastModified: 0
+  };
+  leaderboardsAdminHoverIndex = null;
+  leaderboardsAdminHoverAction = null;
+  gameState = 'leaderboardsAdmin';
+  refreshLeaderboardsAdminSettings();
+  refreshLeaderboardsAdminBoards('levels');
+}
+
+async function saveLeaderboardsSettings(): Promise<void> {
+  if (!firebaseReady) return;
+  leaderboardsAdminState.savingSettings = true;
+  leaderboardsAdminState.message = 'Saving settings…';
+  try {
+    await firebaseLeaderboardStore.saveSettings({ ...leaderboardsSettingsDraft });
+    leaderboardsAdminState.message = 'Settings saved.';
+    showUiToast('Leaderboard settings saved.');
+    await refreshLeaderboardsAdminSettings();
+  } catch (error) {
+    console.error('Failed to save leaderboard settings', error);
+    leaderboardsAdminState.message = 'Failed to save settings.';
+    showUiToast('Failed to save leaderboard settings.');
+  } finally {
+    leaderboardsAdminState.savingSettings = false;
+  }
+}
+
+async function reloadLeaderboardsSettings(): Promise<void> {
+  if (!firebaseReady) return;
+  leaderboardsAdminState.message = 'Reloading settings…';
+  await refreshLeaderboardsAdminSettings();
+}
+
+async function resetLeaderboardBoard(board: LeaderboardBoard): Promise<void> {
+  if (!firebaseReady) return;
+  const confirmed = await showUiConfirm(`Reset all entries for "${board.id}"? This cannot be undone.`, 'Reset Leaderboard');
+  if (!confirmed) return;
+  leaderboardsAdminState.message = `Resetting leaderboard ${board.id}…`;
+  try {
+    await firebaseLeaderboardStore.resetBoard(board.kind, board.id);
+    showUiToast(`Reset leaderboard ${board.id}`);
+  } catch (error) {
+    console.error('Failed to reset leaderboard', error);
+    leaderboardsAdminState.message = 'Failed to reset leaderboard.';
+    showUiToast('Failed to reset leaderboard.');
+    return;
+  }
+  await refreshLeaderboardsAdminBoards();
+}
+
+async function pruneLeaderboardBoard(board: LeaderboardBoard): Promise<void> {
+  if (!firebaseReady) return;
+  leaderboardsAdminState.message = `Pruning leaderboard ${board.id}…`;
+  try {
+    await firebaseLeaderboardStore.pruneBoardBySettings(board.kind, board.id);
+    showUiToast(`Pruned leaderboard ${board.id} to top ${leaderboardsSettingsDraft.maxEntriesPerBoard}.`);
+  } catch (error) {
+    console.error('Failed to prune leaderboard', error);
+    leaderboardsAdminState.message = 'Failed to prune leaderboard.';
+    showUiToast('Failed to prune leaderboard.');
+    return;
+  }
+  await refreshLeaderboardsAdminBoards();
+}
+
+async function applyRetentionToLeaderboard(board: LeaderboardBoard): Promise<void> {
+  if (!firebaseReady) return;
+  leaderboardsAdminState.message = `Applying retention policy to ${board.id}…`;
+  try {
+    const removed = await firebaseLeaderboardStore.applyRetentionPolicy(board.kind, board.id);
+    if (removed > 0) {
+      showUiToast(`Removed ${removed} expired entr${removed === 1 ? 'y' : 'ies'} from ${board.id}.`);
+    } else {
+      showUiToast('No expired entries to remove.');
+    }
+  } catch (error) {
+    console.error('Failed to apply retention policy', error);
+    leaderboardsAdminState.message = 'Failed to apply retention policy.';
+    showUiToast('Failed to apply retention policy.');
+    return;
+  }
+  await refreshLeaderboardsAdminBoards();
+}
 
 function clampToFairway(x: number, y: number): { x: number; y: number } {
   const fairX = COURSE_MARGIN;
@@ -1894,7 +2299,7 @@ window.addEventListener('unhandledrejection', (ev) => {
 
 // Game state
 let lastTime = performance.now();
-let gameState: 'menu' | 'course' | 'options' | 'users' | 'changelog' | 'loading' | 'play' | 'sunk' | 'summary' | 'levelEditor' | 'userLevels' | 'adminMenu' | 'levelManagement' | 'gameSettings' = 'menu';
+let gameState: 'menu' | 'course' | 'options' | 'users' | 'changelog' | 'loading' | 'play' | 'sunk' | 'summary' | 'levelEditor' | 'userLevels' | 'adminMenu' | 'levelManagement' | 'gameSettings' | 'leaderboardsAdmin' = 'menu';
 
 // Course Select state
 let courseSelectState = {
@@ -2201,9 +2606,31 @@ let strokes = 0;
 let preShot = { x: 0, y: 0 }; // position before current shot, for water reset
 let courseScores: number[] = []; // strokes per completed hole
 let coursePars: number[] = []; // par per hole
+let courseTimes: number[] = []; // elapsed milliseconds per completed hole
+let levelBoardIds: Array<string | null> = [];
+let courseStartMs: number | null = null;
+let holeStartMs: number | null = null;
+let activeCourseId: string | null = null;
 let holeRecorded = false; // guard to prevent double-recording
 let summaryTimer: number | null = null; // timer to auto-open summary after last-hole banner
 let isOptionsVolumeDragging = false;
+
+type LeaderboardDisplayRow = {
+  rank: number;
+  username: string;
+  strokes: number;
+  timeMs?: number;
+  isSelf: boolean;
+};
+
+let levelLeaderboardBoardId: string | null = null;
+let levelLeaderboardRows: LeaderboardDisplayRow[] = [];
+let courseLeaderboardCourseId: string | null = null;
+let courseLeaderboardRows: LeaderboardDisplayRow[] = [];
+let levelLeaderboardLoading = false;
+let courseLeaderboardLoading = false;
+let levelLeaderboardRequestToken: symbol | null = null;
+let courseLeaderboardRequestToken: symbol | null = null;
 
 // Audio (basic SFX via Web Audio API)
 const AudioSfx = {
@@ -2651,7 +3078,10 @@ async function playUserLevel(level: UserLevelEntry): Promise<void> {
     courseStartMs = null;
     holeStartMs = null;
     activeCourseId = null;
+<<<<<<< HEAD
     summaryOrigin = 'userLevels';
+=======
+>>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
 
     // Load level data directly
     await loadLevelFromData(levelData);
@@ -2921,6 +3351,8 @@ async function testLevelFromEditor(levelData: any): Promise<void> {
     gameState = 'play';
     currentLevelIndex = 0;
     courseScores = [];
+    courseTimes = [];
+    courseStartMs = null;
     
     // Load the test level
     await loadLevel(tempPath);
@@ -2941,6 +3373,126 @@ function returnToEditor(): void {
     gameState = 'levelEditor';
     showUiToast('Returned to Level Editor');
   }
+}
+
+function submitLevelLeaderboard(index: number, strokes: number, elapsedMs: number | null): void {
+  if (!firebaseReady || isTestingLevel) return;
+  const boardId = levelBoardIds[index];
+  if (!boardId) return;
+  const userId = getUserId();
+  if (!userId) return;
+
+  const token = Symbol('levelLeaderboard');
+  levelLeaderboardRequestToken = token;
+  levelLeaderboardLoading = true;
+
+  firebaseLeaderboardStore.recordLevelResult({
+    levelId: boardId,
+    userId,
+    username: getUsername(),
+    strokes,
+    timeMs: typeof elapsedMs === 'number' ? elapsedMs : undefined
+  }).catch((err: unknown) => {
+    console.warn(`Failed to record leaderboard entry for level ${boardId}`, err);
+  }).finally(async () => {
+    if (levelLeaderboardRequestToken !== token) return;
+    try {
+      const entries = await firebaseLeaderboardStore.getTopEntries('levels', boardId, 5);
+      const currentUserId = getUserId();
+      const rows: LeaderboardDisplayRow[] = entries.map((entry, idx) => ({
+        rank: idx + 1,
+        username: entry.username,
+        strokes: entry.bestStrokes,
+        timeMs: entry.bestTimeMs,
+        isSelf: currentUserId ? entry.userId === currentUserId : false,
+      }));
+      const hasSelf = rows.some(r => r.isSelf);
+      if (!hasSelf && currentUserId) {
+        const board = await firebaseLeaderboardStore.getBoard('levels', boardId, true);
+        const selfEntry = board?.entries?.[currentUserId];
+        if (selfEntry) {
+          const sorted = Object.values(board.entries || {}) as LeaderboardEntry[];
+          sorted.sort((a, b) => a.bestStrokes - b.bestStrokes || (a.bestTimeMs ?? Number.MAX_SAFE_INTEGER) - (b.bestTimeMs ?? Number.MAX_SAFE_INTEGER));
+          const selfRank = sorted.findIndex(entry => entry.userId === currentUserId);
+          rows.push({
+            rank: selfRank >= 0 ? selfRank + 1 : rows.length + 1,
+            username: selfEntry.username,
+            strokes: selfEntry.bestStrokes,
+            timeMs: selfEntry.bestTimeMs,
+            isSelf: true,
+          });
+        }
+      }
+      levelLeaderboardBoardId = boardId;
+      levelLeaderboardRows = rows;
+    } catch (error) {
+      console.warn(`Failed to load leaderboard preview for ${boardId}`, error);
+    } finally {
+      if (levelLeaderboardRequestToken === token) {
+        levelLeaderboardLoading = false;
+      }
+    }
+  });
+}
+
+function submitCourseLeaderboard(totalStrokes: number, totalTimeMs: number | null): void {
+  if (!firebaseReady || singleLevelMode || isTestingLevel) return;
+  if (!activeCourseId) return;
+  const userId = getUserId();
+  if (!userId) return;
+
+  const token = Symbol('courseLeaderboard');
+  courseLeaderboardRequestToken = token;
+  courseLeaderboardLoading = true;
+
+  firebaseLeaderboardStore.recordCourseResult({
+    courseId: activeCourseId,
+    userId,
+    username: getUsername(),
+    totalStrokes,
+    totalTimeMs: typeof totalTimeMs === 'number' && totalTimeMs > 0 ? totalTimeMs : undefined
+  }).catch((err: unknown) => {
+    console.warn(`Failed to record leaderboard entry for course ${activeCourseId}`, err);
+  }).finally(async () => {
+    if (courseLeaderboardRequestToken !== token) return;
+    if (!activeCourseId) return;
+    try {
+      const entries = await firebaseLeaderboardStore.getTopEntries('courses', activeCourseId, 5);
+      const currentUserId = getUserId();
+      const rows: LeaderboardDisplayRow[] = entries.map((entry, idx) => ({
+        rank: idx + 1,
+        username: entry.username,
+        strokes: entry.bestStrokes,
+        timeMs: entry.bestTimeMs,
+        isSelf: currentUserId ? entry.userId === currentUserId : false,
+      }));
+      const hasSelf = rows.some(r => r.isSelf);
+      if (!hasSelf && currentUserId) {
+        const board = await firebaseLeaderboardStore.getBoard('courses', activeCourseId, true);
+        const selfEntry = board?.entries?.[currentUserId];
+        if (selfEntry) {
+          const sorted = Object.values(board.entries || {}) as LeaderboardEntry[];
+          sorted.sort((a, b) => a.bestStrokes - b.bestStrokes || (a.bestTimeMs ?? Number.MAX_SAFE_INTEGER) - (b.bestTimeMs ?? Number.MAX_SAFE_INTEGER));
+          const selfRank = sorted.findIndex(entry => entry.userId === currentUserId);
+          rows.push({
+            rank: selfRank >= 0 ? selfRank + 1 : rows.length + 1,
+            username: selfEntry.username,
+            strokes: selfEntry.bestStrokes,
+            timeMs: selfEntry.bestTimeMs,
+            isSelf: true,
+          });
+        }
+      }
+      courseLeaderboardCourseId = activeCourseId;
+      courseLeaderboardRows = rows;
+    } catch (error) {
+      console.warn(`Failed to load course leaderboard preview for ${activeCourseId}`, error);
+    } finally {
+      if (courseLeaderboardRequestToken === token) {
+        courseLeaderboardLoading = false;
+      }
+    }
+  });
 }
 let transitioning = false; // prevent double-advance while changing holes
 let lastAdvanceFromSunkMs = 0; // used to swallow trailing click after mousedown
@@ -3309,8 +3861,13 @@ function advanceAfterSunk() {
   lastAdvanceFromSunkMs = (typeof performance !== 'undefined' ? performance.now() : Date.now());
   // Continue to next step depending on whether this is the last hole
   if (!holeRecorded) {
+    const now = Date.now();
+    const holeDuration = holeStartMs != null ? Math.max(0, now - holeStartMs) : null;
     courseScores[currentLevelIndex] = strokes;
+    courseTimes[currentLevelIndex] = holeDuration ?? 0;
     holeRecorded = true;
+    submitLevelLeaderboard(currentLevelIndex, strokes, holeDuration);
+    holeStartMs = null;
     // Record score for current user
     if (currentLevelIndex < levelPaths.length) {
       recordScore(levelPaths[currentLevelIndex], strokes);
@@ -3319,7 +3876,10 @@ function advanceAfterSunk() {
   const isLastHole = courseInfo.index >= courseInfo.total;
   if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
   if (isLastHole) {
+<<<<<<< HEAD
     summaryMode = singleLevelMode ? 'level' : 'course';
+=======
+>>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
     const totalStrokes = courseScores.reduce((sum, value) => sum + (typeof value === 'number' ? value : 0), 0);
     const totalTimeFromHoles = courseTimes.reduce((sum, value) => sum + (typeof value === 'number' ? value : 0), 0);
     const fallbackCourseTime = courseStartMs != null ? Math.max(0, Date.now() - courseStartMs) : null;
@@ -3346,7 +3906,17 @@ async function startCourseFromFile(courseJsonPath: string): Promise<void> {
     const data = (await res.json()) as { levels: string[] };
     if (Array.isArray(data.levels) && data.levels.length > 0) {
       levelPaths = data.levels;
+      activeCourseId = null;
+      levelBoardIds = levelPaths.map(() => null);
       courseScores = [];
+      courseTimes = [];
+      coursePars = [];
+      courseStartMs = null;
+      holeStartMs = null;
+      courseLeaderboardCourseId = null;
+      courseLeaderboardRows = [];
+      courseLeaderboardLoading = false;
+      courseLeaderboardRequestToken = null;
       coursePars = [];
       currentLevelIndex = 0;
       summaryOrigin = 'courseSelect';
@@ -3433,8 +4003,18 @@ async function startDevCourseFromFirebase(): Promise<void> {
   const devLevels = devEntries.map((entry: any) => adaptFirebaseLevelToMain(entry.data));
   // Start course with dev levels
   levelPaths = devLevels.map((_, i) => `dev:level${i}`);
+  activeCourseId = null;
+  levelBoardIds = devEntries.map((entry: any) => entry?.name ?? null);
   devLevels.forEach((level, i) => levelCache.set(`dev:level${i}`, level));
   courseScores = [];
+  courseTimes = [];
+  coursePars = [];
+  courseStartMs = null;
+  holeStartMs = null;
+  courseLeaderboardCourseId = null;
+  courseLeaderboardRows = [];
+  courseLeaderboardLoading = false;
+  courseLeaderboardRequestToken = null;
   coursePars = [];
   currentLevelIndex = 0;
   singleLevelMode = false;
@@ -3483,9 +4063,18 @@ async function startFirebaseCourse(courseData: any): Promise<void> {
     
     // Start course with Firebase levels
     levelPaths = levels.map((_, i) => `course:${courseData.id}:${i}`);
+    activeCourseId = courseData.id || null;
+    levelBoardIds = levelIds.map((id: string) => id || null);
     levels.forEach((level, i) => levelCache.set(`course:${courseData.id}:${i}`, level));
     courseScores = new Array(levels.length).fill(0);
+    courseTimes = new Array(levels.length).fill(0);
     coursePars = levels.map(level => level.par || 3);
+    courseStartMs = Date.now();
+    holeStartMs = null;
+    courseLeaderboardCourseId = null;
+    courseLeaderboardRows = [];
+    courseLeaderboardLoading = false;
+    courseLeaderboardRequestToken = null;
     currentLevelIndex = 0;
     singleLevelMode = false;
     gameState = 'loading';
@@ -4099,6 +4688,9 @@ canvas.addEventListener('mousedown', (e) => {
               showUiToast('Failed to load game settings');
             }
           })();
+          return;
+        } else if (hs.kind === 'leaderboards') {
+          openLeaderboardsAdminPanel();
           return;
         } else if (hs.kind === 'back') {
           gameState = previousGameState;
@@ -4798,6 +5390,8 @@ canvas.addEventListener('click', (e) => {
     summaryTimer = null;
     transitioning = false;
     courseScores = [];
+    courseTimes = [];
+    courseStartMs = null;
     currentLevelIndex = 0;
     gameState = 'play';
     preloadLevelByIndex(1);
@@ -6074,6 +6668,7 @@ function draw() {
     drawAdminMenuBtn('Level Management', 'levelManagement', startY);
     drawAdminMenuBtn('User Management', 'userManagement', startY + btnH + btnGap);
     drawAdminMenuBtn('Game Settings', 'gameSettings', startY + (btnH + btnGap) * 2);
+    drawAdminMenuBtn('Leaderboards', 'leaderboards', startY + (btnH + btnGap) * 3);
     
     // Back button
     const backBtnW = 120, backBtnH = 32;
@@ -7467,8 +8062,11 @@ function draw() {
   // Remove clip so subsequent layers (walls, HUD) are not clipped out
   ctx.restore();
 
-  // walls (beveled look: face + highlight) — shadow drawn in editor within rotation; omitted here to avoid duplicates
+  // walls (beveled look: face + highlight)
   for (const w of walls) {
+    // subtle shadow bottom-right for depth (slightly inset so rim stroke stays crisp)
+    ctx.fillStyle = 'rgba(0,0,0,0.24)';
+    ctx.fillRect(w.x + 2, w.y + 2, Math.max(0, w.w - 3), Math.max(0, w.h - 3));
     // face
     ctx.fillStyle = COLORS.wallFill;
     ctx.fillRect(w.x, w.y, w.w, w.h);
@@ -7488,11 +8086,18 @@ function draw() {
     ctx.stroke();
   }
 
-  // polygon walls (render simple beveled stroke; shadow omitted here to avoid duplicates)
+  // polygon walls (render beveled stroke + shadow)
   ctx.lineWidth = 2;
   for (const poly of polyWalls) {
     const pts = poly.points;
     if (!pts || pts.length < 6) continue;
+    // subtle shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.24)';
+    ctx.beginPath();
+    ctx.moveTo(pts[0] + 2, pts[1] + 2);
+    for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i] + 2, pts[i + 1] + 2);
+    ctx.closePath();
+    ctx.fill();
     // face
     ctx.fillStyle = COLORS.wallFill;
     ctx.beginPath();
@@ -7507,8 +8112,11 @@ function draw() {
     ctx.stroke();
   }
 
-  // round posts (pillars) — shadow omitted here to avoid duplicates
+  // round posts (pillars)
   for (const p of posts) {
+    // subtle shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.24)';
+    ctx.beginPath(); ctx.arc(p.x + 2, p.y + 2, p.r, 0, Math.PI * 2); ctx.fill();
     // face
     ctx.fillStyle = COLORS.wallFill;
     ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
@@ -7838,10 +8446,95 @@ function draw() {
     ctx.fillText(hint, WIDTH/2, HEIGHT/2 + 24);
     ctx.textAlign = 'start';
     ctx.textBaseline = 'top';
+
+    const boardId = levelBoardIds[currentLevelIndex];
+    if (boardId) {
+      const panelWidth = Math.min(320, WIDTH * 0.45);
+      const panelX = Math.round(WIDTH / 2 - panelWidth / 2);
+      const panelY = Math.round(HEIGHT / 2 + 40);
+      drawLeaderboardPanel(ctx, {
+        x: panelX,
+        y: panelY,
+        width: panelWidth,
+        title: 'Hole Leaderboard',
+        rows: levelLeaderboardBoardId === boardId ? levelLeaderboardRows : [],
+        loading: levelLeaderboardBoardId === boardId ? levelLeaderboardLoading : false,
+        emptyMessage: 'No entries yet',
+        maxRows: 5
+      });
+    }
   }
   // Course summary overlay (only on final hole and after recording)
+<<<<<<< HEAD
   if (gameState === 'summary' && holeRecorded) {
     renderSummaryScreen(ctx);
+=======
+  if (gameState === 'summary' && currentLevelIndex >= levelPaths.length - 1 && holeRecorded) {
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.font = '26px system-ui, sans-serif';
+    ctx.fillText('Course Summary', WIDTH/2, 40);
+    const total = courseScores.reduce((a, b) => a + (b ?? 0), 0);
+    const parTotal = coursePars.reduce((a, b) => a + (b ?? 0), 0);
+    const totalDelta = total - parTotal;
+    ctx.font = '16px system-ui, sans-serif';
+    let y = 80;
+    for (let i = 0; i < levelPaths.length; i++) {
+      const s = courseScores[i] ?? 0;
+      const p = coursePars[i] ?? 0;
+      const d = s - p;
+      const deltaText = d === 0 ? 'E' : (d > 0 ? `+${d}` : `${d}`);
+      const line = `Hole ${i+1}: ${s} (Par ${p}, ${deltaText})`;
+      const color = d === 0 ? '#ffffff' : (d > 0 ? '#ff9a9a' : '#9aff9a');
+      ctx.fillStyle = color;
+      ctx.fillText(line, WIDTH/2, y);
+      ctx.fillStyle = '#ffffff';
+      y += 22;
+    }
+    y += 10;
+    ctx.font = '18px system-ui, sans-serif';
+    const totalDeltaText = totalDelta === 0 ? 'E' : (totalDelta > 0 ? `+${totalDelta}` : `${totalDelta}`);
+    const totalColor = totalDelta === 0 ? '#ffffff' : (totalDelta > 0 ? '#ff9a9a' : '#9aff9a');
+    ctx.fillStyle = totalColor;
+    ctx.fillText(`Total: ${total} (Par ${parTotal}, ${totalDeltaText})`, WIDTH/2, y);
+    ctx.fillStyle = '#ffffff';
+    y += 28;
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.fillText('Click or Press Enter to Restart Game', WIDTH/2, y);
+    // Back to Main Menu button (bottom center)
+    const back = getCourseBackRect();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = hoverSummaryBack ? '#ffffff' : '#cfd2cf';
+    ctx.fillStyle = hoverSummaryBack ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillRect(back.x, back.y, back.w, back.h);
+    ctx.strokeRect(back.x, back.y, back.w, back.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Main Menu', back.x + back.w/2, back.y + back.h/2 + 0.5);
+    // restore defaults
+    ctx.textAlign = 'start';
+    ctx.textBaseline = 'top';
+
+    if (activeCourseId) {
+      const panelWidth = Math.min(360, WIDTH * 0.5);
+      const panelX = Math.round(WIDTH / 2 - panelWidth / 2);
+      const panelY = Math.round(back.y - 120);
+      drawLeaderboardPanel(ctx, {
+        x: panelX,
+        y: panelY,
+        width: panelWidth,
+        title: 'Course Leaderboard',
+        rows: courseLeaderboardCourseId === activeCourseId ? courseLeaderboardRows : [],
+        loading: courseLeaderboardCourseId === activeCourseId ? courseLeaderboardLoading : false,
+        emptyMessage: 'No entries yet',
+        maxRows: 5
+      });
+    }
+>>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
   }
   
   // Pause overlay (render last so it sits on top)
@@ -9668,6 +10361,23 @@ async function loadLevel(path: string) {
     courseInfo = { index: lvl.course?.index || 1, total: lvl.course?.total || 1, par: lvl.par, title: lvl.course?.title };
   }
   levelCanvas = { width: (lvl.canvas?.width ?? WIDTH), height: (lvl.canvas?.height ?? HEIGHT) };
+  if (!singleLevelMode) {
+    if (courseStartMs === null) {
+      courseStartMs = Date.now();
+    }
+    holeStartMs = Date.now();
+    levelLeaderboardBoardId = null;
+    levelLeaderboardRows = [];
+    levelLeaderboardLoading = false;
+    levelLeaderboardRequestToken = null;
+  } else {
+    courseStartMs = Date.now();
+    holeStartMs = courseStartMs;
+    levelLeaderboardBoardId = null;
+    levelLeaderboardRows = [];
+    levelLeaderboardLoading = false;
+    levelLeaderboardRequestToken = null;
+  }
   walls = lvl.walls ?? [];
   sands = lvl.sand ?? [];
   sandsPoly = (lvl as any).sandsPoly || (lvl.sandPoly ?? []);
@@ -9704,6 +10414,8 @@ async function loadLevel(path: string) {
       courseInfo = { index: 1, total: 1, par: lvl.par, title: lvl.course.title };
       coursePars = [lvl.par];
       courseScores = [];
+    courseTimes = [];
+    courseStartMs = null;
     }
   }
   preShot = { x: ball.x, y: ball.y };
@@ -9802,11 +10514,14 @@ async function boot() {
         const data = (await res.json()) as { levels: string[] };
         if (Array.isArray(data.levels) && data.levels.length > 0) {
           levelPaths = data.levels;
+      activeCourseId = null;
         }
       }
     }
   } catch {}
   courseScores = [];
+    courseTimes = [];
+    courseStartMs = null;
   currentLevelIndex = 0;
   // Stay on main menu; optionally warm the first level in the background
   preloadLevelByIndex(0);
@@ -10013,6 +10728,7 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (gameState === 'summary') {
+<<<<<<< HEAD
     if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space') {
       const btn = summaryHotspots[summaryFocusIndex];
       if (btn) handleSummaryAction(btn.action);
@@ -10026,6 +10742,18 @@ window.addEventListener('keydown', (e) => {
       }
     } else if (e.code === 'Escape' || e.code === 'KeyM') {
       goToMainMenuFromSummary();
+=======
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+      courseScores = [];
+    courseTimes = [];
+    courseStartMs = null;
+      currentLevelIndex = 0;
+      gameState = 'play';
+      loadLevelByIndex(currentLevelIndex).catch(console.error);
+    }
+    if (e.code === 'Escape' || e.code === 'KeyM') {
+      gameState = 'menu';
+>>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
     }
     return;
   }

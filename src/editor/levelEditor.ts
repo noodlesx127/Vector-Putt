@@ -379,6 +379,73 @@ class LevelEditorImpl implements LevelEditor {
     return { x: prevX + sx * len, y: prevY + sy * len };
   }
 
+  private renderParCandidatesSummary(env: EditorEnv): void {
+    if (!this.showParCandidates || !this.parCandidates || this.parCandidates.length === 0) return;
+
+    const entries = this.parCandidates.slice(0, Math.min(6, this.parCandidates.length));
+    const { ctx, width: WIDTH } = env;
+    const fair = env.fairwayRect();
+
+    ctx.save();
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+
+    const header = 'Suggest Par Routes';
+    const swatchSize = 12;
+    const gap = 8;
+    const lineHeight = 20;
+    const pad = 10;
+    const lines = entries.map((entry, idx) => {
+      const strokes = entry.candidate.strokes.toFixed(1);
+      return `#${idx + 1} · Par ${entry.candidate.par} (${strokes} strokes)`;
+    });
+
+    const headerWidth = ctx.measureText(header).width;
+    let contentWidth = headerWidth;
+    for (const line of lines) {
+      contentWidth = Math.max(contentWidth, ctx.measureText(line).width);
+    }
+
+    const panelWidth = Math.ceil(pad * 2 + swatchSize + gap + contentWidth);
+    const headerHeight = 22;
+    const panelHeight = Math.ceil(pad * 2 + headerHeight + lines.length * lineHeight + (lines.length > 0 ? 4 : 0));
+    const panelX = Math.min(Math.max(fair.x + fair.w - panelWidth - 16, 8), WIDTH - panelWidth - 8);
+    const panelY = Math.max(fair.y + 16, 48);
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.strokeStyle = '#cfd2cf';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.rect(panelX, panelY, panelWidth, panelHeight);
+    ctx.fill();
+    ctx.stroke();
+
+    let textY = panelY + pad + headerHeight / 2;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(header, panelX + pad, textY);
+    textY += headerHeight / 2 + 6;
+
+    for (let i = 0; i < lines.length; i++) {
+      const entry = entries[i];
+      const cy = textY + i * lineHeight + lineHeight / 2;
+      const swatchX = panelX + pad;
+      const swatchY = cy - swatchSize / 2;
+      ctx.fillStyle = entry.color;
+      ctx.beginPath();
+      ctx.rect(swatchX, swatchY, swatchSize, swatchSize);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(swatchX, swatchY, swatchSize, swatchSize);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(lines[i], swatchX + swatchSize + gap, cy);
+    }
+
+    ctx.restore();
+  }
+
   // ----- Overlay helpers -----
   private async openOverlayImage(): Promise<void> {
     if (!this.env) return;
@@ -2201,6 +2268,8 @@ class LevelEditorImpl implements LevelEditor {
         }
       }
       ctx.restore();
+
+      this.renderParCandidatesSummary(env);
     }
 
     // Visual Path Preview overlay (debug)
@@ -3166,7 +3235,7 @@ class LevelEditorImpl implements LevelEditor {
         metrics = `L=${len.toFixed(1)} px  θ=${ang.toFixed(1)}°  •  Vertices: ${n}`;
       }
       leftText = `${toolLabel}${metrics ? ' — ' + metrics : ''}`;
-      rightText = `Enter: Close  •  Esc: Cancel  •  Backspace: Undo  •  Shift: Angle Snap  •  Ctrl: Grid-only  •  Alt: Disable Guides  •  Snap: Grid ${gridOn ? 'On' : 'Off'}, Guides ${guidesOn ? 'On' : 'Off'}`;
+      rightText = `Enter: Close  •  Esc: Cancel  •  Backspace: Undo  •  Shift: Angle Snap  •  Ctrl: Grid-only  •  Alt: Disable Guides • Toggle Join Bevel  •  Snap: Grid ${gridOn ? 'On' : 'Off'}, Guides ${guidesOn ? 'On' : 'Off'}`;
     } else if (this.selectedTool === 'measure') {
       if (this.measureStart && this.measureEnd) {
         const a = this.measureStart, b = this.measureEnd;
@@ -3177,16 +3246,32 @@ class LevelEditorImpl implements LevelEditor {
       } else {
         leftText = `${toolLabel} — Click to start, move to measure`;
       }
-      rightText = `Enter: Pin  •  Esc: Cancel  •  Right-click: Clear`;
+      rightText = `Enter: Pin  •  Esc: Cancel  •  Right-click: Clear  •  Double‑click: Clear Pinned`;
     } else if (this.selectedTool === 'select') {
       const n = this.selectedObjects.length;
       if (n > 0) {
         const b = this.getSelectionBounds();
         leftText = `${toolLabel} — ${n} selected  •  ${b.w}×${b.h}`;
       } else {
-        leftText = `${toolLabel} — Click or drag to select`;
+        leftText = `${toolLabel} — Click or drag to select (Contain; Alt=Intersect)`;
       }
-      rightText = `Arrows: Nudge  •  Shift: Axis Lock  •  Ctrl: Grid-only  •  Alt: Disable Guides`;
+      const hasPolySel = this.selectedObjects.some(o => o.type === 'wallsPoly' || o.type === 'waterPoly' || o.type === 'sandPoly');
+      const overlaySel = (this.selectedObjects.length === 1 && (this.selectedObjects[0] as any).type === 'overlay');
+      const postSel = (this.selectedObjects.length === 1 && (this.selectedObjects[0] as any).type === 'post');
+      const hints: string[] = [
+        'Arrows: Nudge',
+        'Shift: Axis Lock',
+        'Ctrl: Grid-only',
+        'Alt: Disable Guides'
+      ];
+      if (hasPolySel) {
+        hints.push('Alt+Click Vertex: Remove', 'Double‑click Edge: Insert Vertex');
+      } else if (overlaySel) {
+        hints.push('=/−: Scale', ',/.: Rotate');
+      } else if (postSel) {
+        hints.push('Double‑click: Change Radius');
+      }
+      rightText = hints.join('  •  ');
     } else if (this.selectedTool === 'post') {
       // Preview post center at snapped mouse with default radius until placed
       const gOn = (() => { try { return this.objectSnapToGrid && this.showGrid && env.getShowGrid(); } catch { return false; } })();
@@ -3223,6 +3308,14 @@ class LevelEditorImpl implements LevelEditor {
     } else {
       leftText = `${toolLabel}`;
       rightText = `Ctrl: Grid-only  •  Alt: Disable Guides  •  Snap: Grid ${gridOn ? 'On' : 'Off'}`;
+    }
+
+    // If Suggest Par routes overlay is visible, surface a picking hint on the right side
+    if (this.showParCandidates && this.parCandidates && this.parCandidates.length > 0) {
+      const k = Math.min(9, this.parCandidates.length);
+      const hint = `Pick Route: Click or press 1..${k}  •  Esc: Dismiss`;
+      // Prepend or append based on available space; we will elide later anyway
+      rightText = rightText ? `${hint}  •  ${rightText}` : hint;
     }
 
     // Layout left and right with elision to avoid overlap
@@ -3927,13 +4020,16 @@ class LevelEditorImpl implements LevelEditor {
                 const items: Array<{ label: string; value: string }> = [
                   { label: 'Global — Esc: Cancel current action; Enter: Confirm (varies by tool)', value: 'global' },
                   { label: 'Selection — Arrows: Nudge • Shift: Axis Lock • Ctrl: Grid-only • Alt: Disable Guides', value: 'select' },
+                  { label: 'Selection — Marquee: Contain by default; hold Alt for Intersect', value: 'marquee' },
                   { label: 'Grid/Rulers/Guides — View menu toggles; Ctrl forces grid-only during interactions', value: 'guides' },
                   { label: 'Polygons — Click to add vertices • Enter/Click near start: Close • Backspace: Undo last', value: 'poly' },
-                  { label: 'Polygons — Shift: Angle Snap • Ctrl: Grid-only • Alt: Disable Guides', value: 'poly2' },
-                  { label: 'Measure — Click-drag to measure • Enter: Pin • Esc: Cancel • Right-click: Clear', value: 'measure' },
+                  { label: 'Polygons — Shift: Angle Snap • Ctrl: Grid-only • Alt: Disable Guides; Vertex edit: Alt+Click removes (min 3) • Double‑click near edge inserts and starts drag', value: 'poly2' },
+                  { label: '45° Poly Tools — Segments constrained to 0/45/90; Ctrl: Free angle', value: 'poly45' },
+                  { label: 'Measure — Click-drag to measure • Enter: Pin • Esc: Cancel • Right-click: Clear • Double‑click: Clear Pinned', value: 'measure' },
                   { label: 'Posts — Click to place • Double-click (Select): Change Radius', value: 'posts' },
                   { label: 'Rect Tools — Click-drag to place walls/water/sand/bridge/hill • Shift: Axis Lock', value: 'rect' },
-                  { label: 'Overlay Screenshot — See View → Overlay controls; select overlay to move/resize/rotate', value: 'overlay' },
+                  { label: 'Overlay Screenshot — [ / ]: Opacity ±5% (Shift=±10%) • =/−: Scale • ,/.: Rotate • Select overlay to move/resize/rotate; Through‑click in View menu', value: 'overlay' },
+                  { label: 'Edit — Undo/Redo: Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y • Copy/Cut/Paste/Duplicate: Ctrl+C/X/V/D • Delete: Delete/Backspace', value: 'edit' },
                   { label: 'Tool Info Bar — Bottom toolbar shows live metrics and shortcuts by tool', value: 'infobar' }
                 ];
                 try { await env.showList('Level Editor Help', items, 0); } catch {}
@@ -4188,10 +4284,27 @@ class LevelEditorImpl implements LevelEditor {
       }
     }
 
-    // Polygon vertex drag start (before general hit-test) — use raw mouse for hit-test
+    // Polygon vertex/edge operations (before general hit-test) — use raw mouse for hit-test
     if (this.selectedTool === 'select') {
       const vertexHit = this.findPolygonVertexAtPoint(rx, ry, env);
       if (vertexHit) {
+        // Alt+Click on a vertex removes it (when polygon has > 3 vertices)
+        if (e.altKey) {
+          const obj = vertexHit.obj;
+          const poly: any = obj.object as any;
+          const pts: number[] = Array.isArray(poly.points) ? poly.points : [];
+          const vertCount = Math.floor(pts.length / 2);
+          if (vertCount > 3) {
+            this.pushUndoSnapshot('Remove polygon vertex');
+            const i = vertexHit.vertexIndex * 2;
+            poly.points.splice(i, 2);
+            this.syncEditorDataFromGlobals(env);
+            env.showToast('Vertex removed');
+          } else {
+            try { env.showToast('Polygon must have at least 3 vertices'); } catch {}
+          }
+          return;
+        }
         // Ensure the polygon is selected
         const isSame = (a: SelectableObject, b: SelectableObject) => a.type === b.type && (a as any).index === (b as any).index;
         if (!this.selectedObjects.some(o => isSame(o, vertexHit.obj))) {
@@ -4202,6 +4315,36 @@ class LevelEditorImpl implements LevelEditor {
         this.isVertexDragging = true;
         this.vertexDrag = vertexHit;
         return;
+      }
+      // Double-click near an edge inserts a vertex at the closest point on the edge and begins drag
+      const edgeHit = this.findPolygonEdgeNearPoint(rx, ry, env);
+      if (edgeHit) {
+        const now = Date.now();
+        const isDouble = this.lastClickPos && (now - this.lastClickMs) < 300 && ((rx - this.lastClickPos.x) ** 2 + (ry - this.lastClickPos.y) ** 2) <= 36;
+        this.lastClickMs = now; this.lastClickPos = { x: rx, y: ry };
+        if (isDouble) {
+          // Insert new vertex
+          const obj = edgeHit.obj;
+          const poly: any = obj.object as any;
+          const pts: number[] = Array.isArray(poly.points) ? poly.points : [];
+          // Snap insertion point to grid/guides similar to polygon drafting
+          let ix = edgeHit.point.x, iy = edgeHit.point.y;
+          const allowGuides = this.showAlignmentGuides && !e.ctrlKey && !e.altKey;
+          if (allowGuides) {
+            const ag = this.computeAlignmentSnap(ix, iy, env);
+            ix = ag.x; iy = ag.y; this.liveGuides = ag.guides;
+            this.liveGuideBubbles = [];
+          } else { this.liveGuides = []; this.liveGuideBubbles = []; }
+          const insertAt = (edgeHit.edgeIndex + 1) * 2;
+          this.pushUndoSnapshot('Add polygon vertex');
+          pts.splice(insertAt, 0, ix, iy);
+          // Begin dragging the new vertex immediately
+          this.isVertexDragging = true;
+          this.vertexDrag = { obj, vertexIndex: edgeHit.edgeIndex + 1 } as any;
+          // Ensure polygon is the sole selection
+          this.selectedObjects = [obj];
+          return;
+        }
       }
     }
 
@@ -4848,7 +4991,11 @@ class LevelEditorImpl implements LevelEditor {
       const boxW = Math.abs(this.dragMoveOffset.x);
       const boxH = Math.abs(this.dragMoveOffset.y);
       const box = { x: boxX, y: boxY, w: boxW, h: boxH };
-      const inBox = (b: { x: number; y: number; w: number; h: number }) => !(b.x + b.w < box.x || b.y + b.h < box.y || b.x > box.x + box.w || b.y > box.y + box.h);
+      // Contain vs Intersect: default = Contain; hold Alt to Intersect
+      const preferContain = !e.altKey;
+      const contains = (b: { x: number; y: number; w: number; h: number }) => (b.x >= box.x && b.y >= box.y && (b.x + b.w) <= (box.x + box.w) && (b.y + b.h) <= (box.y + box.h));
+      const intersects = (b: { x: number; y: number; w: number; h: number }) => !(b.x + b.w < box.x || b.y + b.h < box.y || b.x > box.x + box.w || b.y > box.y + box.h);
+      const inBox = preferContain ? contains : intersects;
 
       const gs = env.getGlobalState();
       const newlySelected: SelectableObject[] = [] as any;
@@ -4887,32 +5034,108 @@ class LevelEditorImpl implements LevelEditor {
   private findPolygonVertexAtPoint(px: number, py: number, env: EditorEnv): { obj: SelectableObject; vertexIndex: number } | null {
     const gs = env.getGlobalState();
     const threshold = 8; // pixels
+    type Hit = { obj: SelectableObject; vertexIndex: number; dist: number; selected: boolean };
+    const hits: Hit[] = [];
 
-    const testPolyArray = <T extends { points: number[] }>(arr: T[] | undefined, type: SelectableObject['type']): { obj: SelectableObject; vertexIndex: number } | null => {
-      if (!arr) return null;
+    const pushHits = (arr: any[] | undefined, type: SelectableObject['type']) => {
+      if (!arr) return;
       for (let idx = 0; idx < arr.length; idx++) {
         const poly: any = arr[idx];
         const pts: number[] = Array.isArray(poly.points) ? poly.points : [];
         for (let i = 0, vi = 0; i + 1 < pts.length; i += 2, vi++) {
           const vx = pts[i];
           const vy = pts[i + 1];
-          const dx = px - vx;
-          const dy = py - vy;
-          if (Math.hypot(dx, dy) <= threshold) {
+          const d = Math.hypot(px - vx, py - vy);
+          if (d <= threshold) {
             const obj: SelectableObject = { type: type as any, object: poly, index: idx } as any;
-            return { obj, vertexIndex: vi };
+            const selected = this.selectedObjects.some(o => o.type === obj.type && (o as any).index === (obj as any).index);
+            hits.push({ obj, vertexIndex: vi, dist: d, selected });
           }
         }
       }
-      return null;
     };
 
-    return (
-      testPolyArray(gs.polyWalls as any[], 'wallsPoly') ||
-      testPolyArray(gs.watersPoly as any[], 'waterPoly') ||
-      testPolyArray(gs.sandsPoly as any[], 'sandPoly') ||
-      null
-    );
+    // Prefer currently selected polygon(s) first
+    const selPolys = this.selectedObjects.filter(o => o.type === 'wallsPoly' || o.type === 'waterPoly' || o.type === 'sandPoly');
+    if (selPolys.length) {
+      for (const so of selPolys) {
+        const poly: any = (so as any).object;
+        const pts: number[] = Array.isArray(poly.points) ? poly.points : [];
+        for (let i = 0, vi = 0; i + 1 < pts.length; i += 2, vi++) {
+          const vx = pts[i];
+          const vy = pts[i + 1];
+          const d = Math.hypot(px - vx, py - vy);
+          if (d <= threshold) hits.push({ obj: so, vertexIndex: vi, dist: d, selected: true });
+        }
+      }
+    }
+
+    pushHits(gs.polyWalls as any[], 'wallsPoly');
+    pushHits(gs.watersPoly as any[], 'waterPoly');
+    pushHits(gs.sandsPoly as any[], 'sandPoly');
+
+    if (!hits.length) return null;
+    // Sort by: selected first, then distance ascending
+    hits.sort((a, b) => (Number(b.selected) - Number(a.selected)) || (a.dist - b.dist));
+    return { obj: hits[0].obj, vertexIndex: hits[0].vertexIndex };
+  }
+
+  // Compute the closest point and edge index if within threshold of any polygon edge (prefers selected polys)
+  private findPolygonEdgeNearPoint(px: number, py: number, env: EditorEnv): { obj: SelectableObject; edgeIndex: number; point: { x: number; y: number } } | null {
+    const gs = env.getGlobalState();
+    const threshold = 8; // pixels
+
+    const project = (ax: number, ay: number, bx: number, by: number, px: number, py: number) => {
+      const abx = bx - ax, aby = by - ay;
+      const apx = px - ax, apy = py - ay;
+      const ab2 = abx * abx + aby * aby || 1e-6;
+      let t = (apx * abx + apy * aby) / ab2; t = Math.max(0, Math.min(1, t));
+      return { x: ax + abx * t, y: ay + aby * t };
+    };
+
+    type EdgeHit = { obj: SelectableObject; edgeIndex: number; point: { x: number; y: number }; dist: number; selected: boolean };
+    const collect = (arr: any[] | undefined, type: SelectableObject['type'], into: EdgeHit[]) => {
+      if (!arr) return;
+      for (let idx = 0; idx < arr.length; idx++) {
+        const poly: any = arr[idx];
+        const pts: number[] = Array.isArray(poly.points) ? poly.points : [];
+        const n = Math.floor(pts.length / 2);
+        if (n < 2) continue;
+        const obj: SelectableObject = { type: type as any, object: poly, index: idx } as any;
+        const isSel = this.selectedObjects.some(o => o.type === obj.type && (o as any).index === (obj as any).index);
+        for (let vi = 0; vi < n - 1; vi++) {
+          const ax = pts[vi * 2], ay = pts[vi * 2 + 1];
+          const bx = pts[(vi + 1) * 2], by = pts[(vi + 1) * 2 + 1];
+          const q = project(ax, ay, bx, by, px, py);
+          const d = Math.hypot(px - q.x, py - q.y);
+          if (d <= threshold) into.push({ obj, edgeIndex: vi, point: q, dist: d, selected: isSel });
+        }
+        // Closing edge for closed polygons: assume polygon tools close shapes; if needed, also check last->first
+        if (n >= 3) {
+          const ax = pts[(n - 1) * 2], ay = pts[(n - 1) * 2 + 1];
+          const bx = pts[0], by = pts[1];
+          const q = project(ax, ay, bx, by, px, py);
+          const d = Math.hypot(px - q.x, py - q.y);
+          if (d <= threshold) into.push({ obj, edgeIndex: n - 1, point: q, dist: d, selected: isSel });
+        }
+      }
+    };
+
+    const hits: EdgeHit[] = [];
+    const selPolys = this.selectedObjects.filter(o => o.type === 'wallsPoly' || o.type === 'waterPoly' || o.type === 'sandPoly');
+    if (selPolys.length) {
+      for (const so of selPolys) {
+        collect([ (so as any).object ], so.type as any, hits);
+      }
+    }
+    collect(gs.polyWalls as any[], 'wallsPoly', hits);
+    collect(gs.watersPoly as any[], 'waterPoly', hits);
+    collect(gs.sandsPoly as any[], 'sandPoly', hits);
+
+    if (!hits.length) return null;
+    hits.sort((a, b) => (Number(b.selected) - Number(a.selected)) || (a.dist - b.dist));
+    const h = hits[0];
+    return { obj: h.obj, edgeIndex: h.edgeIndex, point: h.point };
   }
   // General object hit-test used by selection and clicking
   private findObjectAtPoint(px: number, py: number, env: EditorEnv): SelectableObject | null {
@@ -5027,6 +5250,31 @@ class LevelEditorImpl implements LevelEditor {
 
     const key = e.key;
     const ctrl = e.ctrlKey || e.metaKey;
+
+    // Route selection hotkeys when Suggest Par candidates overlay is visible
+    if (this.showParCandidates && this.parCandidates && this.parCandidates.length > 0) {
+      // Allow pressing 1..9 (and up to K) to select a route directly
+      if (/^[0-9]$/.test(key)) {
+        const n = parseInt(key, 10);
+        if (n >= 1 && n <= this.parCandidates.length) {
+          e.preventDefault();
+          const idx = n - 1;
+          const chosen = this.parCandidates[idx].candidate;
+          (async () => {
+            const ok = await env.showConfirm(`Use Route #${idx + 1} — set Par to ${chosen.par}?`, 'Suggest Par');
+            if (ok) {
+              this.pushUndoSnapshot('Set par');
+              this.editorLevelData.par = chosen.par;
+              env.showToast(`Par set to ${chosen.par}`);
+            }
+            // Hide overlay either way
+            this.showParCandidates = false;
+            this.parCandidates = null;
+          })();
+          return;
+        }
+      }
+    }
 
     // Track last mouse position might be updated elsewhere; ensure exists
     this.lastMousePosition = this.lastMousePosition || { x: 0, y: 0 } as any;
@@ -6162,32 +6410,13 @@ class LevelEditorImpl implements LevelEditor {
     };
     this.showPathPreview = false; // prefer new overlay instead
 
-    // Hybrid policy: if ambiguous (same par or nearly same strokes), ask designer to pick.
+    // Hybrid policy: if ambiguous (same par or nearly same strokes), prefer on-canvas selection only.
     const ambiguous = (candidates.length > 1) && (
       candidates[1].par === candidates[0].par || Math.abs(candidates[1].strokes - candidates[0].strokes) < 0.25
     );
-    const items = candidates.map((c, i) => ({
-      label: `#${i + 1}  Par ${c.par}  —  L ${Math.round(c.lengthPx)}px, turns ${c.turns}, corr ${c.blockedAvg.toFixed(2)}, sand ${c.sandCells}`,
-      value: i
-    }));
-
     if (ambiguous) {
-      // Let the designer choose among top K
-      env.showToast('Suggest Par: multiple viable routes found. Click a colored route or pick from the list. Press Esc to hide.');
-      const pick = await env.showList('Suggest Par — Pick Route', items, Math.max(0, bestIndex));
-      if (pick && typeof pick.value === 'number') {
-        const idx = Math.max(0, Math.min(candidates.length - 1, pick.value));
-        const chosen = candidates[idx];
-        const ok = await env.showConfirm(`Use Route #${idx + 1} — set Par to ${chosen.par}?`, 'Suggest Par');
-        if (ok) {
-          this.pushUndoSnapshot('Set par');
-          this.editorLevelData.par = chosen.par;
-          env.showToast(`Par set to ${chosen.par}`);
-        }
-        // Hide overlay after an explicit selection
-        this.showParCandidates = false;
-        this.parCandidates = null;
-      }
+      // On-canvas selection only: show overlay and instruct user to click a route or press 1..K
+      env.showToast('Suggest Par: multiple viable routes. Click a colored route (#) or press 1..K to choose. Esc to dismiss.');
       return;
     } else {
       // Auto-pick best but allow override by clicking overlay
@@ -6198,7 +6427,7 @@ class LevelEditorImpl implements LevelEditor {
         this.editorLevelData.par = best.par;
         env.showToast(`Par set to ${best.par}`);
       }
-      env.showToast('Routes displayed — click a colored route to choose another; Esc to dismiss');
+      env.showToast('Routes displayed — click a colored route (#) or press 1..K to choose another; Esc to dismiss');
       return;
     }
   }

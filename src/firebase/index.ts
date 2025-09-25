@@ -5,6 +5,7 @@ import { FirebaseSettingsStore } from './FirebaseSettingsStore.js';
 import { FirebaseScoreStore } from './FirebaseScoreStore.js';
 import { FirebaseDatabase } from './database.js';
 import { FirebaseCourseStore } from './FirebaseCourseStore.js';
+import { FirebaseLeaderboardStore } from './FirebaseLeaderboardStore.js';
 
 // Create store instances
 export const firebaseUsersStore = new FirebaseUsersStore();
@@ -12,6 +13,7 @@ export const firebaseLevelStore = new FirebaseLevelStore();
 export const firebaseSettingsStore = new FirebaseSettingsStore();
 export const firebaseScoreStore = new FirebaseScoreStore();
 export const firebaseCourseStore = new FirebaseCourseStore();
+export const firebaseLeaderboardStore = new FirebaseLeaderboardStore();
 
 export class FirebaseManager {
   private initialized = false;
@@ -33,7 +35,8 @@ export class FirebaseManager {
         firebaseLevelStore.init(),
         firebaseSettingsStore.init(),
         firebaseScoreStore.init(),
-        firebaseCourseStore.init()
+        firebaseCourseStore.init(),
+        firebaseLeaderboardStore.init()
       ]);
 
       this.initialized = true;
@@ -53,6 +56,7 @@ export class FirebaseManager {
   get settings() { return firebaseSettingsStore; }
   get scores() { return firebaseScoreStore; }
   get courses() { return firebaseCourseStore; }
+  get leaderboards() { return firebaseLeaderboardStore; }
 
   // Cleanup
   destroy(): void {
@@ -61,6 +65,7 @@ export class FirebaseManager {
     firebaseSettingsStore.clearCache();
     firebaseScoreStore.clearCache();
     firebaseCourseStore.clearCache();
+    firebaseLeaderboardStore.clearCache();
     this.initialized = false;
   }
 }

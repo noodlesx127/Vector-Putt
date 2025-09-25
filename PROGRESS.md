@@ -1,3 +1,12 @@
+# Project Progress — Vector Putt
+
+This file tracks current focus, next steps, decisions, and planned work. Completed/Changed/Fixes are recorded in `CHANGELOG.md`.
+
+## Current Focus (2025-09-24)
+- UI consistency and editor info surfaces (Info Bar + Help overlay)
+- Play Area Visual Refresh (render-only plan)
+- Leaderboards (levels and courses) planning and wiring
+
 ## Cross‑cutting — Obstacles Integration Policy (2025-09-22)
 
 - When introducing any new obstacle type, it must be:
@@ -23,10 +32,12 @@
   - [x] Apply hill difficulty bump only when the path crosses hill cells, scaled by coverage.
   - [x] Added unit tests covering hill direction effects and bridge pass-through. (`src/__tests__/LevelHeuristics.test.ts`)
 
-## Suggest Par — Hybrid Branching (2025-09-23)
+## Plans & Epics
+
+## Suggest Par — Hybrid Branching (2025-09-24)
 
 - [x] Posts as blockers in grid with safety clearance
-  - Grid build (`buildGrid()` in `src/editor/levelHeuristics.ts`) now treats posts as circular blockers with a small clearance radius so A* paths cannot pass through posts.
+  - Grid build (`buildGrid()` in `src/editor/levelHeuristics.ts`) treats posts as circular blockers with a small clearance radius so A* paths cannot pass through posts.
 - [x] K-branch candidate generation (`suggestParK()`)
   - Compute an initial best path, then generate alternates by banning sampled cells (and pairs) and queueing the resulting paths up to a configurable depth.
   - Added `pathOverlapFraction()` plus per-path `cellSet` bookkeeping to skip near-duplicate routes; retain the lower-strokes option when overlap is high.
@@ -37,11 +48,14 @@
   - Added `renderParCandidatesSummary()` in `src/editor/levelEditor.ts` to draw a top-right popup listing each route number, color, strokes, and suggested par.
   - Ambiguity policy: if top routes have equal par or near-equal strokes, prompt via `EditorEnv.showList()` while keeping overlay active; otherwise confirm best route with summary visible.
   - Interactions: click near a colored route or press `1..K` to select; Esc dismisses overlay. Visual Path Preview (`P`) remains available but is hidden while the multi-route overlay is active.
+<<<<<<< HEAD
   - Info Bar cleanup while Suggest Par overlay is visible: bottom panel now focuses on route picking hints plus highlights downhill auto-assist lanes when detected.
 - [x] Hill-aware route diversity
   - `suggestParK()` now tracks downhill momentum, uphill drag, and auto-assist segments per path; filters duplicates that differ only cosmetically while keeping hill-boost variants.
   - Added edge-ban perturbations to explore corridors that share nodes but diverge via angled turns, improving coverage of upper/top lanes.
   - Stroke estimation now applies downhill bonuses and auto-assist discounts when hills and angled corridors would carry the ball without additional strokes.
+=======
+>>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
 
 Notes
 - Coefficients wired from Admin → Game Settings: Baseline Shot px, Turn Penalty, Hill Bump, Bank Weight, Friction K, Sand Multiplier.
@@ -67,10 +81,20 @@ Goal: preserve the recognizable retro look while making the playfield more reada
   - Hill direction obvious at a glance; arrows legible but subtle.
   - Performance unaffected; keep 60 FPS target.
 
+- Manual QA checklist (tests deferred)
+  - Load `levels/level1.json`, `levels/level4.json`, and `User_Levels/demo/Crossing.json`; inspect water/sand seams at 1 and 2 zoom.
+  - Traverse wall loops in `levels/level2.json`; verify beveled rim continuity and absence of dark joints.
+  - Toggle View  `Slope Arrows` in both runtime and editor hills demo; ensure arrows remain legible without clutter.
+  - Enable FPS overlay while running 
+unCourse('devCourse'); confirm steady 60 FPS after render updates.
+  - Capture before/after screenshots for `levels/level5.json` to document visual delta for stakeholders.
+
+
  - Status
   - Implemented in runtime (`src/main.ts`) and editor preview (`src/editor/levelEditor.ts`):
     - Stroke-first-then-fill terrains (rect + poly two-pass) for seam-free edges
     - Bevel-joined wall/post rims, highlights/shadows
+    - Runtime wall/post shadows inset to keep rim strokes crisp and match editor lighting parity (`src/main.ts`)
     - Hill arrows redesign with outline + white stroke
     - Cup shading, ball highlight, bridge shadow
     - Optional faint water ripple overlay for large bodies (runtime and editor)
@@ -111,9 +135,7 @@ Goal: preserve the recognizable retro look while making the playfield more reada
   - Wire runtime update hooks and small UI surfaces (Post-Hole, Course Summary, Level Browser/Course Select)
   - Add Admin Menu overlay for Leaderboard settings and resets (role-gated)
 
-# Project Progress — Vector Putt
 
-This file tracks current focus, next steps, decisions, and done items. Keep it short and living.
 
 
 - **Physics & Interactions**
@@ -156,7 +178,7 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
          - [x] File menu parity: New, Load, Save, Save As, Delete, Back/Exit — labels, ordering, and shortcuts verified. (`src/editor/levelEditor.ts` EDITOR_MENUS)
          - [x] Load Level dialog: standard panel layout with scrollable list, filters, confirm/cancel buttons
           - Uses standard 800×600 panel, blue-themed background/border, centered title, 40px row height, and 28px buttons per `UI_Design.md`. (`src/main.ts`)
-          - Active/inactive filter styling aligned to design; click handling fixed via capture-phase input for overlays.
+          - Active/inactive filter styling aligned to design.
           - Added search box (title/author) with keyboard focus and inline hint; hover visuals for filters, rows, and Load/Cancel. (`src/main.ts`)
          - [x] Save flow: inline Save feedback (toasts) and clear error handling; prompt primary button shows “Save” when context is Save/Save As/Metadata. (`src/main.ts`)
          - [x] Save As dialog: title input with validation (non-empty, ≤120 chars), consistent spacing, Save/Cancel buttons. (`src/editor/levelEditor.ts`)
@@ -218,7 +240,6 @@ This file tracks current focus, next steps, decisions, and done items. Keep it s
       - [in progress] Ruler strips render with refined tick density/labels and typography; further polish to match UI_Design.md exactly.
     - [x] Measure Tool
       - Tools → “Measure Tool”: click-drag to measure length/angle (Δx/Δy); snaps to grid/vertices/edges; ESC cancels; Enter pins; double-click clears.
-      - [x] Bugfix: Mouse up now auto-pins the measurement; right‑click reliably clears both in‑progress and pinned measurements and does not resume measuring on mouse move. (`src/editor/levelEditor.ts`)
       - [x] Ruler-drag live guides: drag out guides from rulers (top/left). Guides persist and render; snapping includes these guides; double-click the ruler band clears guides for that axis.
     - [x] Polygon Drafting alignment
       - Preview segment and placed vertices snap to alignment guides (in addition to 45° and poly vertex/edge snapping). Axis value bubble shown near cursor; spacing bubble shown when snapped. Click placements (first and subsequent points) now match the preview snap. (`src/editor/levelEditor.ts`)
@@ -296,12 +317,7 @@ Phase 2 (2025-09-20):
   - Drag‑move inside overlay (Move mode), grid‑snap aware.
   - Resize from all corners and edges with axis constraints and optional Preserve Aspect.
   - Rotate from top‑mid rotation handle with Shift=15° snap.
-- Next: optional auto‑fade while dragging, fine‑tune hit‑areas, and unit tests for transform math and menu enable/disable.
-
-Bugfix (2025-09-20):
-- Fixed Overlay drag release continuing after mouseup. Finalization now occurs in `src/editor/levelEditor.ts::handleMouseUp()` and a safety guard in `handleMouseMove()` cancels overlay interactions when `e.buttons === 0` (missed mouseup/end-of-drag).
-
-## Level Editor — Bottom Info Toolbar (Plan, 2025-09-21)
+- ## Level Editor — Bottom Info Toolbar (Plan, 2025-09-21)
 
 Goal: Replace or relocate floating, in-canvas info bubbles (e.g., during `wallsPoly` drafting) with a persistent bottom information toolbar so hints, measurements, and tool details are visible without obstructing drawing.
 
@@ -354,25 +370,6 @@ Refactor (2025-09-21):
   - Single‑selecting the overlay shows its own resize/rotate handles (when no menu is open). Drag inside to move.
   - Arrow keys nudge selection uniformly (including the overlay when selected).
 - Updated label logic and menu rendering accordingly. Documented in `CHANGELOG.md`.
-
-## Level Editor — Fixes & Enhancements (2025-09-20)
-
-- [x] Post movement parity
-  - Implemented consistent drag/nudge handling for `post` objects; arrow key nudging now matches tees/cups. Post-specific grid snapping is now gated behind the new Object Snap toggle so movement parity is preserved when snapping is off. (`src/editor/levelEditor.ts`: `handleMouseMove()`, `handleMouseUp()`, `nudgeSelectedObjects()`, `snapPostPosition()` gating)
-- [x] Per-object Grid Snap toggle (move and create)
-  - Added View → "Object: Snap to Grid" toggle. When OFF, object creation and drag-move skip grid quantization; when ON, existing grid rules apply. Dynamic label reflects state. (`src/editor/levelEditor.ts`: `EditorAction`, `EDITOR_MENUS.view`, action handler, and snapping checks)
-- [x] Remove Overlay action
-  - Added View → "Overlay: Remove" to clear the loaded screenshot and all overlay interaction state; transform resets and overlay is hidden. Overlay remains excluded from saves/exports as before. (`src/editor/levelEditor.ts`)
-- [x] Menus close on click-away
-  - Clicking anywhere outside an open menu now closes it while preserving selection/tool state. Click-away works even when the overlay is above geometry. (`src/editor/levelEditor.ts`: `handleMouseDown()`)
- 
-- [ ] Overlay Screenshot resize handles bug — in progress
-  - Improved hit-testing to choose the nearest handle and prioritize edge handles so center edges reliably enter axis-only resize; axis mapping already constrains to H/V for edges and both for corners. Tests for handle detection and transform deltas are still pending. (`src/editor/levelEditor.ts`: overlay handle hit-testing in `handleMouseDown()`)
-
-### Fixes (2025-09-21)
-
-- [x] Posts movement parity rework
-  - Posts now move/nudge exactly like tees/cups. On drag‑move commit, post centers are clamped and grid‑snapped like tee/cup instead of using edge‑aligned radius snapping (which could cancel small moves). Arrow‑key nudges clamp within fairway and no longer re‑snap to edges, allowing 1px or grid‑sized steps as expected. Movement remains gated by View → "Object: Snap to Grid". (`src/editor/levelEditor.ts`: `handleMouseUp()`, `nudgeSelectedObjects()`)
 
 ## Next Up (Short Horizon)
 

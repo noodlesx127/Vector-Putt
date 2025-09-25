@@ -591,12 +591,9 @@ export type CandidatePath = {
   par: number;
   cellKeys: string[];
   cellSet: Set<string>;
-<<<<<<< HEAD
   downhillMomentum: number;
   uphillResistance: number;
   autoAssistSegments: number;
-=======
->>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
 };
 
 type AStarOptions = {
@@ -614,7 +611,6 @@ function pathSignature(path: Array<{ c: number; r: number }>): string {
   return s;
 }
 
-<<<<<<< HEAD
 function analyzePathTraversal(
   path: Array<{ c: number; r: number }>,
   grid: GridCell[][]
@@ -656,8 +652,6 @@ function analyzePathTraversal(
   return { lengthCost, downhillMomentum, uphillResistance, autoAssistSegments };
 }
 
-=======
->>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
 function pathOverlapFraction(a: CandidatePath, b: CandidatePath): number {
   if (!a || !b) return 0;
   const sizeA = a.cellSet.size;
@@ -680,20 +674,8 @@ function computeCandidateForPath(
   const worldPoints = path.map(p => toWorld(p.c, p.r));
   const cellKeys = path.map(p => `${p.c},${p.r}`);
   const cellSet = new Set<string>(cellKeys);
-<<<<<<< HEAD
   // length cost in pixel units + hill momentum metrics
   const { lengthCost, downhillMomentum, uphillResistance, autoAssistSegments } = analyzePathTraversal(path, grid);
-=======
-  // length cost in pixel units
-  let lengthCost = 0;
-  for (let i = 1; i < path.length; i++) {
-    const a = path[i - 1], b = path[i];
-    const diag = (a.c !== b.c) && (a.r !== b.r);
-    const step = diag ? Math.SQRT2 : 1;
-    const gc = grid[b.r][b.c].cost;
-    lengthCost += step * gc;
-  }
->>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
   const lengthPx = lengthCost * cellSize;
   // turns
   let turns = 0;
@@ -760,8 +742,6 @@ function computeCandidateForPath(
 
   let par = Math.round(strokes + 1);
   par = Math.max(2, Math.min(7, par));
-
-<<<<<<< HEAD
   return {
     path,
     worldPoints,
@@ -778,9 +758,6 @@ function computeCandidateForPath(
     uphillResistance,
     autoAssistSegments
   };
-=======
-  return { path, worldPoints, lengthPx, turns, blockedAvg, sandCells, hillCells, strokes, par, cellKeys, cellSet };
->>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
 }
 
 /**
@@ -814,23 +791,6 @@ export function suggestParK(
 
   const considerCandidate = (path: Array<{ c: number; r: number }>): CandidatePath | null => {
     const key = pathSignature(path);
-<<<<<<< HEAD
-    if (!key || seen.has(key)) return null;
-    seen.add(key);
-    const candidate = computeCandidateForPath(grid, cols, rows, fairway, cellSize, path, opts);
-    let isDuplicate = false;
-    for (let i = 0; i < candidates.length; i++) {
-      const existing = candidates[i];
-      const overlap = pathOverlapFraction(candidate, existing);
-      const SIMILARITY_THRESHOLD = 0.66;
-      if (overlap >= SIMILARITY_THRESHOLD) {
-        const momentumGap = Math.abs(candidate.downhillMomentum - existing.downhillMomentum);
-        const autoGap = Math.abs(candidate.autoAssistSegments - existing.autoAssistSegments);
-        if (momentumGap >= 0.6 || autoGap >= 2) {
-          // treat as distinct due to materially different hill behavior
-          continue;
-        }
-=======
     if (!key || SIGNATURES.has(key)) return null;
     SIGNATURES.add(key);
     const candidate = computeCandidateForPath(grid, cols, rows, fairway, cellSize, path, opts);
@@ -838,48 +798,28 @@ export function suggestParK(
       const existing = candidates[i];
       const overlap = pathOverlapFraction(candidate, existing);
       if (overlap >= SIMILARITY_THRESHOLD) {
-        // Keep the lower-stroke option when paths are nearly identical
->>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
+        // If hill behavior differs materially, keep both variants
+        const momentumGap = Math.abs(candidate.downhillMomentum - existing.downhillMomentum);
+        const autoGap = Math.abs(candidate.autoAssistSegments - existing.autoAssistSegments);
+        if (momentumGap >= 0.6 || autoGap >= 2) {
+          continue;
+        }
+        // Otherwise, keep the lower-stroke option when nearly identical
         if (candidate.strokes + 0.05 < existing.strokes) {
           candidates[i] = candidate;
           return candidate;
         }
-<<<<<<< HEAD
-        isDuplicate = true;
-        break;
-      }
-    }
-    if (!isDuplicate) {
-      candidates.push(candidate);
-      return candidate;
-    }
-    return null;
-=======
         return null;
       }
     }
     candidates.push(candidate);
     return candidate;
->>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
   };
 
   const baseCandidate = considerCandidate(base.path);
   const queue: Array<{ path: Array<{ c: number; r: number }>; depth: number }> = [];
   if (baseCandidate) queue.push({ path: base.path.slice(), depth: 0 });
 
-<<<<<<< HEAD
-  // Generate alternates by banning sampled cells along the best path
-  const sampleStep = Math.max(3, Math.round(base.path.length / Math.max(2, Math.min(8, K * 2))));
-  for (let i = sampleStep; i < base.path.length - sampleStep && candidates.length < K; i += sampleStep) {
-    const banned = base.path[i];
-    // A* with banned cell
-    const alt = aStarWithBanned(grid, cols, rows, start, goal, new Set([banned.c + ',' + banned.r]));
-    if (alt.found) addCandidate(alt.path);
-  }
-  
-  
-  // Rank by strokes ascending (best first) and truncate to K
-=======
   let queueIndex = 0;
   while (queueIndex < queue.length && candidates.length < MAX_POOL) {
     const { path, depth } = queue[queueIndex++];
@@ -902,7 +842,7 @@ export function suggestParK(
       for (let i = sampleStep; i < path.length - sampleStep && candidates.length < MAX_POOL; i += sampleStep) {
         const bannedSet = new Set<string>();
         const first = path[i];
-        const second = path[Math.min(path.length - 2, i + Math.max(1, Math.floor(sampleStep / 2)))];
+        const second = path[Math.min(path.length - 2, i + Math.max(1, Math.floor(sampleStep / 2)) )];
         bannedSet.add(first.c + ',' + first.r);
         bannedSet.add(second.c + ',' + second.r);
         const altPair = aStarWithBanned(grid, cols, rows, start, goal, bannedSet);
@@ -914,8 +854,6 @@ export function suggestParK(
       }
     }
   }
-
->>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
   candidates.sort((a, b) => a.strokes - b.strokes || a.lengthPx - b.lengthPx);
   const finalCandidates = candidates.slice(0, K);
   const bestIndex = finalCandidates.length > 0 ? 0 : -1;

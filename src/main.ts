@@ -82,10 +82,7 @@ async function ensureUserSyncedWithFirebase(): Promise<void> {
     console.error('ensureUserSyncedWithFirebase failed:', e);
   }
 }
-<<<<<<< HEAD
-=======
-
->>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
+ 
 function getUsername(): string {
   return (userProfile.name || '').trim() || 'Player';
 }
@@ -3078,10 +3075,7 @@ async function playUserLevel(level: UserLevelEntry): Promise<void> {
     courseStartMs = null;
     holeStartMs = null;
     activeCourseId = null;
-<<<<<<< HEAD
     summaryOrigin = 'userLevels';
-=======
->>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
 
     // Load level data directly
     await loadLevelFromData(levelData);
@@ -3876,10 +3870,7 @@ function advanceAfterSunk() {
   const isLastHole = courseInfo.index >= courseInfo.total;
   if (summaryTimer !== null) { clearTimeout(summaryTimer); summaryTimer = null; }
   if (isLastHole) {
-<<<<<<< HEAD
     summaryMode = singleLevelMode ? 'level' : 'course';
-=======
->>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
     const totalStrokes = courseScores.reduce((sum, value) => sum + (typeof value === 'number' ? value : 0), 0);
     const totalTimeFromHoles = courseTimes.reduce((sum, value) => sum + (typeof value === 'number' ? value : 0), 0);
     const fallbackCourseTime = courseStartMs != null ? Math.max(0, Date.now() - courseStartMs) : null;
@@ -8465,76 +8456,8 @@ function draw() {
     }
   }
   // Course summary overlay (only on final hole and after recording)
-<<<<<<< HEAD
   if (gameState === 'summary' && holeRecorded) {
     renderSummaryScreen(ctx);
-=======
-  if (gameState === 'summary' && currentLevelIndex >= levelPaths.length - 1 && holeRecorded) {
-    ctx.fillStyle = 'rgba(0,0,0,0.65)';
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.font = '26px system-ui, sans-serif';
-    ctx.fillText('Course Summary', WIDTH/2, 40);
-    const total = courseScores.reduce((a, b) => a + (b ?? 0), 0);
-    const parTotal = coursePars.reduce((a, b) => a + (b ?? 0), 0);
-    const totalDelta = total - parTotal;
-    ctx.font = '16px system-ui, sans-serif';
-    let y = 80;
-    for (let i = 0; i < levelPaths.length; i++) {
-      const s = courseScores[i] ?? 0;
-      const p = coursePars[i] ?? 0;
-      const d = s - p;
-      const deltaText = d === 0 ? 'E' : (d > 0 ? `+${d}` : `${d}`);
-      const line = `Hole ${i+1}: ${s} (Par ${p}, ${deltaText})`;
-      const color = d === 0 ? '#ffffff' : (d > 0 ? '#ff9a9a' : '#9aff9a');
-      ctx.fillStyle = color;
-      ctx.fillText(line, WIDTH/2, y);
-      ctx.fillStyle = '#ffffff';
-      y += 22;
-    }
-    y += 10;
-    ctx.font = '18px system-ui, sans-serif';
-    const totalDeltaText = totalDelta === 0 ? 'E' : (totalDelta > 0 ? `+${totalDelta}` : `${totalDelta}`);
-    const totalColor = totalDelta === 0 ? '#ffffff' : (totalDelta > 0 ? '#ff9a9a' : '#9aff9a');
-    ctx.fillStyle = totalColor;
-    ctx.fillText(`Total: ${total} (Par ${parTotal}, ${totalDeltaText})`, WIDTH/2, y);
-    ctx.fillStyle = '#ffffff';
-    y += 28;
-    ctx.font = '14px system-ui, sans-serif';
-    ctx.fillText('Click or Press Enter to Restart Game', WIDTH/2, y);
-    // Back to Main Menu button (bottom center)
-    const back = getCourseBackRect();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = hoverSummaryBack ? '#ffffff' : '#cfd2cf';
-    ctx.fillStyle = hoverSummaryBack ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
-    ctx.fillRect(back.x, back.y, back.w, back.h);
-    ctx.strokeRect(back.x, back.y, back.w, back.h);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '16px system-ui, sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('Main Menu', back.x + back.w/2, back.y + back.h/2 + 0.5);
-    // restore defaults
-    ctx.textAlign = 'start';
-    ctx.textBaseline = 'top';
-
-    if (activeCourseId) {
-      const panelWidth = Math.min(360, WIDTH * 0.5);
-      const panelX = Math.round(WIDTH / 2 - panelWidth / 2);
-      const panelY = Math.round(back.y - 120);
-      drawLeaderboardPanel(ctx, {
-        x: panelX,
-        y: panelY,
-        width: panelWidth,
-        title: 'Course Leaderboard',
-        rows: courseLeaderboardCourseId === activeCourseId ? courseLeaderboardRows : [],
-        loading: courseLeaderboardCourseId === activeCourseId ? courseLeaderboardLoading : false,
-        emptyMessage: 'No entries yet',
-        maxRows: 5
-      });
-    }
->>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
   }
   
   // Pause overlay (render last so it sits on top)
@@ -10728,7 +10651,6 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (gameState === 'summary') {
-<<<<<<< HEAD
     if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space') {
       const btn = summaryHotspots[summaryFocusIndex];
       if (btn) handleSummaryAction(btn.action);
@@ -10742,18 +10664,6 @@ window.addEventListener('keydown', (e) => {
       }
     } else if (e.code === 'Escape' || e.code === 'KeyM') {
       goToMainMenuFromSummary();
-=======
-    if (e.code === 'Enter' || e.code === 'NumpadEnter') {
-      courseScores = [];
-    courseTimes = [];
-    courseStartMs = null;
-      currentLevelIndex = 0;
-      gameState = 'play';
-      loadLevelByIndex(currentLevelIndex).catch(console.error);
-    }
-    if (e.code === 'Escape' || e.code === 'KeyM') {
-      gameState = 'menu';
->>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
     }
     return;
   }

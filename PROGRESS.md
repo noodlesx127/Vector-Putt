@@ -48,14 +48,11 @@ This file tracks current focus, next steps, decisions, and planned work. Complet
   - Added `renderParCandidatesSummary()` in `src/editor/levelEditor.ts` to draw a top-right popup listing each route number, color, strokes, and suggested par.
   - Ambiguity policy: if top routes have equal par or near-equal strokes, prompt via `EditorEnv.showList()` while keeping overlay active; otherwise confirm best route with summary visible.
   - Interactions: click near a colored route or press `1..K` to select; Esc dismisses overlay. Visual Path Preview (`P`) remains available but is hidden while the multi-route overlay is active.
-<<<<<<< HEAD
   - Info Bar cleanup while Suggest Par overlay is visible: bottom panel now focuses on route picking hints plus highlights downhill auto-assist lanes when detected.
-- [x] Hill-aware route diversity
-  - `suggestParK()` now tracks downhill momentum, uphill drag, and auto-assist segments per path; filters duplicates that differ only cosmetically while keeping hill-boost variants.
-  - Added edge-ban perturbations to explore corridors that share nodes but diverge via angled turns, improving coverage of upper/top lanes.
-  - Stroke estimation now applies downhill bonuses and auto-assist discounts when hills and angled corridors would carry the ball without additional strokes.
-=======
->>>>>>> 373e4890b22e27b7653a5cfaf818cc7bec788a69
+  - [x] Hill-aware route diversity
+    - `suggestParK()` now tracks downhill momentum, uphill drag, and auto-assist segments per path; filters duplicates that differ only cosmetically while keeping hill-boost variants.
+    - Added edge-ban perturbations to explore corridors that share nodes but diverge via angled turns, improving coverage of upper/top lanes.
+    - Stroke estimation now applies downhill bonuses and auto-assist discounts when hills and angled corridors would carry the ball without additional strokes.
 
 Notes
 - Coefficients wired from Admin → Game Settings: Baseline Shot px, Turn Penalty, Hill Bump, Bank Weight, Friction K, Sand Multiplier.

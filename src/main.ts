@@ -4948,14 +4948,10 @@ canvas.addEventListener('mousedown', (e) => {
       return;
     }
   }
-  // Click-to-continue via mousedown for immediate feedback
-  if (!paused && gameState === 'sunk') { advanceAfterSunk(); return; }
-  // Handle summary actions on mousedown for snappy UX
-  if (!paused && gameState === 'summary') {
-    const target = summaryHotspots.find(hs => p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h);
-    if (target) { handleSummaryAction(target.action); return; }
-    return;
-  }
+  // Do not auto-advance on mousedown; use click to advance from sunk banner
+  if (!paused && gameState === 'sunk') { return; }
+  // For summary, let the click handler process actions to avoid double-trigger
+  if (!paused && gameState === 'summary') { return; }
   if (paused || gameState !== 'play') return; // disable while paused or not in play state
   if (ball.moving) return;
   const pp = canvasToPlayCoords(p);
@@ -5370,7 +5366,7 @@ canvas.addEventListener('click', (e) => {
   if (paused) return;
   if (gameState === 'changelog') return; // clicks do nothing on the changelog surface
   const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-  if (now - lastAdvanceFromSunkMs < CLICK_SWALLOW_MS) {
+  if (gameState === 'sunk' && now - lastAdvanceFromSunkMs < CLICK_SWALLOW_MS) {
     // Swallow the click that follows a mousedown-driven advance
     return;
   }

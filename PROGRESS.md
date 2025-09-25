@@ -429,3 +429,9 @@ All completed; see `COMPLETED.md` for the full list of milestones and details.
   - Hole-in-One Compilation: https://www.youtube.com/watch?v=4_I6pN-SNiQ
   - Full Playthrough: https://www.youtube.com/watch?v=kMB2YdKYy7c
  - Reference screenshots directory: `level_screenshots/` (captures from original game; use for ideas, layouts, and obstacle styles)
+
+## Progress (2025-09-25)
+- Overlay Settings menu: new menubar entry between Editor Tools and Help that centralizes overlay actions (Show/Hide, Opacity , Z-Order Above/Below, Lock, Snap to Grid, Fit to Fairway/Canvas, Reset Transform, Preserve Aspect, Flip H/V, Through-click, Calibrate Scale, Remove). (src/editor/levelEditor.ts)
+- Help overlay: hierarchical index  per-tool pages with Back; implemented openHelpOverlay() and wired Help  Keyboard Shortcuts & Tool Guide to the new overlay. Topics include Global, Selection, Marquee, Grid/Rulers/Guides, Polygons, 45 Tools, Measure, Posts, Rect Tools, Overlay, Edit & Shortcuts, Tool Info Bar. (src/editor/levelEditor.ts)
+- Info Bar: Polygons now surface vertex edit tips (Alt+Click Vertex: Remove, Doubleclick Edge: Insert) alongside join bevel toggle and snap/Grid/Guides status. (src/editor/levelEditor.ts)
+- Menubar: order updated to include Overlay Settings between Editor Tools and Help. (src/editor/levelEditor.ts)

@@ -506,3 +506,7 @@ Implementation follow-ups:
 - [ ] Mobile touch optimization
 - [ ] Advanced camera work (cinematic replays)
 
+
+## Updates (2025-09-25)
+- [x] Help overlay: hierarchical index  per-tool pages with Back; topics include Global, Selection, Marquee, Grid/Rulers/Guides, Polygons, 45 Tools, Measure, Posts, Rect Tools, Overlay, Edit & Shortcuts, Tool Info Bar. (src/editor/levelEditor.ts)
+- [x] Overlay Settings menu: dedicated menubar between Editor Tools and Help consolidating overlay actions (Show/Hide, Opacity , Z-Order Above/Below, Lock, Snap to Grid, Fit to Fairway/Canvas, Reset Transform, Preserve Aspect, Flip H/V, Through-click, Calibrate Scale, Remove). (src/editor/levelEditor.ts)

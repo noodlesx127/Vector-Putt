@@ -1,0 +1,60 @@
+Issues
+----------
+
+The Course Summary screen is not scrollable where is list the hole, par, Stroke. *** Done ***
+
+Suggest Par: ** This still needs work **
+
+- As seen in the provided screenshots, The suggest par route lines do not take into account ALL routes. Because of this, other routes lines over lap and becomes confusing. We should only have as many route lines as needed and the route lines should be taking all routes the level offers.
+
+- When using Suggest par, there should be a small popup window showing the route number and color and suggested par. This way the user can see what the suggested par is for each route at a glance. Currently, the user is only able to see the suggest par only after clicking on the route.
+
+
+Decorations:
+
+- Only Flowers work at the moment. Also They are in groups of 4 when it should just be one.
+
+
+
+
+Ideas
+------
+
+- Changable Ball size setting. accable from the admin menu > Game Settings
+
+- Level Editor: Turn a Wall, Water, Sand Object into a Polygon. Meaning, If a wall was created using the just the wall tool, you can turn it into a Polygon wall. That way a user can add Vertexs and change/edit the wall.
+
+Level Editor: Right Click menu. Just like windows, macOS, ect. This right click menu had all the options and features that a user would normally have to use a keyboard shortcuts for. Examples: Copy, Cut, Paste, Delete. Tool Features vertex add/remove, Post resize, Hill direction, ect. Tool Features should only show when that tool is in use.
+
+OLD
+-----
+Course Summary screen:
+
+After completing a user made level and the Course Summary screen displays, There are the following issues:
+
+- Course Summary screen displays the following text "Click or press enter to restart game". This is dont work, Clicking or pressing enter just closes the Course Summary screen and then reopens.
+
+- Course Summary screen only displays a Main Menu button. This screen should have the option to go back to the user created levels selector if the user only came from the User created level selector or there should be a button that goes back to the course selector screen if the user just completed a course.
+
+- The Course Summary screen should be called "Level Summary" when its a single level. The Course Summary screen should only be called this when completing a course.
+
+- The Course Summary screen and "Level Summary" Screen should host the leaderboards for corresponding screens. Meaning, The Course Summary screen should host the That course's Leaderboard and the Level summary screen should host that levels leaderboard.
+
+- The Course Summary and "Level Summary" Screens need a UI refresh as they have yet to be touched.
+
+Info bar and help page: **** Done **** Check ****
+
+- All tools when updated need to have the info bar and help page updated for new features. For exampple the following is not displayed anywhere: 
+Polygon vertex add/remove
+  - Alt+Click on a vertex removes it (enforced minimum of 3 vertices).
+  - Double-click near an edge inserts a new vertex at the closest point on that edge and begins dragging it immediately. Insertion honors alignment guides and grid snapping.
+  
+- Do an audit of the Info bar and Help page and make sure that all featues and keyboard shortcuts are listed or shown when needed.
+
+Level Editor:
+
+- Menu Text is not aligned to the with in the menu. Please see the screenshots for more context.
+
+- Level Editor: Remove Walls45, Water45 and sand45. Redundent Tool as we already have wallpoly, ect.
+
+- Level Editor: Move all Overlay settings to a new menu in the level editor called "Overlay Settings"

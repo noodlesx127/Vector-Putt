@@ -3509,20 +3509,50 @@ let summaryOrigin: 'courseSelect' | 'userLevels' | null = null;
 type SummaryHotspot = { action: 'restart' | 'mainMenu' | 'backToUserLevels' | 'backToCourseSelect'; x: number; y: number; w: number; h: number };
 let summaryHotspots: SummaryHotspot[] = [];
 let summaryFocusIndex = 0;
+let summaryScrollOffset = 0;
+const SUMMARY_ROW_HEIGHT = 22;
+const SUMMARY_ROWS_PADDING_TOP = 12;
+const SUMMARY_TOTAL_BLOCK_HEIGHT = 60;
 
 function resetSummaryHotspots(): void {
   summaryHotspots = [];
   summaryFocusIndex = 0;
+  summaryScrollOffset = 0;
+}
+
+function getSummaryLayout(): {
+  panelX: number;
+  panelY: number;
+  panelW: number;
+  panelH: number;
+  contentX: number;
+  contentY: number;
+  contentW: number;
+  contentH: number;
+} {
+  const panelW = Math.min(780, WIDTH - 80);
+  const panelH = Math.min(540, HEIGHT - 120);
+  const panelX = Math.floor((WIDTH - panelW) / 2);
+  const panelY = Math.floor((HEIGHT - panelH) / 2);
+  const contentX = panelX + 24;
+  const contentY = panelY + 130;
+  const contentW = Math.floor(panelW * 0.55);
+  const contentH = panelH - 220;
+  return { panelX, panelY, panelW, panelH, contentX, contentY, contentW, contentH };
+}
+
+function getCourseSummaryScrollMetrics(contentHeight: number): { viewportHeight: number; maxScroll: number } {
+  const viewportHeight = Math.max(0, contentHeight - SUMMARY_TOTAL_BLOCK_HEIGHT - SUMMARY_ROWS_PADDING_TOP);
+  const totalRowHeight = levelPaths.length * SUMMARY_ROW_HEIGHT;
+  const maxScroll = Math.max(0, totalRowHeight - viewportHeight);
+  return { viewportHeight, maxScroll };
 }
 
 function renderSummaryScreen(ctx: CanvasRenderingContext2D): void {
   ctx.fillStyle = 'rgba(8, 12, 18, 0.88)';
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-  const panelW = Math.min(780, WIDTH - 80);
-  const panelH = Math.min(540, HEIGHT - 120);
-  const panelX = Math.floor((WIDTH - panelW) / 2);
-  const panelY = Math.floor((HEIGHT - panelH) / 2);
+  const { panelX, panelY, panelW, panelH, contentX, contentY, contentW, contentH } = getSummaryLayout();
 
   ctx.fillStyle = 'rgba(20, 30, 40, 0.95)';
   ctx.fillRect(panelX, panelY, panelW, panelH);
@@ -3561,11 +3591,6 @@ function renderSummaryScreen(ctx: CanvasRenderingContext2D): void {
     ctx.fillText(`Par: ${parValue ?? '—'}`, metaX, metaY);
   }
 
-  const contentX = panelX + 24;
-  const contentY = panelY + 130;
-  const contentW = Math.floor(panelW * 0.55);
-  const contentH = panelH - 220;
-
   ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
   ctx.fillRect(contentX, contentY, contentW, contentH);
   ctx.strokeStyle = 'rgba(100, 150, 200, 0.35)';
@@ -3578,21 +3603,30 @@ function renderSummaryScreen(ctx: CanvasRenderingContext2D): void {
 
   if (summaryMode === 'course') {
     ctx.font = '16px system-ui, sans-serif';
-    let rowY = contentY + 12;
+    const { viewportHeight, maxScroll } = getCourseSummaryScrollMetrics(contentH);
+    if (summaryScrollOffset > maxScroll) summaryScrollOffset = maxScroll;
+    const rowsViewportTop = contentY + SUMMARY_ROWS_PADDING_TOP;
+    const rowsViewportBottom = rowsViewportTop + viewportHeight;
+    let rowY = rowsViewportTop - summaryScrollOffset;
     for (let i = 0; i < levelPaths.length; i++) {
       const s = courseScores[i] ?? 0;
       const p = coursePars[i] ?? 0;
       const d = s - p;
       const deltaText = d === 0 ? 'E' : (d > 0 ? `+${d}` : `${d}`);
       const color = d === 0 ? '#ffffff' : (d > 0 ? '#ff9a9a' : '#9aff9a');
-      ctx.fillStyle = color;
-      ctx.fillText(`Hole ${i + 1}`, contentX + 16, rowY);
-      ctx.fillStyle = '#cfd2cf';
-      ctx.fillText(`Par ${p}`, contentX + 110, rowY);
-      ctx.fillText(`Strokes ${s}`, contentX + 194, rowY);
-      ctx.fillStyle = color;
-      ctx.fillText(deltaText, contentX + 320, rowY);
-      rowY += 22;
+      if (rowY <= rowsViewportBottom) {
+        ctx.fillStyle = color;
+        ctx.fillText(`Hole ${i + 1}`, contentX + 16, rowY);
+        ctx.fillStyle = '#cfd2cf';
+        ctx.fillText(`Par ${p}`, contentX + 110, rowY);
+        ctx.fillText(`Strokes ${s}`, contentX + 194, rowY);
+        ctx.fillStyle = color;
+        ctx.fillText(deltaText, contentX + 320, rowY);
+      }
+      rowY += SUMMARY_ROW_HEIGHT;
+      if (rowY > rowsViewportBottom + SUMMARY_ROW_HEIGHT) {
+        break;
+      }
     }
 
     const total = courseScores.reduce((a, b) => a + (b ?? 0), 0);
@@ -3603,6 +3637,7 @@ function renderSummaryScreen(ctx: CanvasRenderingContext2D): void {
     ctx.fillStyle = totalColor;
     ctx.fillText(`Total: ${total} (Par ${parTotal}, ${totalDeltaText})`, contentX + 16, contentY + contentH - 40);
   } else {
+    summaryScrollOffset = 0;
     ctx.font = '18px system-ui, sans-serif';
     const s = courseScores[currentLevelIndex] ?? strokes;
     const p = coursePars[currentLevelIndex] ?? courseInfo.par;
@@ -5385,6 +5420,20 @@ canvas.addEventListener('click', (e) => {
 
 // Scroll wheel support (changelog, level management)
 canvas.addEventListener('wheel', (e) => {
+  if (gameState === 'summary' && summaryMode === 'course') {
+    e.preventDefault();
+    const layout = getSummaryLayout();
+    const { maxScroll } = getCourseSummaryScrollMetrics(layout.contentH);
+    if (maxScroll <= 0) {
+      summaryScrollOffset = 0;
+      return;
+    }
+    const direction = Math.sign(e.deltaY);
+    if (direction === 0) return;
+    const next = summaryScrollOffset + direction * SUMMARY_ROW_HEIGHT;
+    summaryScrollOffset = Math.max(0, Math.min(maxScroll, next));
+    return;
+  }
   if (gameState === 'changelog') {
     e.preventDefault();
     const delta = Math.sign(e.deltaY) * 40;

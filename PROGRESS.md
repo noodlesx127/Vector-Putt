@@ -7,6 +7,10 @@ This file tracks current focus, next steps, decisions, and planned work. Complet
 - Play Area Visual Refresh (render-only plan)
 - Leaderboards (levels and courses) planning and wiring
 
+## Progress (2025-09-26)
+- Level Editor: implemented context-sensitive right-click menu with clipboard operations (Copy, Cut, Paste, Delete, Duplicate), tool-specific actions (Add/Remove Vertex for polygons, Adjust Post Radius, Adjust Hill Direction), and quick toggles for editor options (Grid On/Off, Alignment Guides, Guide Details, Rulers, Slope Arrows, Tool Info Bar, Preview Fill, Dashed Next Segment). Menu items appear conditionally based on selection, tool, and cursor position; integrates with existing editor state, hit-testing, and undo system. (src/editor/levelEditor.ts)
+- Diagonal Geometry Tools: streamlined 45° snapping to use Shift modifier on existing polygon tools (wallsPoly/waterPoly/sandPoly) instead of dedicated tools, removing redundancy and simplifying the Objects/Tools menus. (src/editor/levelEditor.ts, TODO.md)
+
 ## Cross‑cutting — Obstacles Integration Policy (2025-09-22)
 
 - When introducing any new obstacle type, it must be:
@@ -430,8 +434,4 @@ All completed; see `COMPLETED.md` for the full list of milestones and details.
   - Full Playthrough: https://www.youtube.com/watch?v=kMB2YdKYy7c
  - Reference screenshots directory: `level_screenshots/` (captures from original game; use for ideas, layouts, and obstacle styles)
 
-## Progress (2025-09-25)
-- Overlay Settings menu: new menubar entry between Editor Tools and Help that centralizes overlay actions (Show/Hide, Opacity , Z-Order Above/Below, Lock, Snap to Grid, Fit to Fairway/Canvas, Reset Transform, Preserve Aspect, Flip H/V, Through-click, Calibrate Scale, Remove). (src/editor/levelEditor.ts)
-- Help overlay: hierarchical index  per-tool pages with Back; implemented openHelpOverlay() and wired Help  Keyboard Shortcuts & Tool Guide to the new overlay. Topics include Global, Selection, Marquee, Grid/Rulers/Guides, Polygons, 45 Tools, Measure, Posts, Rect Tools, Overlay, Edit & Shortcuts, Tool Info Bar. (src/editor/levelEditor.ts)
-- Info Bar: Polygons now surface vertex edit tips (Alt+Click Vertex: Remove, Doubleclick Edge: Insert) alongside join bevel toggle and snap/Grid/Guides status. (src/editor/levelEditor.ts)
-- Menubar: order updated to include Overlay Settings between Editor Tools and Help. (src/editor/levelEditor.ts)
+

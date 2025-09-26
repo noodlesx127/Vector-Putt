@@ -40,6 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Polygons — Vertex insert/remove actions: Alt+Click removes a vertex (min 3); Double‑click near an edge inserts a vertex at the closest point and begins dragging.
 
 ### Changed
+
+- Added scrolling to the Course Summary hole list so long courses remain readable at standard panel size.
 - Selection — Marquee default is now Contain; hold Alt to switch to Intersect during drag/finalize. (`src/editor/levelEditor.ts`)
 - Level Editor • Suggest Par heuristics: improved accuracy by incorporating directional hill effects and bridge pass‑through.
   - Grid now encodes a hill vector field (direction + strength) so A* penalizes uphill segments and slightly eases downhill ones.
@@ -81,7 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Level Editor • Ruler‑Drag Guides: drag from rulers to create persistent guide lines; snapping includes these; double‑click a ruler band clears guides for that axis. (`src/editor/levelEditor.ts`)
 - Level Editor • Tools: Duplicate action in Tools menu with dynamic enable/disable and label, plus keyboard shortcut `Ctrl+D`. Duplicates selected objects and pastes at cursor position with grid snapping and fairway clamping. (`src/editor/levelEditor.ts`)
 - Level Editor • Polygons: Vertex editing in Select Tool. Selected `wallsPoly`/`waterPoly`/`sandPoly` display vertex handles; dragging a vertex snaps to grid and clamps to fairway bounds. (`src/editor/levelEditor.ts`)
-- Level Editor • Diagonal Geometry: 45°-constrained polygon drawing tools `Walls45`, `Water45`, `Sand45`. Segments snap to 0/45/90°; Enter closes, Esc cancels; Ctrl temporarily disables constraint (free angle). Normal poly tools accept Shift to temporarily constrain to 45°. Persist to existing `wallsPoly`/`waterPoly`/`sandPoly` arrays. (`src/editor/levelEditor.ts`)
+- Level Editor • Polygon drafting: Removed dedicated `Walls45` / `Water45` / `Sand45` tools in favor of using Shift with the existing `wallsPoly` / `waterPoly` / `sandPoly` tools for 45° snapping. (`src/editor/levelEditor.ts`)
  - Level Editor • Tools: Chamfer/Bevel conversion for rectangles (Walls/Water/Sand). One-click converts selected rect-like objects into beveled octagonal polygons, respecting rotation; prompts for bevel amount (pixels); snaps to grid when enabled; inserts into `wallsPoly`/`waterPoly`/`sandPoly` and removes originals; updates selection to new polys. (`src/editor/levelEditor.ts`)
 - Level Editor • Align/Distribute: Edit menu actions Align Left/Right/Top/Bottom/Center (H/V) and Distribute (H/V) for multi-selection. Alignment snaps objects to shared edges or centers; distribution computes even spacing across the selection span. (`src/editor/levelEditor.ts`)
 - Level Editor • Overlay Screenshot (Phase 1): Session-only tracing aid to place a screenshot over the editor grid. Tools → “Overlay Screenshot…” opens a file picker; View menu adds Overlay options (Show/Hide, Opacity +/- with `[`/`]`, Z‑Order Above/Below, Lock, Snap to Grid, Fit to Fairway, Reset Transform, Transform Mode → Move). Renders below geometry by default or above when toggled; keyboard supports nudges (Arrows, Shift multiplier), scale (`=`/`-`), and rotate (`,`/`.`). Excluded from saves/exports/thumbnails and gameplay. (`src/editor/levelEditor.ts`)
@@ -130,7 +132,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Level Editor • Alignment Aids UX: Alt temporarily disables guides during interactions; Ctrl forces grid‑only snapping (overrides alignment guides) for drag‑move, resize, and vertex drag. (`src/editor/levelEditor.ts`)
  - UI • Level Editor Menus: Moved Metadata, Suggest Par, Suggest Cup Positions, and Test Level under Editor Tools for better grouping. (`src/editor/levelEditor.ts`)
  - Level Editor • Menus: Tools dropdown now reflects disabled state for Copy/Cut/Paste/Duplicate and Undo/Redo based on current selection/history/clipboard. (`src/editor/levelEditor.ts`)
- - Level Editor • Objects menu: added `Walls45`, `Water45`, and `Sand45` entries. (`src/editor/levelEditor.ts`)
+ - Level Editor • Objects menu: streamlined polygon entries; Shift on `wallsPoly` / `waterPoly` / `sandPoly` provides 45° snapping, removing the need for separate 45° tools. (`src/editor/levelEditor.ts`)
   - Level Editor • Tools: Chamfer/Bevel conversion for rectangles (Walls/Water/Sand). One-click converts selected rect-like objects into beveled octagonal polygons, respecting rotation; prompts for bevel amount (pixels); snaps to grid when enabled; inserts into `wallsPoly`/`waterPoly`/`sandPoly` and removes originals; updates selection to new polys. (`src/editor/levelEditor.ts`)
  - Level Editor • Polygon preview: Delayed fill until 4 vertices for `wallsPoly`/`waterPoly`/`sandPoly` (and 45° variants) to avoid confusing early triangle fill while drafting the 3rd vertex. (`src/editor/levelEditor.ts`)
  - Level Editor • Polygon preview: Removed closing dashed segment while drafting; the outline remains open and only the placed edges are shown. A yellow dashed preview shows the next segment to the cursor. (`src/editor/levelEditor.ts`)

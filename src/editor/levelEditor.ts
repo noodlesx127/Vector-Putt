@@ -64,7 +64,7 @@ type SelectableObject =
   | { type: 'overlay'; object: any };
 
 export type EditorTool =
-  | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'walls45' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'water45' | 'sand' | 'sandPoly' | 'sand45' | 'hill' | 'decoration' | 'measure';
+  | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'sand' | 'sandPoly' | 'hill' | 'decoration' | 'measure';
 
 export type EditorAction =
   | 'save' | 'saveAs' | 'load' | 'import' | 'importScreenshot' | 'importAnnotate' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'slopeArrowsToggle' | 'previewFillOnClose' | 'previewDashedNext' | 'alignmentGuides' | 'guideDetailsToggle' | 'rulersToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'chamfer' | 'angledCorridor' | 'courseCreator'
@@ -90,6 +90,29 @@ export type EditorHotspot =
   | { kind: 'action'; action: EditorAction; x: number; y: number; w: number; h: number }
   | { kind: 'menu'; menu: EditorMenuId; x: number; y: number; w: number; h: number }
   | { kind: 'menuItem'; menu: EditorMenuId; item: EditorMenuItem; x: number; y: number; w: number; h: number };
+
+type ContextMenuAction =
+  | 'copy'
+  | 'cut'
+  | 'paste'
+  | 'delete'
+  | 'duplicate'
+  | 'polygonAddVertex'
+  | 'polygonRemoveVertex'
+  | 'postRadius'
+  | 'hillDirection'
+  | 'toggleGrid'
+  | 'toggleAlignmentGuides'
+  | 'toggleGuideDetails'
+  | 'toggleRulers'
+  | 'toggleSlopeArrows'
+  | 'toggleToolInfoBar'
+  | 'togglePreviewFill'
+  | 'togglePreviewDashed';
+
+type EditorContextMenuItem =
+  | { kind: 'item'; action: ContextMenuAction; label: string; enabled?: boolean; checked?: boolean }
+  | { kind: 'separator' };
 
 // Adapter interface to decouple editor module from main globals.
 // We will extend this incrementally as we migrate code.
@@ -221,6 +244,12 @@ class LevelEditorImpl implements LevelEditor {
   private env: EditorEnv | null = null;
   private gridSize: number = 20;
   private editorMenuActiveItemIndex: number = -1;
+  // Context menu state
+  private contextMenuVisible: boolean = false;
+  private contextMenuPosition: { x: number; y: number } = { x: 0, y: 0 };
+  private contextMenuItems: EditorContextMenuItem[] = [];
+  private contextMenuHotspots: Array<{ action: ContextMenuAction; x: number; y: number; w: number; h: number; enabled: boolean }> = [];
+  private contextMenuHit: { kind: 'object' | 'vertex' | 'edge' | 'empty'; object?: SelectableObject | null; vertexIndex?: number; edgeIndex?: number; point?: { x: number; y: number } } = { kind: 'empty' };
   // Per-object snap to grid (move/create). Mirrors overlaySnapToGrid but for editor objects.
   private objectSnapToGrid: boolean = true;
   // Suggest Cup markers (transient hints rendered on canvas)
@@ -387,7 +416,6 @@ class LevelEditorImpl implements LevelEditor {
       { label: 'Marquee', value: 'marquee' },
       { label: 'Grid / Rulers / Guides', value: 'grid' },
       { label: 'Polygons', value: 'polygons' },
-      { label: '45° Poly Tools', value: 'poly45' },
       { label: 'Measure', value: 'measure' },
       { label: 'Posts', value: 'posts' },
       { label: 'Rect Tools', value: 'rect' },
@@ -440,15 +468,9 @@ class LevelEditorImpl implements LevelEditor {
         case 'polygons':
           lines.push(
             'Click to add vertices; Enter/Click near start closes; Backspace: Undo last',
-            'Shift: Angle Snap  •  Ctrl: Grid-only  •  Alt: Disable Guides',
+            'Shift: 45° Angle Snap  •  Ctrl: Grid-only  •  Alt: Disable Guides',
             'Alt+Click Vertex: Remove  •  Double‑click near edge: Insert Vertex',
             'Join Bevel: toggle while drafting (see Info Bar)'
-          );
-          break;
-        case 'poly45':
-          lines.push(
-            'Segments constrained to 0/45/90 degrees',
-            'Ctrl: Free angle override while placing'
           );
           break;
         case 'measure':
@@ -1016,8 +1038,7 @@ class LevelEditorImpl implements LevelEditor {
     let ny = snapGrid(desired.y);
     if (prev) {
       const use45 = (
-        ((tool === 'walls45' || tool === 'water45' || tool === 'sand45') && !modifiers.ctrl) ||
-        ((tool === 'wallsPoly' || tool === 'waterPoly' || tool === 'sandPoly') && modifiers.shift)
+        (tool === 'wallsPoly' || tool === 'waterPoly' || tool === 'sandPoly') && modifiers.shift
       );
       if (use45) {
         const c = this.constrainTo45(prev.x, prev.y, nx, ny, gridOn, gridSize);
@@ -1283,6 +1304,10 @@ class LevelEditorImpl implements LevelEditor {
     this.dragMoveStart = null;
     this.isVertexDragging = false;
     this.vertexDrag = null;
+    this.contextMenuVisible = false;
+    this.contextMenuItems = [];
+    this.contextMenuHotspots = [];
+    this.contextMenuHit = { kind: 'empty' };
   }
 
   // Fully reset the editor session so that re-entering starts fresh
@@ -1294,6 +1319,7 @@ class LevelEditorImpl implements LevelEditor {
     this.selectedObjects = [] as any;
     this.openEditorMenu = null;
     this.uiHotspots = [];
+    this.contextMenuHotspots = [];
     this.editorMenuActiveItemIndex = -1;
     // Clear transient interaction state
     this.clearDragState();
@@ -1666,13 +1692,13 @@ class LevelEditorImpl implements LevelEditor {
     const poly = { points: [...this.polygonInProgress.points] };
     const gs = env.getGlobalState();
 
-    if (this.polygonInProgress.tool === 'wallsPoly' || this.polygonInProgress.tool === 'walls45') {
+    if (this.polygonInProgress.tool === 'wallsPoly') {
       gs.polyWalls.push(poly);
       if (this.editorLevelData) this.editorLevelData.wallsPoly.push(poly);
-    } else if (this.polygonInProgress.tool === 'waterPoly' || this.polygonInProgress.tool === 'water45') {
+    } else if (this.polygonInProgress.tool === 'waterPoly') {
       gs.watersPoly.push(poly);
       if (this.editorLevelData) this.editorLevelData.waterPoly.push(poly);
-    } else if (this.polygonInProgress.tool === 'sandPoly' || this.polygonInProgress.tool === 'sand45') {
+    } else if (this.polygonInProgress.tool === 'sandPoly') {
       gs.sandsPoly.push(poly);
       if (this.editorLevelData) this.editorLevelData.sandPoly.push(poly);
     }
@@ -1682,6 +1708,10 @@ class LevelEditorImpl implements LevelEditor {
     // Clear transient guide visuals after commit
     this.liveGuides = [];
     this.liveGuideBubbles = [];
+    this.contextMenuVisible = false;
+    this.contextMenuItems = [];
+    this.contextMenuHotspots = [];
+    this.contextMenuHit = { kind: 'empty' };
   }
 
   // Menu definitions
@@ -1742,14 +1772,11 @@ class LevelEditorImpl implements LevelEditor {
         { label: 'Post', item: { kind: 'tool', tool: 'post' }, separator: true },
         { label: 'Wall', item: { kind: 'tool', tool: 'wall' } },
         { label: 'WallsPoly', item: { kind: 'tool', tool: 'wallsPoly' } },
-        { label: 'Walls45', item: { kind: 'tool', tool: 'walls45' } },
         { label: 'Bridge', item: { kind: 'tool', tool: 'bridge' }, separator: true },
         { label: 'Water', item: { kind: 'tool', tool: 'water' } },
         { label: 'WaterPoly', item: { kind: 'tool', tool: 'waterPoly' } },
-        { label: 'Water45', item: { kind: 'tool', tool: 'water45' } },
         { label: 'Sand', item: { kind: 'tool', tool: 'sand' } },
         { label: 'SandPoly', item: { kind: 'tool', tool: 'sandPoly' } },
-        { label: 'Sand45', item: { kind: 'tool', tool: 'sand45' } },
         { label: 'Hill', item: { kind: 'tool', tool: 'hill' } }
       ]
     },
@@ -2587,8 +2614,8 @@ class LevelEditorImpl implements LevelEditor {
       }
       // Intentionally do not closePath() here to avoid drawing a closing dashed edge during preview.
       
-      // Fill based on tool type (treat 45° variants as their base types)
-      if (tool === 'waterPoly' || tool === 'water45') {
+      // Fill based on tool type
+      if (tool === 'waterPoly') {
         // Respect View toggle: only fill on close
         if (!this.previewFillOnClose && pts.length >= 8) {
           ctx.globalAlpha = 0.35;
@@ -2597,7 +2624,7 @@ class LevelEditorImpl implements LevelEditor {
           ctx.globalAlpha = 1;
         }
         ctx.strokeStyle = COLORS.waterStroke;
-      } else if (tool === 'sandPoly' || tool === 'sand45') {
+      } else if (tool === 'sandPoly') {
         if (!this.previewFillOnClose && pts.length >= 8) {
           ctx.globalAlpha = 0.35;
           ctx.fillStyle = COLORS.sandFill;
@@ -2605,7 +2632,7 @@ class LevelEditorImpl implements LevelEditor {
           ctx.globalAlpha = 1;
         }
         ctx.strokeStyle = COLORS.sandStroke;
-      } else if (tool === 'wallsPoly' || tool === 'walls45') {
+      } else if (tool === 'wallsPoly') {
         // Do not fill early for walls: wait until at least 4 points (unless View toggle forces no preview fill at all)
         if (!this.previewFillOnClose && pts.length >= 8) { // 4 points * 2 coords
           ctx.globalAlpha = 0.35;
@@ -3056,6 +3083,10 @@ class LevelEditorImpl implements LevelEditor {
     if (this.overlayVisible && this.overlayCanvas && this.overlayAbove) {
       this.renderOverlay(env);
     }
+
+    if (this.contextMenuVisible && this.contextMenuItems.length > 0) {
+      this.renderContextMenu(ctx);
+    }
     // Draw overlay transform handles when the overlay is selected with the Select Tool (single selection), and no menu is open
     if (
       this.overlayVisible && this.overlayCanvas && !this.overlayLocked &&
@@ -3340,7 +3371,7 @@ class LevelEditorImpl implements LevelEditor {
     const guidesOn = this.showAlignmentGuides;
 
     // Populate content by tool
-    const polyTools: EditorTool[] = ['wallsPoly','waterPoly','sandPoly','walls45','water45','sand45'];
+    const polyTools: EditorTool[] = ['wallsPoly','waterPoly','sandPoly'];
     if (showingParOverlay) {
       const total = this.parCandidates!.length;
       const best = this.parCandidates![0]?.candidate;
@@ -3527,6 +3558,20 @@ class LevelEditorImpl implements LevelEditor {
       (hs.kind === 'menu' || hs.kind === 'menuItem') &&
       p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h
     ));
+
+    if (e.button === 2) {
+      e.preventDefault();
+      this.openEditorMenu = null;
+      const world = env.worldFromEvent(e);
+      this.contextMenuPosition = { x: world.x, y: world.y };
+      this.contextMenuHit = this.computeContextMenuHit(world.x, world.y, env);
+      this.contextMenuItems = this.buildContextMenuItems(env);
+      this.contextMenuVisible = this.contextMenuItems.some(item => item.kind === 'item');
+      return;
+    } else {
+      this.contextMenuVisible = false;
+      this.contextMenuHotspots = [];
+    }
     // Click-away: close any open menu when clicking outside of menu/menuItem hotspots
     if (this.openEditorMenu && !clickHitsMenu) {
       this.openEditorMenu = null;
@@ -4212,8 +4257,7 @@ class LevelEditorImpl implements LevelEditor {
       }
       // Poly tools: click to start polygon, subsequent clicks add vertices, click-near-start or Enter to finish
       if (
-        this.selectedTool === 'wallsPoly' || this.selectedTool === 'waterPoly' || this.selectedTool === 'sandPoly' ||
-        this.selectedTool === 'walls45'  || this.selectedTool === 'water45'  || this.selectedTool === 'sand45'
+        this.selectedTool === 'wallsPoly' || this.selectedTool === 'waterPoly' || this.selectedTool === 'sandPoly'
       ) {
         if (!this.polygonInProgress) {
           // Start new polygon — include alignment guide snap if enabled (Ctrl=grid-only, Alt=disable guides)
@@ -6588,6 +6632,322 @@ class LevelEditorImpl implements LevelEditor {
   getSelectedTool(): EditorTool { return this.selectedTool; }
   setSelectedTool(t: EditorTool): void { this.selectedTool = t; }
   getUiHotspots(): EditorHotspot[] { return this.uiHotspots; }
+  private computeContextMenuHit(px: number, py: number, env: EditorEnv): { kind: 'object' | 'vertex' | 'edge' | 'empty'; object?: SelectableObject | null; vertexIndex?: number; edgeIndex?: number; point?: { x: number; y: number } } {
+    const gsHit = this.findObjectAtPoint(px, py, env);
+    if (this.selectedTool === 'select') {
+      const vertexHit = this.findPolygonVertexAtPoint(px, py, env);
+      if (vertexHit) return { kind: 'vertex', object: vertexHit.obj, vertexIndex: vertexHit.vertexIndex };
+      const edgeHit = this.findPolygonEdgeNearPoint(px, py, env);
+      if (edgeHit) return { kind: 'edge', object: edgeHit.obj, edgeIndex: edgeHit.edgeIndex, point: edgeHit.point };
+    }
+    if (gsHit) return { kind: 'object', object: gsHit };
+    return { kind: 'empty' };
+  }
+
+  private buildContextMenuItems(env: EditorEnv): EditorContextMenuItem[] {
+    const items: EditorContextMenuItem[] = [];
+    const hasSelection = this.selectedObjects.length > 0;
+    const clipboardHasData = this.clipboard.length > 0;
+    const hit = this.contextMenuHit;
+    const tool = this.selectedTool;
+    const polygonHit = (hit.object && (hit.object.type === 'wallsPoly' || hit.object.type === 'waterPoly' || hit.object.type === 'sandPoly')) ? hit.object : undefined;
+    const primaryPolySelection = this.selectedObjects.find(o => o.type === 'wallsPoly' || o.type === 'waterPoly' || o.type === 'sandPoly');
+    const polygonToolActive = tool === 'wallsPoly' || tool === 'waterPoly' || tool === 'sandPoly';
+    const polygonInProgress = !!this.polygonInProgress;
+
+    const addItem = (action: ContextMenuAction, label: string, enabled = true, checked = false) => {
+      items.push({ kind: 'item', action, label, enabled, checked });
+    };
+    const addSeparator = () => {
+      if (items.length && items[items.length - 1].kind !== 'separator') {
+        items.push({ kind: 'separator' });
+      }
+    };
+
+    addItem('copy', 'Copy', hasSelection);
+    addItem('cut', 'Cut', hasSelection);
+    addItem('paste', 'Paste', clipboardHasData);
+    addItem('delete', 'Delete', hasSelection);
+    addItem('duplicate', 'Duplicate', hasSelection);
+
+    const showPolygonSection = !!polygonHit || !!primaryPolySelection || hit.kind === 'vertex' || hit.kind === 'edge';
+    if (showPolygonSection) {
+      addSeparator();
+      const canAddVertex = !!polygonHit || !!primaryPolySelection;
+      const canRemoveVertex = hit.kind === 'vertex' && this.canRemoveVertex(hit.object as any);
+      addItem('polygonAddVertex', 'Add Vertex Here', canAddVertex);
+      addItem('polygonRemoveVertex', 'Remove Vertex', canRemoveVertex);
+    }
+
+    if (hit.kind === 'object' && hit.object && hit.object.type === 'post') {
+      addSeparator();
+      addItem('postRadius', 'Adjust Post Radius…', true);
+    }
+
+    if (hit.kind === 'object' && hit.object && hit.object.type === 'hill') {
+      addSeparator();
+      addItem('hillDirection', 'Adjust Hill Direction…', true);
+    }
+
+    addSeparator();
+    addItem('toggleGrid', `Grid ${this.showGrid ? 'On' : 'Off'}`, true, this.showGrid);
+    addItem('toggleAlignmentGuides', `Alignment Guides ${this.showAlignmentGuides ? 'On' : 'Off'}`, true, this.showAlignmentGuides);
+    addItem('toggleGuideDetails', `Guide Details ${this.showGuideDetails ? 'On' : 'Off'}`, this.showAlignmentGuides, this.showGuideDetails);
+    addItem('toggleRulers', `Rulers ${this.showRulers ? 'On' : 'Off'}`, true, this.showRulers);
+    addItem('toggleSlopeArrows', `Slope Arrows ${this.showSlopeArrows ? 'On' : 'Off'}`, true, this.showSlopeArrows);
+    addItem('toggleToolInfoBar', `Tool Info Bar ${this.showToolInfoBar ? 'On' : 'Off'}`, true, this.showToolInfoBar);
+    addItem('togglePreviewFill', `Preview Fill On Close ${this.previewFillOnClose ? 'On' : 'Off'}`, true, this.previewFillOnClose);
+    addItem(
+      'togglePreviewDashed',
+      `Dashed Next Segment ${this.previewDashedNextSegment ? 'On' : 'Off'}`,
+      polygonToolActive || polygonInProgress || !!primaryPolySelection,
+      this.previewDashedNextSegment
+    );
+
+    if (items.length && items[0].kind === 'separator') items.shift();
+    return items;
+  }
+
+  private canRemoveVertex(obj: SelectableObject | null | undefined): boolean {
+    if (!obj) return false;
+    if (obj.type !== 'wallsPoly' && obj.type !== 'waterPoly' && obj.type !== 'sandPoly') return false;
+    const poly: any = obj.object as any;
+    if (!poly || !Array.isArray(poly.points)) return false;
+    return poly.points.length / 2 > 3;
+  }
+
+  private renderContextMenu(ctx: CanvasRenderingContext2D): void {
+    const menuX = this.contextMenuPosition.x;
+    const menuY = this.contextMenuPosition.y;
+    const paddingX = 14;
+    const itemHeight = 22;
+    const separatorHeight = 8;
+    const maxLabelWidth = this.contextMenuItems.reduce((w, item) => {
+      if (item.kind === 'item') {
+        ctx.font = '14px system-ui, sans-serif';
+        const width = ctx.measureText(item.label).width;
+        return Math.max(w, width);
+      }
+      return w;
+    }, 0);
+    const menuWidth = Math.max(180, maxLabelWidth + paddingX * 2);
+    let menuHeight = 0;
+    for (const item of this.contextMenuItems) {
+      menuHeight += item.kind === 'separator' ? separatorHeight : itemHeight;
+    }
+
+    ctx.save();
+    const bgX = Math.min(menuX, ctx.canvas.width - menuWidth - 4);
+    const bgY = Math.min(menuY, ctx.canvas.height - menuHeight - 4);
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(bgX, bgY, menuWidth, menuHeight);
+    ctx.strokeStyle = '#cfd2cf';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(bgX + 0.5, bgY + 0.5, menuWidth - 1, menuHeight - 1);
+
+    this.contextMenuHotspots = [];
+    let cy = bgY;
+    for (const item of this.contextMenuItems) {
+      if (item.kind === 'separator') {
+        cy += separatorHeight;
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+        ctx.beginPath();
+        ctx.moveTo(bgX + paddingX * 0.5, cy - separatorHeight / 2);
+        ctx.lineTo(bgX + menuWidth - paddingX * 0.5, cy - separatorHeight / 2);
+        ctx.stroke();
+        continue;
+      }
+      const enabled = item.enabled !== false;
+      const hover = enabled && this.isPointWithinRect(this.lastMousePosition.x, this.lastMousePosition.y, bgX, cy, menuWidth, itemHeight);
+      ctx.fillStyle = hover ? 'rgba(100,150,200,0.35)' : 'rgba(255,255,255,0.03)';
+      ctx.fillRect(bgX + 1, cy, menuWidth - 2, itemHeight);
+      ctx.font = '14px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = enabled ? '#ffffff' : 'rgba(255,255,255,0.45)';
+      ctx.fillText(item.label, bgX + paddingX, cy + itemHeight / 2);
+      if (item.checked) {
+        ctx.fillStyle = enabled ? '#64b5f6' : 'rgba(100,150,200,0.4)';
+        ctx.beginPath();
+        ctx.arc(bgX + paddingX - 8, cy + itemHeight / 2, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      this.contextMenuHotspots.push({ action: item.action, x: bgX, y: cy, w: menuWidth, h: itemHeight, enabled });
+      cy += itemHeight;
+    }
+    ctx.restore();
+  }
+
+  private handleContextMenuAction(action: ContextMenuAction, env: EditorEnv): void {
+    switch (action) {
+      case 'copy':
+        if (this.selectedObjects.length > 0) this.copySelectedObjects();
+        break;
+      case 'cut':
+        if (this.selectedObjects.length > 0) this.cutSelectedObjects();
+        break;
+      case 'paste':
+        if (this.clipboard.length > 0) this.pasteObjects(this.lastMousePosition.x, this.lastMousePosition.y);
+        break;
+      case 'delete':
+        if (this.selectedObjects.length > 0) {
+          this.pushUndoSnapshot(`Delete ${this.selectedObjects.length} object(s)`);
+          this.deleteSelectedObjects();
+        }
+        break;
+      case 'duplicate':
+        if (this.selectedObjects.length > 0) this.duplicateSelectedObjects();
+        break;
+      case 'polygonAddVertex':
+        this.addPolygonVertexFromContext(env);
+        break;
+      case 'polygonRemoveVertex':
+        this.removePolygonVertexFromContext(env);
+        break;
+      case 'postRadius':
+        this.openPostRadiusFromContext(env);
+        break;
+      case 'hillDirection':
+        this.openHillDirectionFromContext(env);
+        break;
+      case 'toggleGrid':
+        try {
+          const newShow = !env.getShowGrid();
+          env.setShowGrid?.(newShow);
+          this.showGrid = newShow;
+          env.showToast?.(`Grid ${newShow ? 'ON' : 'OFF'}`);
+        } catch {}
+        break;
+      case 'toggleAlignmentGuides':
+        this.showAlignmentGuides = !this.showAlignmentGuides;
+        env.showToast?.(`Alignment Guides ${this.showAlignmentGuides ? 'ON' : 'OFF'}`);
+        break;
+      case 'toggleGuideDetails':
+        if (this.showAlignmentGuides) {
+          this.showGuideDetails = !this.showGuideDetails;
+          env.showToast?.(`Guide Details ${this.showGuideDetails ? 'ON' : 'OFF'}`);
+        }
+        break;
+      case 'toggleRulers':
+        this.showRulers = !this.showRulers;
+        env.showToast?.(`Rulers ${this.showRulers ? 'ON' : 'OFF'}`);
+        break;
+      case 'toggleSlopeArrows':
+        this.showSlopeArrows = !this.showSlopeArrows;
+        env.showToast?.(`Slope Arrows ${this.showSlopeArrows ? 'ON' : 'OFF'}`);
+        break;
+      case 'toggleToolInfoBar':
+        this.showToolInfoBar = !this.showToolInfoBar;
+        env.showToast?.(`Tool Info Bar ${this.showToolInfoBar ? 'ON' : 'OFF'}`);
+        break;
+      case 'togglePreviewFill':
+        this.previewFillOnClose = !this.previewFillOnClose;
+        env.showToast?.(`Preview Fill On Close ${this.previewFillOnClose ? 'ON' : 'OFF'}`);
+        break;
+      case 'togglePreviewDashed':
+        this.previewDashedNextSegment = !this.previewDashedNextSegment;
+        env.showToast?.(`Dashed Next Segment ${this.previewDashedNextSegment ? 'ON' : 'OFF'}`);
+        break;
+    }
+    this.contextMenuVisible = false;
+    this.contextMenuHotspots = [];
+    this.contextMenuItems = [];
+    this.contextMenuHit = { kind: 'empty' };
+  }
+
+  private addPolygonVertexFromContext(env: EditorEnv): void {
+    const hit = this.contextMenuHit;
+    if (!hit) return;
+    const obj = (hit.object ?? this.selectedObjects[0]) as SelectableObject | undefined;
+    if (!obj || (obj.type !== 'wallsPoly' && obj.type !== 'waterPoly' && obj.type !== 'sandPoly')) return;
+    const poly: any = obj.object as any;
+    if (!Array.isArray(poly.points)) return;
+    const pts: number[] = poly.points;
+    let insertX = this.contextMenuPosition.x;
+    let insertY = this.contextMenuPosition.y;
+    if (hit.kind === 'edge' && hit.point) {
+      insertX = hit.point.x; insertY = hit.point.y;
+    }
+    const allowGuides = this.showAlignmentGuides;
+    if (allowGuides) {
+      const ag = this.computeAlignmentSnap(insertX, insertY, env);
+      insertX = ag.x; insertY = ag.y; this.liveGuides = ag.guides;
+    }
+    const bestIndex = this.findClosestInsertionIndex(pts, insertX, insertY);
+    this.pushUndoSnapshot('Add polygon vertex');
+    pts.splice(bestIndex * 2, 0, insertX, insertY);
+    this.syncEditorDataFromGlobals(env);
+    env.showToast?.('Vertex added');
+  }
+
+  private removePolygonVertexFromContext(env: EditorEnv): void {
+    const hit = this.contextMenuHit;
+    if (!hit || hit.kind !== 'vertex' || hit.vertexIndex === undefined) return;
+    const obj = hit.object as SelectableObject | undefined;
+    if (!obj || !this.canRemoveVertex(obj)) return;
+    const poly: any = obj.object as any;
+    this.pushUndoSnapshot('Remove polygon vertex');
+    poly.points.splice(hit.vertexIndex * 2, 2);
+    this.selectedObjects = [obj];
+    this.liveGuides = [];
+    this.liveGuideBubbles = [];
+    this.syncEditorDataFromGlobals(env);
+    env.showToast?.('Vertex removed');
+  }
+
+  private openPostRadiusFromContext(env: EditorEnv): void {
+    const hit = this.contextMenuHit;
+    if (!hit || hit.kind !== 'object' || !hit.object || hit.object.type !== 'post') return;
+    const post: any = hit.object.object;
+    this.postRadiusPicker = {
+      x: post.x,
+      y: post.y,
+      visible: true,
+      selectedRadius: post.r || 12,
+      postIndex: (hit.object as any).index ?? 0
+    } as any;
+  }
+
+  private openHillDirectionFromContext(env: EditorEnv): void {
+    const hit = this.contextMenuHit;
+    if (!hit || hit.kind !== 'object' || !hit.object || hit.object.type !== 'hill') return;
+    const hill: any = hit.object.object;
+    const cx = hill.x + hill.w / 2;
+    const cy = hill.y + hill.h / 2;
+    this.hillDirectionPicker = { x: cx, y: cy, visible: true, selectedDir: hill.dir || 'N' } as any;
+  }
+
+  private findClosestInsertionIndex(points: number[], x: number, y: number): number {
+    const n = Math.floor(points.length / 2);
+    if (n === 0) return 0;
+    let bestIndex = 0;
+    let bestDist = Infinity;
+    const projectDist = (ax: number, ay: number, bx: number, by: number, px: number, py: number) => {
+      const abx = bx - ax, aby = by - ay;
+      const apx = px - ax, apy = py - ay;
+      const ab2 = abx * abx + aby * aby || 1e-6;
+      let t = (apx * abx + apy * aby) / ab2; t = Math.max(0, Math.min(1, t));
+      const qx = ax + abx * t;
+      const qy = ay + aby * t;
+      return Math.hypot(px - qx, py - qy);
+    };
+    for (let i = 0; i < n; i++) {
+      const ax = points[i * 2];
+      const ay = points[i * 2 + 1];
+      const bx = points[((i + 1) % n) * 2];
+      const by = points[((i + 1) % n) * 2 + 1];
+      const d = projectDist(ax, ay, bx, by, x, y);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIndex = i + 1;
+      }
+    }
+    return bestIndex;
+  }
+
+  private isPointWithinRect(px: number, py: number, x: number, y: number, w: number, h: number): boolean {
+    return px >= x && px <= x + w && py >= y && py <= y + h;
+  }
 
 }
 

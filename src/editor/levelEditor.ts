@@ -1580,6 +1580,15 @@ class LevelEditorImpl implements LevelEditor {
     if (!Array.isArray(gs.sandsPoly)) gs.sandsPoly = [];
 
     const created: SelectableObject[] = [];
+    const editorData = this.editorLevelData;
+    if (editorData) {
+      if (!Array.isArray(editorData.wallsPoly)) editorData.wallsPoly = [];
+      if (!Array.isArray(editorData.waterPoly)) editorData.waterPoly = [];
+      if (!Array.isArray(editorData.sandPoly)) editorData.sandPoly = [];
+      if (!Array.isArray(editorData.walls)) editorData.walls = [];
+      if (!Array.isArray(editorData.water)) editorData.water = [];
+      if (!Array.isArray(editorData.sand)) editorData.sand = [];
+    }
     const removals: Record<'wall' | 'water' | 'sand', number[]> = { wall: [], water: [], sand: [] };
 
     for (const conv of conversions) {
@@ -1588,16 +1597,25 @@ class LevelEditorImpl implements LevelEditor {
         (gs.polyWalls as any[]).push(poly);
         const idx = (gs.polyWalls as any[]).length - 1;
         created.push({ type: 'wallsPoly', object: (gs.polyWalls as any[])[idx], index: idx } as any);
+        if (editorData) {
+          editorData.wallsPoly!.push(JSON.parse(JSON.stringify(poly)));
+        }
       } else if (conv.targetType === 'waterPoly') {
         const poly = { points: [...conv.points] };
         (gs.watersPoly as any[]).push(poly);
         const idx = (gs.watersPoly as any[]).length - 1;
         created.push({ type: 'waterPoly', object: (gs.watersPoly as any[])[idx], index: idx } as any);
+        if (editorData) {
+          editorData.waterPoly!.push(JSON.parse(JSON.stringify(poly)));
+        }
       } else {
         const poly = { points: [...conv.points] };
         (gs.sandsPoly as any[]).push(poly);
         const idx = (gs.sandsPoly as any[]).length - 1;
         created.push({ type: 'sandPoly', object: (gs.sandsPoly as any[])[idx], index: idx } as any);
+        if (editorData) {
+          editorData.sandPoly!.push(JSON.parse(JSON.stringify(poly)));
+        }
       }
       removals[conv.removalType].push(conv.sel.index);
     }
@@ -1606,9 +1624,16 @@ class LevelEditorImpl implements LevelEditor {
       const indices = removals[key];
       if (!indices.length) continue;
       const arr = key === 'wall' ? (gs.walls as any[]) : key === 'water' ? (gs.waters as any[]) : (gs.sands as any[]);
+      const editorArr = (() => {
+        if (!editorData) return null;
+        if (key === 'wall') return editorData.walls ?? null;
+        if (key === 'water') return editorData.water ?? null;
+        return editorData.sand ?? null;
+      })();
       indices.sort((a, b) => b - a);
       for (const idx of indices) {
         if (idx >= 0 && idx < arr.length) arr.splice(idx, 1);
+        if (editorArr && idx >= 0 && idx < editorArr.length) editorArr.splice(idx, 1);
       }
     }
 
@@ -2236,25 +2261,28 @@ class LevelEditorImpl implements LevelEditor {
     ctx.clip();
     for (const d of decorations) {
       if (d.kind === 'flowers') {
-        const step = 16;
-        for (let y = d.y; y < d.y + d.h; y += step) {
-          for (let x = d.x; x < d.x + d.w; x += step) {
-            ctx.save();
-            ctx.translate(x + 8, y + 8);
-            ctx.fillStyle = '#ffffff';
-            for (let i = 0; i < 4; i++) {
-              const ang = (i * Math.PI) / 2;
-              ctx.beginPath();
-              ctx.arc(Math.cos(ang) * 5, Math.sin(ang) * 5, 3, 0, Math.PI * 2);
-              ctx.fill();
-            }
-            ctx.fillStyle = '#d11e2a';
-            ctx.beginPath();
-            ctx.arc(0, 0, 2, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-          }
+        const cx = d.x + d.w / 2;
+        const cy = d.y + d.h / 2;
+        const size = Math.max(12, Math.min(d.w, d.h));
+        const petalRadius = size * 0.35;
+        const centerRadius = size * 0.18;
+
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.fillStyle = '#ffffff';
+        for (let i = 0; i < 4; i++) {
+          const ang = (i * Math.PI) / 2;
+          const px = Math.cos(ang) * petalRadius;
+          const py = Math.sin(ang) * petalRadius;
+          ctx.beginPath();
+          ctx.ellipse(px, py, petalRadius * 0.85, petalRadius * 0.55, ang, 0, Math.PI * 2);
+          ctx.fill();
         }
+        ctx.fillStyle = '#d11e2a';
+        ctx.beginPath();
+        ctx.arc(0, 0, centerRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
       }
     }
     ctx.restore();

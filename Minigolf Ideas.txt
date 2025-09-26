@@ -22,9 +22,7 @@ Ideas
 
 - Changable Ball size setting. accable from the admin menu > Game Settings
 
-- Level Editor: Turn a Wall, Water, Sand Object into a Polygon. Meaning, If a wall was created using the just the wall tool, you can turn it into a Polygon wall. That way a user can add Vertexs and change/edit the wall.
-
-Level Editor: Right Click menu. Just like windows, macOS, ect. This right click menu had all the options and features that a user would normally have to use a keyboard shortcuts for. Examples: Copy, Cut, Paste, Delete. Tool Features vertex add/remove, Post resize, Hill direction, ect. Tool Features should only show when that tool is in use.
+- Align with closest object option in the right click menu. This option is for aligning currently selcted object with the closest object. 
 
 OLD
 -----
@@ -58,3 +56,8 @@ Level Editor:
 - Level Editor: Remove Walls45, Water45 and sand45. Redundent Tool as we already have wallpoly, ect.
 
 - Level Editor: Move all Overlay settings to a new menu in the level editor called "Overlay Settings"
+
+- Level Editor: Turn a Wall, Water, Sand Object into a Polygon. Meaning, If a wall was created using the just the wall tool, you can turn it into a Polygon wall. That way a user can add Vertexs and change/edit the wall.
+
+Level Editor: Right Click menu. Just like windows, macOS, ect. This right click menu had all the options and features that a user would normally have to use a keyboard shortcuts for. Examples: Copy, Cut, Paste, Delete. Tool Features vertex add/remove, Post resize, Hill direction, ect. Tool Features should only show when that tool is in use.
+

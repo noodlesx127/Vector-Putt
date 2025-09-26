@@ -47,6 +47,43 @@ type Decoration = { x: number; y: number; w: number; h: number; kind: string };
 type Wall = Rect;
 type Slope = { x: number; y: number; w: number; h: number; dir: 'N' | 'S' | 'E' | 'W' | string; strength?: number; falloff?: number; rot?: number };
 
+export function rectLikeToPolygonPoints(rect: { x: number; y: number; w: number; h: number; rot?: number }): number[] {
+  const rx = typeof rect.x === 'number' ? rect.x : 0;
+  const ry = typeof rect.y === 'number' ? rect.y : 0;
+  const rw = typeof rect.w === 'number' ? rect.w : 0;
+  const rh = typeof rect.h === 'number' ? rect.h : 0;
+  const rot = typeof rect.rot === 'number' ? rect.rot : 0;
+
+  const cx = rx + rw / 2;
+  const cy = ry + rh / 2;
+  const corners = [
+    { x: rx, y: ry },
+    { x: rx + rw, y: ry },
+    { x: rx + rw, y: ry + rh },
+    { x: rx, y: ry + rh }
+  ];
+
+  if (!rot) {
+    const pts: number[] = [];
+    for (const c of corners) {
+      pts.push(c.x, c.y);
+    }
+    return pts;
+  }
+
+  const s = Math.sin(rot);
+  const c = Math.cos(rot);
+  const pts: number[] = [];
+  for (const corner of corners) {
+    const dx = corner.x - cx;
+    const dy = corner.y - cy;
+    const wx = cx + dx * c - dy * s;
+    const wy = cy + dx * s + dy * c;
+    pts.push(wx, wy);
+  }
+  return pts;
+}
+
 // Discriminated union of selectable objects in the editor
 type SelectableObject =
   | { type: 'tee'; object: { x: number; y: number } }
@@ -67,7 +104,7 @@ export type EditorTool =
   | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'sand' | 'sandPoly' | 'hill' | 'decoration' | 'measure';
 
 export type EditorAction =
-  | 'save' | 'saveAs' | 'load' | 'import' | 'importScreenshot' | 'importAnnotate' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'slopeArrowsToggle' | 'previewFillOnClose' | 'previewDashedNext' | 'alignmentGuides' | 'guideDetailsToggle' | 'rulersToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'chamfer' | 'angledCorridor' | 'courseCreator'
+  | 'save' | 'saveAs' | 'load' | 'import' | 'importScreenshot' | 'importAnnotate' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'slopeArrowsToggle' | 'previewFillOnClose' | 'previewDashedNext' | 'alignmentGuides' | 'guideDetailsToggle' | 'rulersToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'convertToPolygon' | 'chamfer' | 'angledCorridor' | 'courseCreator'
   // Overlay Screenshot actions (View menu + Tools launcher)
   | 'overlayOpen' | 'overlayToggle' | 'overlayOpacityUp' | 'overlayOpacityDown' | 'overlayZToggle' | 'overlayLockToggle' | 'overlaySnapToggle' | 'overlayFitFairway' | 'overlayFitCanvas' | 'overlayReset' | 'overlayFlipH' | 'overlayFlipV' | 'overlayThroughClick' | 'overlayAspectToggle' | 'overlayCalibrateScale' | 'overlayRemove'
   // Object-level snapping
@@ -97,6 +134,7 @@ type ContextMenuAction =
   | 'paste'
   | 'delete'
   | 'duplicate'
+  | 'convertToPolygon'
   | 'polygonAddVertex'
   | 'polygonRemoveVertex'
   | 'postRadius'
@@ -1492,6 +1530,94 @@ class LevelEditorImpl implements LevelEditor {
     this.pasteObjects(this.lastMousePosition.x, this.lastMousePosition.y);
   }
 
+  private convertRectanglesToPolygons(env: EditorEnv, target?: SelectableObject | null): void {
+    if (!this.env) return;
+    const selectionHasRect = this.selectedObjects.some(o => o && (o.type === 'wall' || o.type === 'water' || o.type === 'sand'));
+    const source = selectionHasRect ? this.selectedObjects : (target ? [target] : this.selectedObjects);
+    const seen = new Set<string>();
+    const eligible: Array<SelectableObject & { index: number }> = source.filter((obj): obj is SelectableObject & { index: number } => {
+      if (!obj) return false;
+      if (obj.type !== 'wall' && obj.type !== 'water' && obj.type !== 'sand') return false;
+      if (typeof (obj as any).index !== 'number') return false;
+      const key = `${obj.type}:${(obj as any).index}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    if (eligible.length === 0) {
+      try {
+        if (target && target.type !== 'wall' && target.type !== 'water' && target.type !== 'sand') {
+          env.showToast('Only wall, water, or sand rectangles can be converted');
+        } else {
+          env.showToast('Select a wall, water, or sand rectangle to convert');
+        }
+      } catch {}
+      return;
+    }
+
+    const conversions = eligible.map(sel => {
+      const rect: any = sel.object;
+      const points = rectLikeToPolygonPoints(rect ?? {});
+      const targetType: 'wallsPoly' | 'waterPoly' | 'sandPoly' = sel.type === 'wall' ? 'wallsPoly' : sel.type === 'water' ? 'waterPoly' : 'sandPoly';
+      const removalType: 'wall' | 'water' | 'sand' = sel.type as any;
+      return { sel, points, targetType, removalType };
+    }).filter(c => c.points.length >= 8);
+
+    if (conversions.length === 0) {
+      try { env.showToast('Nothing to convert'); } catch {}
+      return;
+    }
+
+    this.pushUndoSnapshot(`Convert ${conversions.length} rectangle${conversions.length === 1 ? '' : 's'} to polygon${conversions.length === 1 ? '' : 's'}`);
+
+    const gs = env.getGlobalState();
+    if (!Array.isArray(gs.walls)) gs.walls = [];
+    if (!Array.isArray(gs.waters)) gs.waters = [];
+    if (!Array.isArray(gs.sands)) gs.sands = [];
+    if (!Array.isArray(gs.polyWalls)) gs.polyWalls = [];
+    if (!Array.isArray(gs.watersPoly)) gs.watersPoly = [];
+    if (!Array.isArray(gs.sandsPoly)) gs.sandsPoly = [];
+
+    const created: SelectableObject[] = [];
+    const removals: Record<'wall' | 'water' | 'sand', number[]> = { wall: [], water: [], sand: [] };
+
+    for (const conv of conversions) {
+      if (conv.targetType === 'wallsPoly') {
+        const poly = { points: [...conv.points] };
+        (gs.polyWalls as any[]).push(poly);
+        const idx = (gs.polyWalls as any[]).length - 1;
+        created.push({ type: 'wallsPoly', object: (gs.polyWalls as any[])[idx], index: idx } as any);
+      } else if (conv.targetType === 'waterPoly') {
+        const poly = { points: [...conv.points] };
+        (gs.watersPoly as any[]).push(poly);
+        const idx = (gs.watersPoly as any[]).length - 1;
+        created.push({ type: 'waterPoly', object: (gs.watersPoly as any[])[idx], index: idx } as any);
+      } else {
+        const poly = { points: [...conv.points] };
+        (gs.sandsPoly as any[]).push(poly);
+        const idx = (gs.sandsPoly as any[]).length - 1;
+        created.push({ type: 'sandPoly', object: (gs.sandsPoly as any[])[idx], index: idx } as any);
+      }
+      removals[conv.removalType].push(conv.sel.index);
+    }
+
+    for (const key of Object.keys(removals) as Array<'wall' | 'water' | 'sand'>) {
+      const indices = removals[key];
+      if (!indices.length) continue;
+      const arr = key === 'wall' ? (gs.walls as any[]) : key === 'water' ? (gs.waters as any[]) : (gs.sands as any[]);
+      indices.sort((a, b) => b - a);
+      for (const idx of indices) {
+        if (idx >= 0 && idx < arr.length) arr.splice(idx, 1);
+      }
+    }
+
+    this.selectedObjects = created;
+    env.setGlobalState(gs);
+    this.syncEditorDataFromGlobals(env);
+    try { env.showToast(`Converted ${conversions.length} rectangle${conversions.length === 1 ? '' : 's'} to polygon${conversions.length === 1 ? '' : 's'}`); } catch {}
+  }
+
   // Convert selected rect-like objects (wall/water/sand) into beveled polygons (octagons) respecting rotation
   private async chamferBevelSelected(): Promise<void> {
     if (!this.env) return;
@@ -1798,6 +1924,7 @@ class LevelEditorImpl implements LevelEditor {
         { label: 'Suggest Par', item: { kind: 'action', action: 'suggestPar' } },
         { label: 'Suggest Cup Positions', item: { kind: 'action', action: 'suggestCup' } },
         { label: 'Test Level', item: { kind: 'action', action: 'test' }, separator: true },
+        { label: 'Convert Rectangles to Polygons', item: { kind: 'action', action: 'convertToPolygon' } },
         { label: 'Chamfer Bevel…', item: { kind: 'action', action: 'chamfer' } },
         { label: 'Angled Corridor…', item: { kind: 'action', action: 'angledCorridor' } },
         // Admin-only tool entry (conditionally rendered at runtime)
@@ -3553,6 +3680,27 @@ class LevelEditorImpl implements LevelEditor {
     if (env.isOverlayActive?.()) return;
     const p = env.worldFromEvent(e);
 
+    // If a context menu is open, prioritize handling its interactions before canvas logic
+    if (this.contextMenuVisible && this.contextMenuHotspots.length) {
+      const hit = this.contextMenuHotspots.find(hs => this.isPointWithinRect(p.x, p.y, hs.x, hs.y, hs.w, hs.h));
+      if (hit) {
+        // Only respond to primary-button clicks on enabled items
+        if (e.button === 0) {
+          e.preventDefault();
+          if (hit.enabled) {
+            this.handleContextMenuAction(hit.action, env);
+          }
+        }
+        return;
+      } else if (e.button === 0) {
+        // Primary click outside the menu closes it but allows the click to fall through
+        this.contextMenuVisible = false;
+        this.contextMenuItems = [];
+        this.contextMenuHotspots = [];
+        this.contextMenuHit = { kind: 'empty' };
+      }
+    }
+
     // Detect if click hits any UI menu/menuItem hotspot from last render
     const clickHitsMenu = this.uiHotspots.some(hs => (
       (hs.kind === 'menu' || hs.kind === 'menuItem') &&
@@ -4207,6 +4355,8 @@ class LevelEditorImpl implements LevelEditor {
               if (this.clipboard.length > 0) this.pasteObjects(this.lastMousePosition.x, this.lastMousePosition.y);
             } else if (item.action === 'duplicate') {
               if (this.selectedObjects.length > 0) this.duplicateSelectedObjects();
+            } else if (item.action === 'convertToPolygon') {
+              if (this.env) this.convertRectanglesToPolygons(this.env);
             } else if (item.action === 'chamfer') {
               void this.chamferBevelSelected();
             } else if (item.action === 'angledCorridor') {
@@ -4510,27 +4660,34 @@ class LevelEditorImpl implements LevelEditor {
 
     // Hit-test objects for selection and drag-move
     const hit = this.findObjectAtPoint(rx, ry, env);
-    // Quick edit: double-click a Post to open its radius picker for on-the-fly size change
+    const isLeftClick = e.button === 0;
+    // Quick edit: double-click a Post with left button to open its radius picker for on-the-fly size change
     if (this.selectedTool === 'select' && hit && (hit as any).type === 'post') {
-      const now = Date.now();
-      const isSecond = this.lastClickPos && (now - this.lastClickMs) < 300 && ((rx - this.lastClickPos.x) ** 2 + (ry - this.lastClickPos.y) ** 2) <= 36;
-      if (isSecond) {
-        const idx = (hit as any).index ?? -1;
-        const po: any = (hit as any).object;
-        if (idx >= 0 && po && typeof po.x === 'number' && typeof po.y === 'number') {
-          this.postRadiusPicker = {
-            x: po.x,
-            y: po.y,
-            visible: true,
-            selectedRadius: po.r || 12,
-            postIndex: idx
-          } as any;
-          // Reset double-click tracker to avoid triple processing
-          this.lastClickMs = 0; this.lastClickPos = null;
-          return;
+      if (isLeftClick) {
+        const now = Date.now();
+        const isSecond = this.lastClickPos && (now - this.lastClickMs) < 300 && ((rx - this.lastClickPos.x) ** 2 + (ry - this.lastClickPos.y) ** 2) <= 36;
+        if (isSecond) {
+          const idx = (hit as any).index ?? -1;
+          const po: any = (hit as any).object;
+          if (idx >= 0 && po && typeof po.x === 'number' && typeof po.y === 'number') {
+            this.postRadiusPicker = {
+              x: po.x,
+              y: po.y,
+              visible: true,
+              selectedRadius: po.r || 12,
+              postIndex: idx
+            } as any;
+            // Reset double-click tracker to avoid triple processing
+            this.lastClickMs = 0; this.lastClickPos = null;
+            return;
+          }
         }
+        this.lastClickMs = now; this.lastClickPos = { x: rx, y: ry };
+      } else {
+        // Non-left clicks should not trigger double-click detection
+        this.lastClickMs = 0;
+        this.lastClickPos = null;
       }
-      this.lastClickMs = now; this.lastClickPos = { x: rx, y: ry };
     }
     if (this.selectedTool === 'select') {
       if (hit) {
@@ -6670,6 +6827,15 @@ class LevelEditorImpl implements LevelEditor {
     addItem('delete', 'Delete', hasSelection);
     addItem('duplicate', 'Duplicate', hasSelection);
 
+    const rectSelection = this.selectedObjects.filter(o => o.type === 'wall' || o.type === 'water' || o.type === 'sand');
+    const rectFromHit = hit.kind === 'object' && hit.object && (hit.object.type === 'wall' || hit.object.type === 'water' || hit.object.type === 'sand') ? hit.object : null;
+    if (rectFromHit || rectSelection.length > 0) {
+      addSeparator();
+      const count = rectSelection.length > 0 ? rectSelection.length : (rectFromHit ? 1 : 0);
+      const label = count <= 1 ? 'Convert to Polygon' : `Convert ${count} Rectangles to Polygons`;
+      addItem('convertToPolygon', label, true);
+    }
+
     const showPolygonSection = !!polygonHit || !!primaryPolySelection || hit.kind === 'vertex' || hit.kind === 'edge';
     if (showPolygonSection) {
       addSeparator();
@@ -6798,6 +6964,13 @@ class LevelEditorImpl implements LevelEditor {
       case 'duplicate':
         if (this.selectedObjects.length > 0) this.duplicateSelectedObjects();
         break;
+      case 'convertToPolygon': {
+        const target = (this.contextMenuHit.kind === 'object' && this.contextMenuHit.object && (this.contextMenuHit.object.type === 'wall' || this.contextMenuHit.object.type === 'water' || this.contextMenuHit.object.type === 'sand'))
+          ? this.contextMenuHit.object
+          : null;
+        this.convertRectanglesToPolygons(env, target);
+        break;
+      }
       case 'polygonAddVertex':
         this.addPolygonVertexFromContext(env);
         break;

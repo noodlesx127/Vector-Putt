@@ -8,8 +8,9 @@ This file tracks current focus, next steps, decisions, and planned work. Complet
 - Leaderboards (levels and courses) planning and wiring
 
 ## Progress (2025-09-26)
-- Level Editor: implemented context-sensitive right-click menu with clipboard operations (Copy, Cut, Paste, Delete, Duplicate), tool-specific actions (Add/Remove Vertex for polygons, Adjust Post Radius, Adjust Hill Direction), and quick toggles for editor options (Grid On/Off, Alignment Guides, Guide Details, Rulers, Slope Arrows, Tool Info Bar, Preview Fill, Dashed Next Segment). Menu items appear conditionally based on selection, tool, and cursor position; integrates with existing editor state, hit-testing, and undo system. (src/editor/levelEditor.ts)
-- Diagonal Geometry Tools: streamlined 45° snapping to use Shift modifier on existing polygon tools (wallsPoly/waterPoly/sandPoly) instead of dedicated tools, removing redundancy and simplifying the Objects/Tools menus. (src/editor/levelEditor.ts, TODO.md)
+- **Level Editor**: implemented context-sensitive right-click menu with clipboard operations (Copy, Cut, Paste, Delete, Duplicate), tool-specific actions (Add/Remove Vertex for polygons, Adjust Post Radius, Adjust Hill Direction), and quick toggles for editor options (Grid On/Off, Alignment Guides, Guide Details, Rulers, Slope Arrows, Tool Info Bar, Preview Fill, Dashed Next Segment). Menu items appear conditionally based on selection, tool, and cursor position; integrates with existing editor state, hit-testing, and undo system. (`src/editor/levelEditor.ts`)
+- **Diagonal Geometry Tools**: streamlined 45° snapping to use Shift modifier on existing polygon tools (wallsPoly/waterPoly/sandPoly) instead of dedicated tools, removing redundancy and simplifying the Objects/Tools menus. (`src/editor/levelEditor.ts`, `TODO.md`)
+- **Rect → Polygon Conversion**: added Tools → "Convert Rectangles to Polygons" action and matching context-menu item so wall/water/sand rectangles can instantly become polygon variants while preserving rotation. Conversion respects undo/redo, reselects new polys, and removes the original rectangles from both editor state and backend payload. (`src/editor/levelEditor.ts`)
 
 ## Cross‑cutting — Obstacles Integration Policy (2025-09-22)
 

@@ -1,0 +1,1 @@
+Level Editor now supports converting wall/water/sand rectangles to polygon variants via Tools menu or context menu; added rectLikeToPolygonPoints helper and vitest coverage. Progress documented in PROGRESS.md.

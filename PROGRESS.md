@@ -14,6 +14,7 @@ This file tracks current focus, next steps, decisions, and planned work. Complet
 - **Game Settings**: added adjustable Ball Radius slider (6–16 px) alongside existing physics tuning; changes preview immediately in-editor, persist to Firebase, and support Defaults/Previous restores. (`src/main.ts`, `src/firebase/database.ts`)
 - **Suggest Par**: expanded alternate-route sampling to cover distinct tee exits, tightened duplicate filtering, and improved branch seeding so route overlays emphasize unique viable paths instead of overlapping variants. (`src/editor/levelHeuristics.ts`)
 - **Runtime Decorations**: aligned runtime flower rendering with the editor so single decorations persist from JSON and display correctly during gameplay. (`src/main.ts`)
+- **Summary UI**: adjusted level summary metadata spacing so the `Par` line no longer overlaps the results panel by dynamically shifting the content block below the metadata stack. (`src/main.ts`)
 
 ## Cross‑cutting — Obstacles Integration Policy (2025-09-22)
 

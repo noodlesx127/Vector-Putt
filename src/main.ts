@@ -3567,7 +3567,8 @@ function renderSummaryScreen(ctx: CanvasRenderingContext2D): void {
   ctx.fillStyle = 'rgba(8, 12, 18, 0.88)';
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-  const { panelX, panelY, panelW, panelH, contentX, contentY, contentW, contentH } = getSummaryLayout();
+  const layout = getSummaryLayout();
+  let { panelX, panelY, panelW, panelH, contentX, contentY, contentW, contentH } = layout;
 
   ctx.fillStyle = 'rgba(20, 30, 40, 0.95)';
   ctx.fillRect(panelX, panelY, panelW, panelH);
@@ -3587,6 +3588,7 @@ function renderSummaryScreen(ctx: CanvasRenderingContext2D): void {
   ctx.font = '16px system-ui, sans-serif';
   ctx.fillStyle = '#cfd2cf';
   let metaY = panelY + 62;
+  let metaBottom = metaY;
   const metaX = panelX + 28;
   ctx.fillText(`Player: ${username}`, metaX, metaY);
   metaY += 20;
@@ -3596,6 +3598,8 @@ function renderSummaryScreen(ctx: CanvasRenderingContext2D): void {
     ctx.fillText(`Course: ${courseInfo.title || 'Untitled Course'}`, metaX, metaY);
     metaY += 20;
     ctx.fillText(`Total Time: ${durationText}`, metaX, metaY);
+    metaY += 20;
+    metaBottom = metaY;
   } else {
     ctx.fillText(`Level: ${courseInfo.title || 'User Level'}`, metaX, metaY);
     metaY += 20;
@@ -3604,6 +3608,15 @@ function renderSummaryScreen(ctx: CanvasRenderingContext2D): void {
     metaY += 20;
     const parValue = coursePars[currentLevelIndex] ?? courseInfo.par;
     ctx.fillText(`Par: ${parValue ?? '—'}`, metaX, metaY);
+    metaY += 20;
+    metaBottom = metaY;
+  }
+
+  const desiredContentTop = metaBottom + 8;
+  if (contentY < desiredContentTop) {
+    const shift = desiredContentTop - contentY;
+    contentY += shift;
+    contentH = Math.max(0, contentH - shift);
   }
 
   ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';

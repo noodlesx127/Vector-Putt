@@ -2248,8 +2248,20 @@ class LevelEditorImpl implements LevelEditor {
     }
 
     // Pull globals for geometry render
-    const gs = env.getGlobalState();
-    const { waters, watersPoly, sands, sandsPoly, bridges, hills, decorations, walls, oneWayWalls, polyWalls, posts, ball, hole } = gs as any;
+    const gs = env.getGlobalState() ?? {};
+    const waters: Rect[] = Array.isArray((gs as any).waters) ? (gs as any).waters : [];
+    const watersPoly: Poly[] = Array.isArray((gs as any).watersPoly) ? (gs as any).watersPoly : [];
+    const sands: Rect[] = Array.isArray((gs as any).sands) ? (gs as any).sands : [];
+    const sandsPoly: Poly[] = Array.isArray((gs as any).sandsPoly) ? (gs as any).sandsPoly : [];
+    const bridges: Rect[] = Array.isArray((gs as any).bridges) ? (gs as any).bridges : [];
+    const hills: Slope[] = Array.isArray((gs as any).hills) ? (gs as any).hills : [];
+    const decorations: Decoration[] = Array.isArray((gs as any).decorations) ? (gs as any).decorations : [];
+    const walls: Wall[] = Array.isArray((gs as any).walls) ? (gs as any).walls : [];
+    const oneWayWalls: OneWayWall[] = Array.isArray((gs as any).oneWayWalls) ? (gs as any).oneWayWalls : [];
+    const polyWalls: Poly[] = Array.isArray((gs as any).polyWalls) ? (gs as any).polyWalls : [];
+    const posts: Circle[] = Array.isArray((gs as any).posts) ? (gs as any).posts : [];
+    const ball = (gs as any).ball ?? null;
+    const hole = (gs as any).hole ?? null;
 
     // Terrain before walls
     // Water (rects)

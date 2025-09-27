@@ -45,7 +45,94 @@ type Circle = { x: number; y: number; r: number };
 type Poly = { points: number[] };
 type Decoration = { x: number; y: number; w: number; h: number; kind: string };
 type Wall = Rect;
+type OneWayOrientation = 'N' | 'E' | 'S' | 'W';
+type OneWayWall = Rect & { orientation: OneWayOrientation };
 type Slope = { x: number; y: number; w: number; h: number; dir: 'N' | 'S' | 'E' | 'W' | string; strength?: number; falloff?: number; rot?: number };
+
+const ONE_WAY_VECTORS: Record<OneWayOrientation, { x: number; y: number }> = {
+  N: { x: 0, y: -1 },
+  E: { x: 1, y: 0 },
+  S: { x: 0, y: 1 },
+  W: { x: -1, y: 0 }
+};
+
+function drawEditorWallRect(ctx: CanvasRenderingContext2D, rect: Rect): void {
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fillRect(rect.x + 2, rect.y + 2, rect.w, rect.h);
+  ctx.fillStyle = COLORS.wallFill;
+  ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'bevel';
+  ctx.miterLimit = 2.5;
+  ctx.strokeStyle = COLORS.wallStroke;
+  ctx.strokeRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.beginPath();
+  ctx.moveTo(rect.x + 1, rect.y + 1);
+  ctx.lineTo(rect.x + rect.w - 1, rect.y + 1);
+  ctx.moveTo(rect.x + 1, rect.y + 1);
+  ctx.lineTo(rect.x + 1, rect.y + rect.h - 1);
+  ctx.stroke();
+}
+
+function drawEditorOneWayArrow(ctx: CanvasRenderingContext2D, gate: OneWayWall): void {
+  const dir = ONE_WAY_VECTORS[gate.orientation];
+  const cx = gate.x + gate.w / 2;
+  const cy = gate.y + gate.h / 2;
+  const span = (gate.orientation === 'E' || gate.orientation === 'W') ? gate.w : gate.h;
+  const thickness = (gate.orientation === 'E' || gate.orientation === 'W') ? gate.h : gate.w;
+  const length = Math.max(14, Math.min(span * 0.6, thickness * 1.6));
+  const shaft = Math.max(4, thickness * 0.45);
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(Math.atan2(dir.y, dir.x));
+
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath();
+  ctx.moveTo(-length * 0.45 + 1.5, -shaft * 0.5 + 1.5);
+  ctx.lineTo(-length * 0.45 + 1.5, shaft * 0.5 + 1.5);
+  ctx.lineTo(length * 0.1 + 1.5, shaft * 0.5 + 1.5);
+  ctx.lineTo(length * 0.1 + 1.5, shaft * 0.9 + 1.5);
+  ctx.lineTo(length * 0.55 + 1.5, 1.5);
+  ctx.lineTo(length * 0.1 + 1.5, -shaft * 0.9 + 1.5);
+  ctx.lineTo(length * 0.1 + 1.5, -shaft * 0.5 + 1.5);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = COLORS.fairwayLine;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-length * 0.45, -shaft * 0.5);
+  ctx.lineTo(-length * 0.45, shaft * 0.5);
+  ctx.lineTo(length * 0.1, shaft * 0.5);
+  ctx.lineTo(length * 0.1, shaft * 0.9);
+  ctx.lineTo(length * 0.55, 0);
+  ctx.lineTo(length * 0.1, -shaft * 0.9);
+  ctx.lineTo(length * 0.1, -shaft * 0.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function cycleOneWayOrientation(current: OneWayOrientation, order: OneWayOrientation[], step: number): OneWayOrientation {
+  const len = order.length;
+  const idx = order.indexOf(current);
+  const next = (idx + step) % len;
+  return order[(next + len) % len];
+}
+
+function describeOneWayOrientation(orientation: OneWayOrientation): string {
+  switch (orientation) {
+    case 'N': return 'Blocks southbound (arrow ↑)';
+    case 'E': return 'Blocks westbound (arrow →)';
+    case 'S': return 'Blocks northbound (arrow ↓)';
+    case 'W':
+    default: return 'Blocks eastbound (arrow ←)';
+  }
+}
 
 export function rectLikeToPolygonPoints(rect: { x: number; y: number; w: number; h: number; rot?: number }): number[] {
   const rx = typeof rect.x === 'number' ? rect.x : 0;
@@ -89,6 +176,7 @@ type SelectableObject =
   | { type: 'tee'; object: { x: number; y: number } }
   | { type: 'cup'; object: { x: number; y: number; r: number } }
   | { type: 'wall'; object: Wall; index: number }
+  | { type: 'oneWayWall'; object: OneWayWall; index: number }
   | { type: 'wallsPoly'; object: Poly; index: number }
   | { type: 'post'; object: Circle; index: number }
   | { type: 'decoration'; object: Decoration; index: number }
@@ -101,7 +189,7 @@ type SelectableObject =
   | { type: 'overlay'; object: any };
 
 export type EditorTool =
-  | 'select' | 'tee' | 'cup' | 'wall' | 'wallsPoly' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'sand' | 'sandPoly' | 'hill' | 'decoration' | 'measure';
+  | 'select' | 'tee' | 'cup' | 'wall' | 'oneWayWall' | 'wallsPoly' | 'post' | 'bridge' | 'water' | 'waterPoly' | 'sand' | 'sandPoly' | 'hill' | 'decoration' | 'measure';
 
 export type EditorAction =
   | 'save' | 'saveAs' | 'load' | 'import' | 'importScreenshot' | 'importAnnotate' | 'export' | 'new' | 'delete' | 'test' | 'metadata' | 'suggestPar' | 'suggestCup' | 'gridToggle' | 'slopeArrowsToggle' | 'previewFillOnClose' | 'previewDashedNext' | 'alignmentGuides' | 'guideDetailsToggle' | 'rulersToggle' | 'back' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'convertToPolygon' | 'chamfer' | 'angledCorridor' | 'courseCreator'
@@ -139,6 +227,7 @@ type ContextMenuAction =
   | 'polygonRemoveVertex'
   | 'postRadius'
   | 'hillDirection'
+  | 'oneWayDirection'
   | 'toggleGrid'
   | 'toggleAlignmentGuides'
   | 'toggleGuideDetails'
@@ -162,6 +251,7 @@ export type Level = {
   tee: { x: number; y: number };
   cup: { x: number; y: number; r: number };
   walls: Array<{ x: number; y: number; w: number; h: number }>;
+  oneWayWalls?: Array<{ x: number; y: number; w: number; h: number; orientation: OneWayOrientation }>;
   wallsPoly: Array<{ points: number[] }>;
   posts: Array<{ x: number; y: number; r: number }>;
   bridges: Array<{ x: number; y: number; w: number; h: number }>;
@@ -309,6 +399,8 @@ class LevelEditorImpl implements LevelEditor {
   private clipboard: SelectableObject[] = [];
   private clipboardOffset: { x: number; y: number } = { x: 0, y: 0 };
   private lastMousePosition: { x: number; y: number } = { x: 400, y: 300 };
+  private currentOneWayOrientation: OneWayOrientation = 'N';
+  private readonly oneWayOrientationOrder: OneWayOrientation[] = ['N', 'E', 'S', 'W'];
 
   // Drag state for rectangle placements
   private isEditorDragging = false;
@@ -1500,6 +1592,10 @@ class LevelEditorImpl implements LevelEditor {
       } else if (clipObj.type === 'post') {
         gs.posts.push(newObj);
         newSelection.push({ type: 'post', object: newObj, index: gs.posts.length - 1 });
+      } else if (clipObj.type === 'oneWayWall') {
+        if (!Array.isArray(gs.oneWayWalls)) gs.oneWayWalls = [];
+        gs.oneWayWalls.push(newObj);
+        newSelection.push({ type: 'oneWayWall', object: newObj, index: gs.oneWayWalls.length - 1 } as any);
       } else if (clipObj.type === 'water') {
         gs.waters.push(newObj);
         newSelection.push({ type: 'water', object: newObj, index: gs.waters.length - 1 });
@@ -1935,6 +2031,7 @@ class LevelEditorImpl implements LevelEditor {
         { label: 'Cup', item: { kind: 'tool', tool: 'cup' } },
         { label: 'Post', item: { kind: 'tool', tool: 'post' }, separator: true },
         { label: 'Wall', item: { kind: 'tool', tool: 'wall' } },
+        { label: 'One-way Wall', item: { kind: 'tool', tool: 'oneWayWall' } },
         { label: 'WallsPoly', item: { kind: 'tool', tool: 'wallsPoly' } },
         { label: 'Bridge', item: { kind: 'tool', tool: 'bridge' }, separator: true },
         { label: 'Water', item: { kind: 'tool', tool: 'water' } },
@@ -2023,6 +2120,7 @@ class LevelEditorImpl implements LevelEditor {
         tee: { x: globalState.COURSE_MARGIN + 60, y: Math.floor(globalState.HEIGHT / 2) },
         cup: { x: globalState.WIDTH - globalState.COURSE_MARGIN - 60, y: Math.floor(globalState.HEIGHT / 2), r: defaultCupR },
         walls: [],
+        oneWayWalls: [],
         wallsPoly: [],
         posts: [],
         bridges: [],
@@ -2048,6 +2146,7 @@ class LevelEditorImpl implements LevelEditor {
       waters: this.editorLevelData.water ?? [],
       watersPoly: this.editorLevelData.waterPoly ?? [],
       decorations: this.editorLevelData.decorations ?? [],
+      oneWayWalls: this.editorLevelData.oneWayWalls ?? [],
       hills: this.editorLevelData.hills ?? [],
       bridges: this.editorLevelData.bridges ?? [],
       posts: this.editorLevelData.posts ?? [],
@@ -2150,7 +2249,7 @@ class LevelEditorImpl implements LevelEditor {
 
     // Pull globals for geometry render
     const gs = env.getGlobalState();
-    const { waters, watersPoly, sands, sandsPoly, bridges, hills, decorations, walls, polyWalls, posts, ball, hole } = gs as any;
+    const { waters, watersPoly, sands, sandsPoly, bridges, hills, decorations, walls, oneWayWalls, polyWalls, posts, ball, hole } = gs as any;
 
     // Terrain before walls
     // Water (rects)
@@ -2266,6 +2365,57 @@ class LevelEditorImpl implements LevelEditor {
         ctx.closePath();
         ctx.fill();
       }
+      // Optional subtle inner shadow on large polygons (matches rect styling)
+      {
+        const areaThreshold = 6000;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(0,0,0,0.14)';
+        ctx.lineWidth = 2.4;
+        ctx.lineJoin = 'round';
+        for (const sp of sandsPoly) {
+          const pts = sp.points; if (!pts || pts.length < 6) continue;
+          let twiceArea = 0;
+          let cx = 0, cy = 0;
+          for (let i = 0, j = pts.length - 2; i < pts.length; i += 2) {
+            const xi = pts[i];
+            const yi = pts[i + 1];
+            const xj = pts[j];
+            const yj = pts[j + 1];
+            const cross = xi * yj - xj * yi;
+            twiceArea += cross;
+            cx += (xi + xj) * cross;
+            cy += (yi + yj) * cross;
+            j = i;
+          }
+          const area = twiceArea / 2;
+          if (Math.abs(area) < areaThreshold) continue;
+          const centroidScale = area !== 0 ? (1 / (3 * twiceArea)) : 0;
+          const centerX = area !== 0 ? cx * centroidScale : pts[0];
+          const centerY = area !== 0 ? cy * centroidScale : pts[1];
+          const inset = 2.5;
+          ctx.save();
+          ctx.beginPath(); ctx.moveTo(pts[0], pts[1]);
+          for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+          ctx.closePath();
+          ctx.clip();
+          ctx.beginPath();
+          for (let i = 0; i < pts.length; i += 2) {
+            const px = pts[i];
+            const py = pts[i + 1];
+            const dx = px - centerX;
+            const dy = py - centerY;
+            const len = Math.hypot(dx, dy) || 1;
+            const ix = px - (dx / len) * inset;
+            const iy = py - (dy / len) * inset;
+            if (i === 0) ctx.moveTo(ix, iy);
+            else ctx.lineTo(ix, iy);
+          }
+          ctx.closePath();
+          ctx.stroke();
+          ctx.restore();
+        }
+        ctx.restore();
+      }
     }
     // Decorations clipped to fairway (render before walls for consistent layering with runtime)
     ctx.save();
@@ -2304,27 +2454,15 @@ class LevelEditorImpl implements LevelEditor {
     for (let i = 0; i < walls.length; i++) {
       const w = walls[i];
       const obj: SelectableObject = { type: 'wall', object: w, index: i };
+      this.renderWithRotation(ctx, obj, () => drawEditorWallRect(ctx, w));
+    }
+    // One-way walls (rects with directional arrow)
+    for (let i = 0; i < oneWayWalls.length; i++) {
+      const gate = oneWayWalls[i] as OneWayWall;
+      const obj: SelectableObject = { type: 'oneWayWall', object: gate, index: i } as any;
       this.renderWithRotation(ctx, obj, () => {
-        // soft shadow to the bottom-right for depth
-        ctx.fillStyle = 'rgba(0,0,0,0.25)';
-        ctx.fillRect(w.x + 2, w.y + 2, w.w, w.h);
-        // face
-        ctx.fillStyle = COLORS.wallFill;
-        ctx.fillRect(w.x, w.y, w.w, w.h);
-        // rim stroke (source-over) with bevel joins for chamfers
-        ctx.lineWidth = 2;
-        ctx.lineJoin = 'bevel';
-        ctx.miterLimit = 2.5;
-        ctx.strokeStyle = COLORS.wallStroke;
-        ctx.strokeRect(w.x + 1, w.y + 1, w.w - 2, w.h - 2);
-        // highlight (top/left)
-        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-        ctx.beginPath();
-        ctx.moveTo(w.x + 1, w.y + 1);
-        ctx.lineTo(w.x + w.w - 1, w.y + 1);
-        ctx.moveTo(w.x + 1, w.y + 1);
-        ctx.lineTo(w.x + 1, w.y + w.h - 1);
-        ctx.stroke();
+        drawEditorWallRect(ctx, gate);
+        drawEditorOneWayArrow(ctx, gate);
       });
     }
     // Polygon walls
@@ -2646,7 +2784,7 @@ class LevelEditorImpl implements LevelEditor {
     // Drag outline preview for rectangle tools
     if (
       this.isEditorDragging && this.editorDragTool && this.editorDragStart && this.editorDragCurrent && (
-        this.editorDragTool === 'wall' || this.editorDragTool === 'bridge' || this.editorDragTool === 'water' || this.editorDragTool === 'sand' || this.editorDragTool === 'hill'
+        this.editorDragTool === 'wall' || this.editorDragTool === 'oneWayWall' || this.editorDragTool === 'bridge' || this.editorDragTool === 'water' || this.editorDragTool === 'sand' || this.editorDragTool === 'hill'
       )
     ) {
       const x0 = this.editorDragStart.x;
@@ -3589,6 +3727,7 @@ class LevelEditorImpl implements LevelEditor {
       const hasPolySel = this.selectedObjects.some(o => o.type === 'wallsPoly' || o.type === 'waterPoly' || o.type === 'sandPoly');
       const overlaySel = (this.selectedObjects.length === 1 && (this.selectedObjects[0] as any).type === 'overlay');
       const postSel = (this.selectedObjects.length === 1 && (this.selectedObjects[0] as any).type === 'post');
+      const oneWaySel = this.selectedObjects.some(o => o.type === 'oneWayWall');
       const hints: string[] = [
         'Arrows: Nudge',
         'Shift: Axis Lock',
@@ -3601,6 +3740,8 @@ class LevelEditorImpl implements LevelEditor {
         hints.push('=/−: Scale', ',/.: Rotate');
       } else if (postSel) {
         hints.push('Double‑click: Change Radius');
+      } else if (oneWaySel) {
+        hints.push('R: Cycle Gate Direction', 'Shift+R: Reverse Gate Direction');
       }
       rightText = hints.join('  •  ');
     } else if (this.selectedTool === 'post') {
@@ -3620,7 +3761,7 @@ class LevelEditorImpl implements LevelEditor {
       const radius = this.selectedTool === 'tee' ? 8 : 12;
       leftText = `${toolLabel} — Center=(${Math.round(px)}, ${Math.round(py)})  •  r=${radius}`;
       rightText = `Click: Place  •  Ctrl: Grid-only  •  Alt: Disable Guides`;
-    } else if (this.selectedTool === 'wall' || this.selectedTool === 'water' || this.selectedTool === 'sand' || this.selectedTool === 'bridge' || this.selectedTool === 'hill') {
+    } else if (this.selectedTool === 'wall' || this.selectedTool === 'oneWayWall' || this.selectedTool === 'water' || this.selectedTool === 'sand' || this.selectedTool === 'bridge' || this.selectedTool === 'hill') {
       // Rectangle drag tools
       if (this.isEditorDragging && this.editorDragTool === this.selectedTool && this.editorDragStart && this.editorDragCurrent) {
         const w = Math.abs(this.editorDragCurrent.x - this.editorDragStart.x);
@@ -3628,11 +3769,19 @@ class LevelEditorImpl implements LevelEditor {
         leftText = `${toolLabel} — ${Math.round(w)}×${Math.round(h)}`;
       } else {
         leftText = `${toolLabel} — Click-drag to place`;
+        if (this.selectedTool === 'oneWayWall') {
+          const desc = describeOneWayOrientation(this.currentOneWayOrientation);
+          leftText += `  •  ${desc}`;
+        }
       }
       if (this.selectedTool === 'hill' && this.hillDirectionPicker && this.hillDirectionPicker.visible) {
         leftText += '  •  Pick Direction…';
       }
-      rightText = `Shift: Axis Lock  •  Ctrl: Grid-only  •  Alt: Disable Guides`;
+      if (this.selectedTool === 'oneWayWall') {
+        rightText = `Shift: Axis Lock  •  Ctrl: Grid-only  •  Alt: Disable Guides  •  R: Cycle Direction  •  Shift+R: Reverse`;
+      } else {
+        rightText = `Shift: Axis Lock  •  Ctrl: Grid-only  •  Alt: Disable Guides`;
+      }
     } else if (this.selectedTool === 'decoration') {
       leftText = `${toolLabel} — 32×32  •  ${this.selectedDecoration}`;
       rightText = `Click: Place  •  Ctrl: Grid-only`;
@@ -4439,7 +4588,7 @@ class LevelEditorImpl implements LevelEditor {
 
     if (this.selectedTool !== 'select') {
       // Start rectangle placement for rect tools
-      if (inFairway && (this.selectedTool === 'wall' || this.selectedTool === 'bridge' || this.selectedTool === 'water' || this.selectedTool === 'sand' || this.selectedTool === 'hill')) {
+      if (inFairway && (this.selectedTool === 'wall' || this.selectedTool === 'oneWayWall' || this.selectedTool === 'bridge' || this.selectedTool === 'water' || this.selectedTool === 'sand' || this.selectedTool === 'hill')) {
         this.isEditorDragging = true;
         this.editorDragTool = this.selectedTool;
         this.editorDragStart = { x: px, y: py };
@@ -5243,6 +5392,14 @@ class LevelEditorImpl implements LevelEditor {
         const o: any = { x: sx, y: sy, w: sw, h: sh, rot: 0 };
         (gs.walls as any[]).push(o);
         if (this.editorLevelData) (this.editorLevelData.walls as any[]).push(o);
+      } else if (this.editorDragTool === 'oneWayWall') {
+        const gate: any = { x: sx, y: sy, w: sw, h: sh, rot: 0, orientation: this.currentOneWayOrientation };
+        if (!Array.isArray(gs.oneWayWalls)) gs.oneWayWalls = [];
+        (gs.oneWayWalls as any[]).push(gate);
+        if (this.editorLevelData) {
+          if (!Array.isArray(this.editorLevelData.oneWayWalls)) this.editorLevelData.oneWayWalls = [];
+          (this.editorLevelData.oneWayWalls as any[]).push(gate);
+        }
       } else if (this.editorDragTool === 'bridge') {
         const o: any = { x: sx, y: sy, w: sw, h: sh, rot: 0 };
         (gs.bridges as any[]).push(o);
@@ -5557,6 +5714,14 @@ class LevelEditorImpl implements LevelEditor {
         if (this.isPointInObject(px, py, obj)) return obj;
       }
     }
+    // One-way walls (rendered above walls in canvas)
+    {
+      const arr = (gs.oneWayWalls as any[]) || [];
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const obj: SelectableObject = { type: 'oneWayWall', object: arr[i], index: i } as any;
+        if (this.isPointInObject(px, py, obj)) return obj;
+      }
+    }
     // Walls
     {
       const arr = (gs.walls as any[]) || [];
@@ -5814,7 +5979,7 @@ class LevelEditorImpl implements LevelEditor {
 
     // Collect indices to delete per array type
     const del: Record<string, number[]> = {
-      wall: [], water: [], sand: [], bridge: [], hill: [], decoration: [], post: [],
+      wall: [], oneWayWall: [], water: [], sand: [], bridge: [], hill: [], decoration: [], post: [],
       wallsPoly: [], waterPoly: [], sandPoly: []
     } as any;
 
@@ -5832,6 +5997,7 @@ class LevelEditorImpl implements LevelEditor {
     };
 
     removeFrom(gs.walls as any[], del.wall);
+    removeFrom(gs.oneWayWalls as any[], del.oneWayWall ?? []);
     removeFrom(gs.polyWalls as any[], del.wallsPoly);
     removeFrom(gs.waters as any[], del.water);
     removeFrom(gs.watersPoly as any[], del.waterPoly);
@@ -5881,7 +6047,7 @@ class LevelEditorImpl implements LevelEditor {
       } else if (t === 'post') {
         const nx = clampX(o.x + dx), ny = clampY(o.y + dy);
         o.x = nx; o.y = ny;
-      } else if (t === 'wall' || t === 'water' || t === 'sand' || t === 'bridge' || t === 'hill' || t === 'decoration') {
+      } else if (t === 'wall' || t === 'oneWayWall' || t === 'water' || t === 'sand' || t === 'bridge' || t === 'hill' || t === 'decoration') {
         if (typeof o.x === 'number') o.x = clampX(o.x + dx);
         if (typeof o.y === 'number') o.y = clampY(o.y + dy);
       }
@@ -5918,6 +6084,7 @@ class LevelEditorImpl implements LevelEditor {
 
     // Arrays (deep copy)
     this.editorLevelData.walls = JSON.parse(JSON.stringify(gs.walls ?? []));
+    this.editorLevelData.oneWayWalls = JSON.parse(JSON.stringify(gs.oneWayWalls ?? []));
     this.editorLevelData.wallsPoly = JSON.parse(JSON.stringify(gs.polyWalls ?? []));
     this.editorLevelData.posts = JSON.parse(JSON.stringify(gs.posts ?? []));
     this.editorLevelData.bridges = JSON.parse(JSON.stringify(gs.bridges ?? []));
@@ -6070,7 +6237,7 @@ class LevelEditorImpl implements LevelEditor {
     const o: any = obj.object as any;
     const rot = typeof o?.rot === 'number' ? o.rot : 0;
     // Only rect-like types support rotation; polygons and circles are handled separately
-    const rotatable = (t === 'wall' || t === 'water' || t === 'sand' || t === 'bridge' || t === 'hill' || t === 'decoration');
+    const rotatable = (t === 'wall' || t === 'oneWayWall' || t === 'water' || t === 'sand' || t === 'bridge' || t === 'hill' || t === 'decoration');
     if (!rot || !rotatable) {
       draw();
       return;
@@ -6890,8 +7057,8 @@ class LevelEditorImpl implements LevelEditor {
     addItem('delete', 'Delete', hasSelection);
     addItem('duplicate', 'Duplicate', hasSelection);
 
-    const rectSelection = this.selectedObjects.filter(o => o.type === 'wall' || o.type === 'water' || o.type === 'sand');
-    const rectFromHit = hit.kind === 'object' && hit.object && (hit.object.type === 'wall' || hit.object.type === 'water' || hit.object.type === 'sand') ? hit.object : null;
+    const rectSelection = this.selectedObjects.filter(o => o.type === 'wall' || o.type === 'oneWayWall' || o.type === 'water' || o.type === 'sand');
+    const rectFromHit = hit.kind === 'object' && hit.object && (hit.object.type === 'wall' || hit.object.type === 'oneWayWall' || hit.object.type === 'water' || hit.object.type === 'sand') ? hit.object : null;
     if (rectFromHit || rectSelection.length > 0) {
       addSeparator();
       const count = rectSelection.length > 0 ? rectSelection.length : (rectFromHit ? 1 : 0);
@@ -6916,6 +7083,11 @@ class LevelEditorImpl implements LevelEditor {
     if (hit.kind === 'object' && hit.object && hit.object.type === 'hill') {
       addSeparator();
       addItem('hillDirection', 'Adjust Hill Direction…', true);
+    }
+
+    if (hit.kind === 'object' && hit.object && hit.object.type === 'oneWayWall') {
+      addSeparator();
+      addItem('oneWayDirection', 'Adjust Gate Direction…', true);
     }
 
     addSeparator();
@@ -7046,6 +7218,9 @@ class LevelEditorImpl implements LevelEditor {
       case 'hillDirection':
         this.openHillDirectionFromContext(env);
         break;
+      case 'oneWayDirection':
+        this.openOneWayDirectionFromContext(env);
+        break;
       case 'toggleGrid':
         try {
           const newShow = !env.getShowGrid();
@@ -7151,6 +7326,28 @@ class LevelEditorImpl implements LevelEditor {
     const cx = hill.x + hill.w / 2;
     const cy = hill.y + hill.h / 2;
     this.hillDirectionPicker = { x: cx, y: cy, visible: true, selectedDir: hill.dir || 'N' } as any;
+  }
+
+  private openOneWayDirectionFromContext(env: EditorEnv): void {
+    const hit = this.contextMenuHit;
+    if (!hit || hit.kind !== 'object' || !hit.object || hit.object.type !== 'oneWayWall') return;
+    const gate = hit.object.object as OneWayWall;
+    const idx = hit.object.index ?? -1;
+    if (idx < 0) return;
+    const next = cycleOneWayOrientation(gate.orientation ?? this.currentOneWayOrientation, this.oneWayOrientationOrder, 1);
+    this.applyOneWayOrientation(env, idx, next);
+  }
+
+  private applyOneWayOrientation(env: EditorEnv, index: number, orientation: OneWayOrientation): void {
+    const gs = env.getGlobalState();
+    if (!Array.isArray(gs.oneWayWalls) || index < 0 || index >= gs.oneWayWalls.length) return;
+    gs.oneWayWalls[index].orientation = orientation;
+    if (Array.isArray(this.editorLevelData?.oneWayWalls) && index < this.editorLevelData.oneWayWalls.length) {
+      this.editorLevelData.oneWayWalls[index].orientation = orientation;
+    }
+    this.currentOneWayOrientation = orientation;
+    env.setGlobalState(gs);
+    try { env.showToast(`One-way direction set to ${orientation}`); } catch {}
   }
 
   private findClosestInsertionIndex(points: number[], x: number, y: number): number {

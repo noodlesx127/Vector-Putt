@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 
 ### Added
+- Level Editor • One-way Walls: added a dedicated `oneWayWall` tool with runtime-parity rendering, drag placement, selection/transform support, clipboard + undo/redo integration, and directional arrow glyphs in the editor preview. Context menu action "Adjust Gate Direction…" and keyboard shortcuts (`R` / `Shift+R`) cycle orientation while syncing editor state and level serialization. (`src/editor/levelEditor.ts`)
 - Level Editor • Overlay Screenshot (Phase 2): Interactive transform handles and additional view actions.
   - Handles: resize from all corners and edges with axis constraints; rotate from top‑mid handle with Shift=15° snap; move by dragging inside when selected.
   - View menu items: Fit to Canvas, Preserve Aspect toggle, Flip Horizontal/Vertical, Through‑click (Above), Calibrate Scale…
@@ -40,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Polygons — Vertex insert/remove actions: Alt+Click removes a vertex (min 3); Double‑click near an edge inserts a vertex at the closest point and begins dragging.
 
 ### Changed
+
+- Play Area Visual Refresh: Sand polygons now render with the same inset inner shadow used for large sand rectangles, ensuring consistent recessed styling across both runtime and editor previews. (`src/main.ts`, `src/editor/levelEditor.ts`)
 
 - Added scrolling to the Course Summary hole list so long courses remain readable at standard panel size.
 - Selection — Marquee default is now Contain; hold Alt to switch to Intersect during drag/finalize. (`src/editor/levelEditor.ts`)

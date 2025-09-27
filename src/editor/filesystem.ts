@@ -347,11 +347,27 @@ export function validateLevelData(data: any): { valid: boolean; errors: string[]
   }
 
   // Check arrays
-  const arrayFields = ['walls', 'wallsPoly', 'posts', 'bridges', 'water', 'waterPoly', 'sand', 'sandPoly', 'hills', 'decorations'];
+  const arrayFields = ['walls', 'oneWayWalls', 'wallsPoly', 'posts', 'bridges', 'water', 'waterPoly', 'sand', 'sandPoly', 'hills', 'decorations'];
   for (const field of arrayFields) {
     if (data[field] && !Array.isArray(data[field])) {
       errors.push(`${field} must be an array`);
     }
+  }
+
+  if (Array.isArray(data.oneWayWalls)) {
+    data.oneWayWalls.forEach((wall: any, index: number) => {
+      if (!wall || typeof wall !== 'object') {
+        errors.push(`oneWayWalls[${index}] must be an object`);
+        return;
+      }
+      if (typeof wall.x !== 'number' || typeof wall.y !== 'number' || typeof wall.w !== 'number' || typeof wall.h !== 'number') {
+        errors.push(`oneWayWalls[${index}] must have numeric x, y, w, h`);
+      }
+      const dir = wall.orientation;
+      if (dir !== 'N' && dir !== 'E' && dir !== 'S' && dir !== 'W') {
+        errors.push(`oneWayWalls[${index}] has invalid orientation (expected 'N','E','S','W')`);
+      }
+    });
   }
 
   // Validate object-specific dimensions
@@ -444,7 +460,7 @@ export function applyLevelDataFixups(data: any): any {
   const fixed = JSON.parse(JSON.stringify(data)); // Deep clone
   
   // Ensure all required arrays exist
-  const arrayFields = ['walls', 'wallsPoly', 'posts', 'bridges', 'water', 'waterPoly', 'sand', 'sandPoly', 'hills', 'decorations'];
+  const arrayFields = ['walls', 'oneWayWalls', 'wallsPoly', 'posts', 'bridges', 'water', 'waterPoly', 'sand', 'sandPoly', 'hills', 'decorations'];
   for (const field of arrayFields) {
     if (!fixed[field]) {
       fixed[field] = [];
@@ -534,10 +550,20 @@ export function applyLevelDataFixups(data: any): any {
   if (fixed.cup) { const p = clampPoint(fixed.cup.x, fixed.cup.y); fixed.cup.x = p.x; fixed.cup.y = p.y; }
 
   // Clamp rect-like arrays
-  ['walls', 'bridges', 'water', 'sand', 'hills', 'decorations'].forEach((key) => {
+  ['walls', 'oneWayWalls', 'bridges', 'water', 'sand', 'hills', 'decorations'].forEach((key) => {
     if (!Array.isArray((fixed as any)[key])) return;
     (fixed as any)[key] = (fixed as any)[key].map((o: any) => clampRect(o));
   });
+
+  if (Array.isArray(fixed.oneWayWalls)) {
+    fixed.oneWayWalls = fixed.oneWayWalls.map((o: any) => {
+      if (!o || typeof o !== 'object') return { x: 0, y: 0, w: 0, h: 0, orientation: 'N' };
+      if (typeof o.orientation !== 'string' || !['N','E','S','W'].includes(o.orientation)) {
+        o.orientation = 'N';
+      }
+      return o;
+    });
+  }
 
   // Clamp posts
   if (Array.isArray(fixed.posts)) fixed.posts = fixed.posts.map((o: any) => clampPost(o));

@@ -1,4 +1,4 @@
- import CHANGELOG_RAW from '../CHANGELOG.md?raw';
+import CHANGELOG_RAW from '../CHANGELOG.md?raw';
 import firebaseManager, { firebaseLeaderboardStore } from './firebase';
 import type { LeaderboardEntry, LeaderboardSettings, LeaderboardBoard } from './firebase/FirebaseLeaderboardStore';
 import { levelEditor } from './editor/levelEditor';
@@ -2538,6 +2538,8 @@ type Wall = { x: number; y: number; w: number; h: number };
 type Rect = { x: number; y: number; w: number; h: number };
 type Circle = { x: number; y: number; r: number };
 type Poly = { points: number[] };
+type OneWayOrientation = 'N' | 'E' | 'S' | 'W';
+type OneWayWall = Wall & { orientation: OneWayOrientation };
 type Decoration = { x: number; y: number; w: number; h: number; kind: 'flowers' };
 type Slope = { x: number; y: number; w: number; h: number; dir: 'N'|'S'|'E'|'W'|'NE'|'NW'|'SE'|'SW'; strength?: number; falloff?: number };
 type Level = {
@@ -2547,6 +2549,7 @@ type Level = {
   tee: { x: number; y: number };
   cup: { x: number; y: number; r: number };
   walls: Wall[];
+  oneWayWalls?: OneWayWall[];
   sand?: Rect[];
   sandPoly?: Poly[];
   water?: Rect[];
@@ -2572,10 +2575,84 @@ let watersPoly: Poly[] = [];
 let bridges: Rect[] = [];
 let posts: Circle[] = [];
 let polyWalls: Poly[] = [];
+let oneWayWalls: OneWayWall[] = [];
 let decorations: Decoration[] = [];
 let hills: Slope[] = [];
 // Logical level canvas size from level JSON; defaults to actual canvas size
 let levelCanvas = { width: WIDTH, height: HEIGHT };
+
+const ONE_WAY_VECTORS: Record<OneWayOrientation, { x: number; y: number }> = {
+  N: { x: 0, y: -1 },
+  E: { x: 1, y: 0 },
+  S: { x: 0, y: 1 },
+  W: { x: -1, y: 0 }
+};
+
+function oneWayBlocksCollision(hit: { nx: number; ny: number }, wall: OneWayWall): boolean {
+  const dir = ONE_WAY_VECTORS[wall.orientation];
+  const dot = hit.nx * dir.x + hit.ny * dir.y;
+  return dot > 1e-4;
+}
+
+function drawWallRectBase(ctx: CanvasRenderingContext2D, rect: Wall): void {
+  ctx.fillStyle = 'rgba(0,0,0,0.24)';
+  ctx.fillRect(rect.x + 2, rect.y + 2, Math.max(0, rect.w - 3), Math.max(0, rect.h - 3));
+  ctx.fillStyle = COLORS.wallFill;
+  ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'bevel';
+  ctx.miterLimit = 2.5;
+  ctx.strokeStyle = COLORS.wallStroke;
+  ctx.strokeRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.beginPath();
+  ctx.moveTo(rect.x + 1, rect.y + 1);
+  ctx.lineTo(rect.x + rect.w - 1, rect.y + 1);
+  ctx.moveTo(rect.x + 1, rect.y + 1);
+  ctx.lineTo(rect.x + 1, rect.y + rect.h - 1);
+  ctx.stroke();
+}
+
+function drawOneWayArrow(ctx: CanvasRenderingContext2D, gate: OneWayWall): void {
+  const dir = ONE_WAY_VECTORS[gate.orientation];
+  const cx = gate.x + gate.w * 0.5;
+  const cy = gate.y + gate.h * 0.5;
+  const span = (gate.orientation === 'E' || gate.orientation === 'W') ? gate.w : gate.h;
+  const thickness = (gate.orientation === 'E' || gate.orientation === 'W') ? gate.h : gate.w;
+  const length = Math.max(14, Math.min(span * 0.6, thickness * 1.6));
+  const shaft = Math.max(4, thickness * 0.45);
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(Math.atan2(dir.y, dir.x));
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath();
+  ctx.moveTo(-length * 0.45 + 1.5, -shaft * 0.5 + 1.5);
+  ctx.lineTo(-length * 0.45 + 1.5, shaft * 0.5 + 1.5);
+  ctx.lineTo(length * 0.1 + 1.5, shaft * 0.5 + 1.5);
+  ctx.lineTo(length * 0.1 + 1.5, shaft * 0.9 + 1.5);
+  ctx.lineTo(length * 0.55 + 1.5, 1.5);
+  ctx.lineTo(length * 0.1 + 1.5, -shaft * 0.9 + 1.5);
+  ctx.lineTo(length * 0.1 + 1.5, -shaft * 0.5 + 1.5);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = COLORS.fairwayLine;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-length * 0.45, -shaft * 0.5);
+  ctx.lineTo(-length * 0.45, shaft * 0.5);
+  ctx.lineTo(length * 0.1, shaft * 0.5);
+  ctx.lineTo(length * 0.1, shaft * 0.9);
+  ctx.lineTo(length * 0.55, 0);
+  ctx.lineTo(length * 0.1, -shaft * 0.9);
+  ctx.lineTo(length * 0.1, -shaft * 0.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
 
 // Transient visuals
 type SplashFx = { x: number; y: number; age: number };
@@ -5926,11 +6003,29 @@ function update(dt: number) {
       if (hit) {
         collidedThisFrame = true;
         lastCollisionNx = hit.nx; lastCollisionNy = hit.ny;
-        // push out along normal
         ball.x += hit.nx * hit.depth;
         ball.y += hit.ny * hit.depth;
-        // reflect velocity on the normal axis
-        const vn = ball.vx * hit.nx + ball.vy * hit.ny; // component along normal
+        const vn = ball.vx * hit.nx + ball.vy * hit.ny;
+        ball.vx -= (1 + restitution) * vn * hit.nx;
+        ball.vy -= (1 + restitution) * vn * hit.ny;
+        const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        if (now - lastBounceSfxMs > 80 && Math.abs(vn) > 50) {
+          lastBounceSfxMs = now;
+          AudioSfx.playBounce(Math.min(1, Math.abs(vn) / 400));
+        }
+      }
+    }
+    for (const gate of oneWayWalls) {
+      const hit = circleRectResolve(ball.x, ball.y, ball.r, gate);
+      if (hit) {
+        if (!oneWayBlocksCollision(hit, gate)) {
+          continue;
+        }
+        collidedThisFrame = true;
+        lastCollisionNx = hit.nx; lastCollisionNy = hit.ny;
+        ball.x += hit.nx * hit.depth;
+        ball.y += hit.ny * hit.depth;
+        const vn = ball.vx * hit.nx + ball.vy * hit.ny;
         ball.vx -= (1 + restitution) * vn * hit.nx;
         ball.vy -= (1 + restitution) * vn * hit.ny;
         const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -6257,11 +6352,29 @@ function drawDebugPreview() {
       if (hit) {
         collided = true;
         lastCollisionNx = hit.nx; lastCollisionNy = hit.ny;
-        // push out along normal
         px += hit.nx * hit.depth;
         py += hit.ny * hit.depth;
-        // reflect velocity on the normal axis
-        const vn = vx * hit.nx + vy * hit.ny; // component along normal
+        const vn = vx * hit.nx + vy * hit.ny;
+        vx -= (1 + restitution) * vn * hit.nx;
+        vy -= (1 + restitution) * vn * hit.ny;
+        const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        if (now - lastBounceSfxMs > 80 && Math.abs(vn) > 50) {
+          lastBounceSfxMs = now;
+          AudioSfx.playBounce(Math.min(1, Math.abs(vn) / 400));
+        }
+      }
+    }
+    for (const gate of oneWayWalls) {
+      const hit = circleRectResolve(px, py, r, gate);
+      if (hit) {
+        if (!oneWayBlocksCollision(hit, gate)) {
+          continue;
+        }
+        collided = true;
+        lastCollisionNx = hit.nx; lastCollisionNy = hit.ny;
+        px += hit.nx * hit.depth;
+        py += hit.ny * hit.depth;
+        const vn = vx * hit.nx + vy * hit.ny;
         vx -= (1 + restitution) * vn * hit.nx;
         vy -= (1 + restitution) * vn * hit.ny;
         const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -7986,7 +8099,7 @@ function draw() {
   // polygon water — two-pass: stroke all, then fill all (prevents shared-edge seams)
   if (watersPoly.length > 0) {
     // Stroke pass
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 2;
     ctx.strokeStyle = COLORS.waterStroke;
     for (const wp of watersPoly) {
       const pts = wp.points; if (!pts || pts.length < 6) continue;
@@ -8105,7 +8218,7 @@ function draw() {
   // polygon sand — two-pass: stroke all, then fill all
   if (sandsPoly.length > 0) {
     // Stroke pass
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 2;
     ctx.strokeStyle = COLORS.sandStroke;
     for (const sp of sandsPoly) {
       const pts = sp.points; if (!pts || pts.length < 6) continue;
@@ -8122,6 +8235,58 @@ function draw() {
       for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
       ctx.closePath();
       ctx.fill();
+    }
+    // Optional subtle inner shadow on large sand polygons (matches rect styling)
+    {
+      const areaThreshold = 6000;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0,0,0,0.14)';
+      ctx.lineWidth = 2.4;
+      ctx.lineJoin = 'round';
+      for (const sp of sandsPoly) {
+        const pts = sp.points; if (!pts || pts.length < 6) continue;
+        let twiceArea = 0;
+        let cx = 0, cy = 0;
+        for (let i = 0, j = pts.length - 2; i < pts.length; i += 2) {
+          const xi = pts[i];
+          const yi = pts[i + 1];
+          const xj = pts[j];
+          const yj = pts[j + 1];
+          const cross = xi * yj - xj * yi;
+          twiceArea += cross;
+          cx += (xi + xj) * cross;
+          cy += (yi + yj) * cross;
+          j = i;
+        }
+        const area = twiceArea / 2;
+        if (Math.abs(area) < areaThreshold) continue;
+        const centroidScale = area !== 0 ? (1 / (3 * twiceArea)) : 0;
+        const centerX = area !== 0 ? cx * centroidScale : pts[0];
+        const centerY = area !== 0 ? cy * centroidScale : pts[1];
+        const inset = 2.5;
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(pts[0], pts[1]);
+        for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+        ctx.closePath();
+        ctx.clip();
+        ctx.beginPath();
+        for (let i = 0; i < pts.length; i += 2) {
+          const px = pts[i];
+          const py = pts[i + 1];
+          const dx = px - centerX;
+          const dy = py - centerY;
+          const len = Math.hypot(dx, dy) || 1;
+          const ix = px - (dx / len) * inset;
+          const iy = py - (dy / len) * inset;
+          if (i === 0) ctx.moveTo(ix, iy);
+          else ctx.lineTo(ix, iy);
+        }
+        ctx.closePath();
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.restore();
     }
   }
   // (bridges and hills are drawn later, after walls)
@@ -8162,26 +8327,11 @@ function draw() {
 
   // walls (beveled look: face + highlight)
   for (const w of walls) {
-    // subtle shadow bottom-right for depth (slightly inset so rim stroke stays crisp)
-    ctx.fillStyle = 'rgba(0,0,0,0.24)';
-    ctx.fillRect(w.x + 2, w.y + 2, Math.max(0, w.w - 3), Math.max(0, w.h - 3));
-    // face
-    ctx.fillStyle = COLORS.wallFill;
-    ctx.fillRect(w.x, w.y, w.w, w.h);
-    // rim stroke with bevel joins for crisp chamfers (source-over)
-    ctx.lineWidth = 2;
-    ctx.lineJoin = 'bevel';
-    ctx.miterLimit = 2.5;
-    ctx.strokeStyle = COLORS.wallStroke;
-    ctx.strokeRect(w.x + 1, w.y + 1, w.w - 2, w.h - 2);
-    // top/left highlight
-    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-    ctx.beginPath();
-    ctx.moveTo(w.x + 1, w.y + 1);
-    ctx.lineTo(w.x + w.w - 1, w.y + 1);
-    ctx.moveTo(w.x + 1, w.y + 1);
-    ctx.lineTo(w.x + 1, w.y + w.h - 1);
-    ctx.stroke();
+    drawWallRectBase(ctx, w);
+  }
+  for (const gate of oneWayWalls) {
+    drawWallRectBase(ctx, gate);
+    drawOneWayArrow(ctx, gate);
   }
 
   // polygon walls (render beveled stroke + shadow)
@@ -8320,6 +8470,7 @@ function draw() {
       ac.globalCompositeOperation = 'destination-out';
       ac.fillStyle = '#000';
       for (const w of walls) { ac.fillRect(w.x, w.y, w.w, w.h); }
+      for (const gate of oneWayWalls) { ac.fillRect(gate.x, gate.y, gate.w, gate.h); }
       // Poly walls
       for (const poly of polyWalls) {
         const pts = poly.points; if (!pts || pts.length < 6) continue;
@@ -10409,6 +10560,7 @@ async function loadLevel(path: string) {
     levelLeaderboardRequestToken = null;
   }
   walls = lvl.walls ?? [];
+  oneWayWalls = lvl.oneWayWalls ?? [];
   sands = lvl.sand ?? [];
   sandsPoly = (lvl as any).sandsPoly || (lvl.sandPoly ?? []);
   waters = lvl.water ?? [];
@@ -10459,6 +10611,14 @@ async function loadLevel(path: string) {
     for (const w of walls) {
       const hit = circleRectResolve(ball.x, ball.y, ball.r, w);
       if (hit) {
+        ball.x += hit.nx * (hit.depth + 0.5);
+        ball.y += hit.ny * (hit.depth + 0.5);
+        fixed = true;
+      }
+    }
+    for (const gate of oneWayWalls) {
+      const hit = circleRectResolve(ball.x, ball.y, ball.r, gate);
+      if (hit && oneWayBlocksCollision(hit, gate)) {
         ball.x += hit.nx * (hit.depth + 0.5);
         ball.y += hit.ny * (hit.depth + 0.5);
         fixed = true;

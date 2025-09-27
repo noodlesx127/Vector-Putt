@@ -7,6 +7,10 @@ This file tracks current focus, next steps, decisions, and planned work. Complet
 - Play Area Visual Refresh (render-only plan)
 - Leaderboards (levels and courses) planning and wiring
 
+## Progress (2025-09-27)
+- **Play Area Visual Refresh**: added inset inner shadows for large sand polygons in both runtime rendering and editor preview so polygonal traps match the recessed styling of rectangle sand traps. (`src/main.ts`, `src/editor/levelEditor.ts`)
+- **Level Editor — One-way Walls Tooling**: added a dedicated `oneWayWall` tool with runtime-parity rendering, drag placement, selection, undo/redo, clipboard support, and directional arrows. Context menu and keyboard shortcuts (`R` / `Shift+R`) now cycle gate orientation, and the Tool Info Bar surfaces the active orientation hint. (`src/editor/levelEditor.ts`)
+
 ## Progress (2025-09-26)
 - **Level Editor**: implemented context-sensitive right-click menu with clipboard operations (Copy, Cut, Paste, Delete, Duplicate), tool-specific actions (Add/Remove Vertex for polygons, Adjust Post Radius, Adjust Hill Direction), and quick toggles for editor options (Grid On/Off, Alignment Guides, Guide Details, Rulers, Slope Arrows, Tool Info Bar, Preview Fill, Dashed Next Segment). Menu items appear conditionally based on selection, tool, and cursor position; integrates with existing editor state, hit-testing, and undo system. (`src/editor/levelEditor.ts`)
 - **Diagonal Geometry Tools**: streamlined 45° snapping to use Shift modifier on existing polygon tools (wallsPoly/waterPoly/sandPoly) instead of dedicated tools, removing redundancy and simplifying the Objects/Tools menus. (`src/editor/levelEditor.ts`, `TODO.md`)
@@ -314,16 +318,17 @@ A tracing aid for the Level Editor that lets you place a level screenshot over t
   - [x] Exclude overlay from all saves/exports/thumbnails and gameplay; keep as editor‑session state only
   - [ ] Tests: transform math and hit‑testing; menu enable/disable; performance with large images
 
-Progress (2025-09-20):
+## Progress (2025-09-20)
 - Implemented Phase 1 of Overlay Screenshot in the editor preview (`src/editor/levelEditor.ts`): session state (image + transform), Tools → Overlay Screenshot… file picker, View options (Show/Hide, Opacity +/-, Z‑Order Above/Below, Lock, Snap to Grid, Fit to Fairway, Reset Transform, Transform Mode → Move), render pass below or above geometry, and keyboard controls for opacity/nudge/scale/rotate.
 
-Phase 2 (2025-09-20):
+### Phase 2 (2025-09-20)
 - Added View actions: Fit to Canvas, Preserve Aspect, Flip Horizontal/Vertical, Through‑click (when Above), Calibrate Scale…, and Transform Modes → Resize/Rotate.
 - Implemented overlay interactions:
   - Drag‑move inside overlay (Move mode), grid‑snap aware.
   - Resize from all corners and edges with axis constraints and optional Preserve Aspect.
   - Rotate from top‑mid rotation handle with Shift=15° snap.
-- ## Level Editor — Bottom Info Toolbar (Plan, 2025-09-21)
+-
+## Level Editor — Bottom Info Toolbar (Plan, 2025-09-21)
 
 Goal: Replace or relocate floating, in-canvas info bubbles (e.g., during `wallsPoly` drafting) with a persistent bottom information toolbar so hints, measurements, and tool details are visible without obstructing drawing.
 
@@ -382,7 +387,6 @@ Refactor (2025-09-21):
 - **Physics & Interactions (Phase 2 features)**
   - [x] Hills: bidirectional push — hills now apply constant downhill acceleration so going uphill resists and slows the ball; going downhill accelerates as expected. (`src/main.ts`)
   - [x] Hills visual arrows: render as an overlay above geometry and add dark outline + white pass for strong contrast, matching editor display. (`src/main.ts`)
-{{ ... }}
   - [ ] Boosters/Accelerators (impulse)
   - [ ] Tunnels/Teleporters (enter/exit mapping)
 

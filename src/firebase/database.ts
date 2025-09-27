@@ -74,6 +74,7 @@ export interface FirebaseGameSettings {
   turnPenaltyPerTurn?: number;   // default 0.08
   hillBump?: number;             // default 0.2
   bankWeight?: number;           // default 0.12
+  ballRadius?: number;           // default 8px radius
   lastModified: number;    // Unix timestamp
 }
 

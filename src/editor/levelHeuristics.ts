@@ -783,9 +783,9 @@ export function suggestParK(
     return { candidates: [], bestIndex: 0, par: single.suggestedPar };
   }
 
-  const MAX_POOL = Math.max(K * 6, K + 2);
+  const MAX_POOL = Math.max(K * 6, K + 4);
   const MAX_DEPTH = 2;
-  const SIMILARITY_THRESHOLD = 0.72;
+  const SIMILARITY_THRESHOLD = 0.6;
   const SIGNATURES = new Set<string>();
   const candidates: CandidatePath[] = [];
 
@@ -820,13 +820,59 @@ export function suggestParK(
   const queue: Array<{ path: Array<{ c: number; r: number }>; depth: number }> = [];
   if (baseCandidate) queue.push({ path: base.path.slice(), depth: 0 });
 
+  const collectStartNeighbors = (): Array<{ c: number; r: number }> => {
+    const dirs = [
+      { dc: 1, dr: 0 }, { dc: -1, dr: 0 }, { dc: 0, dr: 1 }, { dc: 0, dr: -1 },
+      { dc: 1, dr: 1 }, { dc: 1, dr: -1 }, { dc: -1, dr: 1 }, { dc: -1, dr: -1 }
+    ];
+    const neighbors: Array<{ c: number; r: number }> = [];
+    for (const d of dirs) {
+      const nc = start.c + d.dc;
+      const nr = start.r + d.dr;
+      if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue;
+      if (grid[nr][nc].blocked) continue;
+      if (d.dc !== 0 && d.dr !== 0) {
+        const corner1C = start.c + d.dc;
+        const corner1R = start.r;
+        const corner2C = start.c;
+        const corner2R = start.r + d.dr;
+        if (grid[corner1R]?.[corner1C]?.blocked || grid[corner2R]?.[corner2C]?.blocked) continue;
+      }
+      neighbors.push({ c: nc, r: nr });
+    }
+    return neighbors;
+  };
+
+  const seedPathsFromStart = () => {
+    const neighbors = collectStartNeighbors();
+    for (const nb of neighbors) {
+      const forced = aStar(grid, cols, rows, nb, goal);
+      if (!forced.found) continue;
+      const seededPath = [{ c: start.c, r: start.r }, ...forced.path];
+      considerCandidate(seededPath);
+      if (candidates.length >= MAX_POOL) break;
+    }
+  };
+
+  seedPathsFromStart();
+
   let queueIndex = 0;
   while (queueIndex < queue.length && candidates.length < MAX_POOL) {
     const { path, depth } = queue[queueIndex++];
     if (path.length < 4) continue;
-    const sampleStep = Math.max(2, Math.round(path.length / Math.max(3, K * 2)));
+    const sampleStep = Math.max(2, Math.round(path.length / Math.max(4, K * 3)));
 
-    for (let i = sampleStep; i < path.length - sampleStep && candidates.length < MAX_POOL; i += sampleStep) {
+    const gatherSampleIndices = (): number[] => {
+      const indices: number[] = [];
+      const firstIdx = Math.max(2, Math.floor(sampleStep / 2));
+      for (let i = firstIdx; i < path.length - 1; i += sampleStep) {
+        indices.push(i);
+      }
+      return indices;
+    };
+    const sampleIndices = gatherSampleIndices();
+
+    for (const i of sampleIndices) {
       const banned = path[i];
       const alt = aStarWithBanned(grid, cols, rows, start, goal, new Set([banned.c + ',' + banned.r]));
       if (!alt.found) continue;
@@ -839,7 +885,7 @@ export function suggestParK(
     if (candidates.length >= MAX_POOL) break;
 
     if (path.length >= 6) {
-      for (let i = sampleStep; i < path.length - sampleStep && candidates.length < MAX_POOL; i += sampleStep) {
+      for (const i of sampleIndices) {
         const bannedSet = new Set<string>();
         const first = path[i];
         const second = path[Math.min(path.length - 2, i + Math.max(1, Math.floor(sampleStep / 2)) )];

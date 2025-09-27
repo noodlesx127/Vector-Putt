@@ -1936,30 +1936,35 @@ let leaderboardsAdminBoardsToken: symbol | null = null;
 let leaderboardsAdminSettingsToken: symbol | null = null;
 
 // Admin Game Settings state
-type GameSettingsField = 'slope' | 'friction' | 'sand' | 'baseline' | 'turnPenalty' | 'hillBump' | 'bankWeight';
+type GameSettingsField = 'slope' | 'friction' | 'sand' | 'baseline' | 'turnPenalty' | 'hillBump' | 'bankWeight' | 'ballRadius';
 type GameSettingsHotspot = { kind: 'minus' | 'plus' | 'slider' | 'save' | 'cancel' | 'back' | 'defaults' | 'previous'; field?: GameSettingsField; x: number; y: number; w: number; h: number };
 let gameSettingsHotspots: GameSettingsHotspot[] = [];
-let gameSettingsState: { slopeAccel: number; frictionK: number; sandMultiplier: number; baselineShotPx: number; turnPenaltyPerTurn: number; hillBump: number; bankWeight: number } = {
+let gameSettingsState: { slopeAccel: number; frictionK: number; sandMultiplier: number; baselineShotPx: number; turnPenaltyPerTurn: number; hillBump: number; bankWeight: number; ballRadius: number } = {
   slopeAccel: 720,
   frictionK: 1.2,
   sandMultiplier: 6.0,
   baselineShotPx: 320,
   turnPenaltyPerTurn: 0.08,
   hillBump: 0.2,
-  bankWeight: 0.12
+  bankWeight: 0.12,
+  ballRadius: 8
 };
 
 // Defaults and previous snapshot
-const GAME_SETTINGS_DEFAULTS: { slopeAccel: number; frictionK: number; sandMultiplier: number; baselineShotPx: number; turnPenaltyPerTurn: number; hillBump: number; bankWeight: number } = {
+const GAME_SETTINGS_DEFAULTS: { slopeAccel: number; frictionK: number; sandMultiplier: number; baselineShotPx: number; turnPenaltyPerTurn: number; hillBump: number; bankWeight: number; ballRadius: number } = {
   slopeAccel: 720,
   frictionK: 1.2,
   sandMultiplier: 6.0,
   baselineShotPx: 320,
   turnPenaltyPerTurn: 0.08,
   hillBump: 0.2,
-  bankWeight: 0.12
+  bankWeight: 0.12,
+  ballRadius: 8
 };
-let gameSettingsPrev: { slopeAccel: number; frictionK: number; sandMultiplier: number; baselineShotPx: number; turnPenaltyPerTurn: number; hillBump: number; bankWeight: number } | null = null;
+let gameSettingsPrev: { slopeAccel: number; frictionK: number; sandMultiplier: number; baselineShotPx: number; turnPenaltyPerTurn: number; hillBump: number; bankWeight: number; ballRadius: number } | null = null;
+const BALL_RADIUS_MIN = 6;
+const BALL_RADIUS_MAX = 16;
+let ballRadiusSetting = GAME_SETTINGS_DEFAULTS.ballRadius;
 
 // Level Management state and hotspots
 type LevelManagementHotspot = {
@@ -2360,6 +2365,15 @@ let hillJamPosFrames = 0;
 let jamLastX = 0, jamLastY = 0;
 const levelCache = new Map<string, Level>();
 
+const ball = {
+  x: WIDTH * 0.3,
+  y: HEIGHT * 0.6,
+  r: GAME_SETTINGS_DEFAULTS.ballRadius,
+  vx: 0,
+  vy: 0,
+  moving: false,
+};
+
 // User profile (minimal local profile)
 type UserRole = 'admin' | 'user';
 type UserProfile = { name: string; role: UserRole; id?: string };
@@ -2471,10 +2485,21 @@ let firebaseReady = false;
         gameSettingsState.turnPenaltyPerTurn = typeof gs.turnPenaltyPerTurn === 'number' ? gs.turnPenaltyPerTurn : gameSettingsState.turnPenaltyPerTurn;
         gameSettingsState.hillBump = typeof gs.hillBump === 'number' ? gs.hillBump : gameSettingsState.hillBump;
         gameSettingsState.bankWeight = typeof gs.bankWeight === 'number' ? gs.bankWeight : gameSettingsState.bankWeight;
+        const radius = typeof gs.ballRadius === 'number' ? Math.max(BALL_RADIUS_MIN, Math.min(BALL_RADIUS_MAX, gs.ballRadius)) : gameSettingsState.ballRadius;
+        gameSettingsState.ballRadius = radius;
+        ballRadiusSetting = radius;
+        ball.r = radius;
+      } else {
+        ballRadiusSetting = Math.max(BALL_RADIUS_MIN, Math.min(BALL_RADIUS_MAX, gameSettingsState.ballRadius));
+        gameSettingsState.ballRadius = ballRadiusSetting;
+        ball.r = ballRadiusSetting;
       }
     } catch (e) {
       console.warn('Failed to load global game settings; using defaults', e);
     }
+    ballRadiusSetting = Math.max(BALL_RADIUS_MIN, Math.min(BALL_RADIUS_MAX, ballRadiusSetting));
+    gameSettingsState.ballRadius = ballRadiusSetting;
+    ball.r = ballRadiusSetting;
   } catch (e) {
     console.error('Failed to initialize Firebase services', e);
   }
@@ -2538,16 +2563,6 @@ type Level = {
     modified?: string;
   };
 };
-
-const ball = {
-  x: WIDTH * 0.3,
-  y: HEIGHT * 0.6,
-  r: 8,
-  vx: 0,
-  vy: 0,
-  moving: false,
-};
-
 const hole = { x: WIDTH * 0.75, y: HEIGHT * 0.4, r: 12 };
 let walls: Wall[] = [];
 let sands: Rect[] = [];
@@ -4697,16 +4712,23 @@ canvas.addEventListener('mousedown', (e) => {
                   gameSettingsState.turnPenaltyPerTurn = typeof gs.turnPenaltyPerTurn === 'number' ? gs.turnPenaltyPerTurn : gameSettingsState.turnPenaltyPerTurn;
                   gameSettingsState.hillBump = typeof gs.hillBump === 'number' ? gs.hillBump : gameSettingsState.hillBump;
                   gameSettingsState.bankWeight = typeof gs.bankWeight === 'number' ? gs.bankWeight : gameSettingsState.bankWeight;
+                  const radius = typeof gs.ballRadius === 'number' ? Math.max(BALL_RADIUS_MIN, Math.min(BALL_RADIUS_MAX, gs.ballRadius)) : gameSettingsState.ballRadius;
+                  gameSettingsState.ballRadius = radius;
+                  ballRadiusSetting = radius;
                 } else {
                   gameSettingsState.slopeAccel = physicsSlopeAccel;
                   gameSettingsState.frictionK = physicsFrictionK;
                   gameSettingsState.sandMultiplier = physicsSandMultiplier;
+                  ballRadiusSetting = Math.max(BALL_RADIUS_MIN, Math.min(BALL_RADIUS_MAX, gameSettingsState.ballRadius));
+                  gameSettingsState.ballRadius = ballRadiusSetting;
                   // keep defaults for heuristic coefficients
                 }
               } else {
                 gameSettingsState.slopeAccel = physicsSlopeAccel;
                 gameSettingsState.frictionK = physicsFrictionK;
                 gameSettingsState.sandMultiplier = physicsSandMultiplier;
+                ballRadiusSetting = Math.max(BALL_RADIUS_MIN, Math.min(BALL_RADIUS_MAX, gameSettingsState.ballRadius));
+                gameSettingsState.ballRadius = ballRadiusSetting;
               }
               // snapshot previous for quick revert
               gameSettingsPrev = {
@@ -4717,7 +4739,10 @@ canvas.addEventListener('mousedown', (e) => {
                 turnPenaltyPerTurn: gameSettingsState.turnPenaltyPerTurn,
                 hillBump: gameSettingsState.hillBump,
                 bankWeight: gameSettingsState.bankWeight,
+                ballRadius: gameSettingsState.ballRadius
               };
+              ballRadiusSetting = Math.max(BALL_RADIUS_MIN, Math.min(BALL_RADIUS_MAX, gameSettingsState.ballRadius));
+              ball.r = ballRadiusSetting;
               gameState = 'gameSettings';
             } catch (e) {
               console.error('Failed to load game settings', e);
@@ -4752,6 +4777,11 @@ canvas.addEventListener('mousedown', (e) => {
           if (field === 'turnPenalty') gameSettingsState.turnPenaltyPerTurn = +(0.00 + t * (0.30 - 0.00)).toFixed(3);
           if (field === 'hillBump') gameSettingsState.hillBump = +(0.00 + t * (1.00 - 0.00)).toFixed(2);
           if (field === 'bankWeight') gameSettingsState.bankWeight = +(0.00 + t * (0.50 - 0.00)).toFixed(2);
+          if (field === 'ballRadius') {
+            gameSettingsState.ballRadius = Math.round(BALL_RADIUS_MIN + t * (BALL_RADIUS_MAX - BALL_RADIUS_MIN));
+            ballRadiusSetting = gameSettingsState.ballRadius;
+            ball.r = ballRadiusSetting;
+          }
         };
         if (hs.kind === 'minus' && hs.field) {
           if (hs.field === 'slope') gameSettingsState.slopeAccel = clamp(gameSettingsState.slopeAccel - 20, 200, 2000);
@@ -4761,6 +4791,11 @@ canvas.addEventListener('mousedown', (e) => {
           if (hs.field === 'turnPenalty') gameSettingsState.turnPenaltyPerTurn = clamp(+((gameSettingsState.turnPenaltyPerTurn - 0.01).toFixed(3)), 0.00, 0.30);
           if (hs.field === 'hillBump') gameSettingsState.hillBump = clamp(+((gameSettingsState.hillBump - 0.02).toFixed(2)), 0.00, 1.00);
           if (hs.field === 'bankWeight') gameSettingsState.bankWeight = clamp(+((gameSettingsState.bankWeight - 0.01).toFixed(2)), 0.00, 0.50);
+          if (hs.field === 'ballRadius') {
+            gameSettingsState.ballRadius = clamp(gameSettingsState.ballRadius - 1, BALL_RADIUS_MIN, BALL_RADIUS_MAX);
+            ballRadiusSetting = gameSettingsState.ballRadius;
+            ball.r = ballRadiusSetting;
+          }
           return;
         }
         if (hs.kind === 'plus' && hs.field) {
@@ -4771,6 +4806,11 @@ canvas.addEventListener('mousedown', (e) => {
           if (hs.field === 'turnPenalty') gameSettingsState.turnPenaltyPerTurn = clamp(+((gameSettingsState.turnPenaltyPerTurn + 0.01).toFixed(3)), 0.00, 0.30);
           if (hs.field === 'hillBump') gameSettingsState.hillBump = clamp(+((gameSettingsState.hillBump + 0.02).toFixed(2)), 0.00, 1.00);
           if (hs.field === 'bankWeight') gameSettingsState.bankWeight = clamp(+((gameSettingsState.bankWeight + 0.01).toFixed(2)), 0.00, 0.50);
+          if (hs.field === 'ballRadius') {
+            gameSettingsState.ballRadius = clamp(gameSettingsState.ballRadius + 1, BALL_RADIUS_MIN, BALL_RADIUS_MAX);
+            ballRadiusSetting = gameSettingsState.ballRadius;
+            ball.r = ballRadiusSetting;
+          }
           return;
         }
         if (hs.kind === 'slider' && hs.field) {
@@ -4783,6 +4823,8 @@ canvas.addEventListener('mousedown', (e) => {
             if (!ok) return;
             // restore defaults locally (requires Save to persist)
             gameSettingsState = { ...GAME_SETTINGS_DEFAULTS };
+            ballRadiusSetting = gameSettingsState.ballRadius;
+            ball.r = ballRadiusSetting;
             showUiToast('Defaults applied (Save to persist)');
           })();
           return;
@@ -4793,6 +4835,8 @@ canvas.addEventListener('mousedown', (e) => {
             const ok = await showUiConfirm('Restore the settings snapshot captured when you opened this screen? You can Save to persist or Cancel to discard.', 'Restore Previous');
             if (!ok) return;
             gameSettingsState = { ...gameSettingsPrev } as any;
+            ballRadiusSetting = gameSettingsState.ballRadius;
+            ball.r = ballRadiusSetting;
             showUiToast('Previous settings applied (Save to persist)');
           })();
           return;
@@ -4809,12 +4853,15 @@ canvas.addEventListener('mousedown', (e) => {
                 baselineShotPx: gameSettingsState.baselineShotPx,
                 turnPenaltyPerTurn: gameSettingsState.turnPenaltyPerTurn,
                 hillBump: gameSettingsState.hillBump,
-                bankWeight: gameSettingsState.bankWeight
+                bankWeight: gameSettingsState.bankWeight,
+                ballRadius: gameSettingsState.ballRadius
               });
               // Apply runtime
               physicsSlopeAccel = gameSettingsState.slopeAccel;
               physicsFrictionK = gameSettingsState.frictionK;
               physicsSandMultiplier = gameSettingsState.sandMultiplier;
+              ballRadiusSetting = Math.max(BALL_RADIUS_MIN, Math.min(BALL_RADIUS_MAX, gameSettingsState.ballRadius));
+              ball.r = ballRadiusSetting;
               showUiToast('Game settings saved');
             } catch (e) {
               console.error('Failed to save game settings', e);
@@ -6752,7 +6799,8 @@ function draw() {
         : (field === 'sand' ? gameSettingsState.sandMultiplier
         : (field === 'baseline' ? gameSettingsState.baselineShotPx
         : (field === 'turnPenalty' ? gameSettingsState.turnPenaltyPerTurn
-        : (field === 'hillBump' ? gameSettingsState.hillBump : gameSettingsState.bankWeight)))));
+        : (field === 'hillBump' ? gameSettingsState.hillBump
+        : (field === 'ballRadius' ? gameSettingsState.ballRadius : gameSettingsState.bankWeight))))));
       ctx.fillText(`${label}: ${valueFmt(val)}`, labelX, y);
       
       const rowY = y + 24;
@@ -6778,7 +6826,8 @@ function draw() {
         : (field === 'sand' ? gameSettingsState.sandMultiplier
         : (field === 'baseline' ? gameSettingsState.baselineShotPx
         : (field === 'turnPenalty' ? gameSettingsState.turnPenaltyPerTurn
-        : (field === 'hillBump' ? gameSettingsState.hillBump : gameSettingsState.bankWeight)))));
+        : (field === 'hillBump' ? gameSettingsState.hillBump
+        : (field === 'ballRadius' ? gameSettingsState.ballRadius : gameSettingsState.bankWeight))))));
       const t = Math.max(0, Math.min(1, (v - min) / (max - min)));
       const thumbX = sliderX + t * sliderW;
       ctx.fillStyle = 'rgba(100,150,200,0.9)';
@@ -6799,6 +6848,7 @@ function draw() {
     drawSetting('Hill Bump', 'hillBump', baseY + 140, 0.00, 1.00, 0.02, (v)=>v.toFixed(2));
     drawSetting('Bank Weight', 'bankWeight', baseY + 210, 0.00, 0.50, 0.01, (v)=>v.toFixed(2));
     drawSetting('Sand Multiplier (×K)', 'sand', baseY + 280, 1.0, 10.0, 0.2, v => v.toFixed(2));
+    drawSetting('Ball Radius (px)', 'ballRadius', baseY + 350, BALL_RADIUS_MIN, BALL_RADIUS_MAX, 1, v => `${Math.round(v)}`);
     
     // Buttons
     const btnW = 120, btnH = 32;
@@ -8070,26 +8120,28 @@ function draw() {
   ctx.clip();
   for (const d of decorations) {
     if (d.kind === 'flowers') {
-      const step = 16;
-      for (let y = d.y; y < d.y + d.h; y += step) {
-        for (let x = d.x; x < d.x + d.w; x += step) {
-          // simple flower: 4 petals + center
-          ctx.save();
-          ctx.translate(x + 8, y + 8);
-          ctx.fillStyle = '#ffffff';
-          for (let i = 0; i < 4; i++) {
-            const ang = (i * Math.PI) / 2;
-            ctx.beginPath();
-            ctx.arc(Math.cos(ang) * 5, Math.sin(ang) * 5, 3, 0, Math.PI * 2);
-            ctx.fill();
-          }
-          ctx.fillStyle = '#d11e2a';
-          ctx.beginPath();
-          ctx.arc(0, 0, 2, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-        }
+      const cx = d.x + d.w / 2;
+      const cy = d.y + d.h / 2;
+      const size = Math.max(12, Math.min(d.w, d.h));
+      const petalRadius = size * 0.35;
+      const centerRadius = size * 0.18;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.fillStyle = '#ffffff';
+      for (let i = 0; i < 4; i++) {
+        const ang = (i * Math.PI) / 2;
+        const px = Math.cos(ang) * petalRadius;
+        const py = Math.sin(ang) * petalRadius;
+        ctx.beginPath();
+        ctx.ellipse(px, py, petalRadius * 0.85, petalRadius * 0.55, ang, 0, Math.PI * 2);
+        ctx.fill();
       }
+      ctx.fillStyle = '#d11e2a';
+      ctx.beginPath();
+      ctx.arc(0, 0, centerRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
   }
   // Remove clip so subsequent layers (walls, HUD) are not clipped out

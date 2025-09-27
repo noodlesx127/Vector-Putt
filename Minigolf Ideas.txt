@@ -12,15 +12,11 @@ Suggest Par: ** This still needs work **
 
 Decorations:
 
-- Only Flowers work at the moment. Also They are in groups of 4 when it should just be one.
-
-
+- Add more Decorations to the game. 
 
 
 Ideas
 ------
-
-- Changable Ball size setting. accable from the admin menu > Game Settings
 
 - Align with closest object option in the right click menu. This option is for aligning currently selcted object with the closest object. 
 
@@ -59,5 +55,8 @@ Level Editor:
 
 - Level Editor: Turn a Wall, Water, Sand Object into a Polygon. Meaning, If a wall was created using the just the wall tool, you can turn it into a Polygon wall. That way a user can add Vertexs and change/edit the wall.
 
-Level Editor: Right Click menu. Just like windows, macOS, ect. This right click menu had all the options and features that a user would normally have to use a keyboard shortcuts for. Examples: Copy, Cut, Paste, Delete. Tool Features vertex add/remove, Post resize, Hill direction, ect. Tool Features should only show when that tool is in use.
+- Level Editor: Right Click menu. Just like windows, macOS, ect. This right click menu had all the options and features that a user would normally have to use a keyboard shortcuts for. Examples: Copy, Cut, Paste, Delete. Tool Features vertex add/remove, Post resize, Hill direction, ect. Tool Features should only show when that tool is in use.
 
+- Only Flowers work at the moment. Also They are in groups of 4 when it should just be one.
+
+- Changable Ball size setting. accable from the admin menu > Game Settings

@@ -4724,7 +4724,10 @@ class LevelEditorImpl implements LevelEditor {
           const idx = this.selectedObjects.indexOf(hit);
           if (idx >= 0) this.selectedObjects.splice(idx, 1); else this.selectedObjects.push(hit);
         } else {
-          this.selectedObjects = [hit];
+          const alreadySelected = this.selectedObjects.some(o => o === hit);
+          if (!alreadySelected) {
+            this.selectedObjects = [hit];
+          }
         }
         // Begin drag-move
         this.pushUndoSnapshot('Move selection');

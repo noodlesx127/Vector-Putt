@@ -4469,6 +4469,7 @@ canvas.addEventListener('mousedown', (e) => {
               bridges,
               posts,
               polyWalls,
+              oneWayWalls,
               userProfile
             }),
             setGlobalState: (state: any) => {
@@ -4483,6 +4484,7 @@ canvas.addEventListener('mousedown', (e) => {
               if (state.bridges) bridges = state.bridges;
               if (state.posts) posts = state.posts;
               if (state.polyWalls) polyWalls = state.polyWalls;
+              if (state.oneWayWalls) oneWayWalls = state.oneWayWalls;
               if (state.ball) { ball.x = state.ball.x; ball.y = state.ball.y; ball.vx = state.ball.vx; ball.vy = state.ball.vy; ball.moving = state.ball.moving; }
               if (state.hole) { hole.x = state.hole.x; hole.y = state.hole.y; if (state.hole.r !== undefined) (hole as any).r = state.hole.r; }
             },
@@ -4698,6 +4700,7 @@ canvas.addEventListener('mousedown', (e) => {
         bridges,
         posts,
         polyWalls,
+        oneWayWalls,
         userProfile
       }),
       setGlobalState: (state: any) => {
@@ -4712,6 +4715,7 @@ canvas.addEventListener('mousedown', (e) => {
         if (state.bridges) bridges = state.bridges;
         if (state.posts) posts = state.posts;
         if (state.polyWalls) polyWalls = state.polyWalls;
+        if (state.oneWayWalls) oneWayWalls = state.oneWayWalls;
         if (state.ball) { ball.x = state.ball.x; ball.y = state.ball.y; ball.vx = state.ball.vx; ball.vy = state.ball.vy; ball.moving = state.ball.moving; }
         if (state.hole) { hole.x = state.hole.x; hole.y = state.hole.y; if (state.hole.r !== undefined) (hole as any).r = state.hole.r; }
       },

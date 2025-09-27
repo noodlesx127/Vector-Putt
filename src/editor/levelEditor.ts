@@ -5400,6 +5400,7 @@ class LevelEditorImpl implements LevelEditor {
       const sh = Math.max(1, Math.abs(this.editorDragCurrent.y - this.editorDragStart.y));
       this.pushUndoSnapshot(`Place ${this.editorDragTool}`);
       const gs = env.getGlobalState();
+      let pendingOneWayPrompt: { index: number; gate: OneWayWall } | null = null;
       if (this.editorDragTool === 'wall') {
         const o: any = { x: sx, y: sy, w: sw, h: sh, rot: 0 };
         (gs.walls as any[]).push(o);
@@ -5408,6 +5409,7 @@ class LevelEditorImpl implements LevelEditor {
         const gate: any = { x: sx, y: sy, w: sw, h: sh, rot: 0, orientation: this.currentOneWayOrientation };
         if (!Array.isArray(gs.oneWayWalls)) gs.oneWayWalls = [];
         (gs.oneWayWalls as any[]).push(gate);
+        pendingOneWayPrompt = { index: (gs.oneWayWalls as any[]).length - 1, gate };
         if (this.editorLevelData) {
           if (!Array.isArray(this.editorLevelData.oneWayWalls)) this.editorLevelData.oneWayWalls = [];
           (this.editorLevelData.oneWayWalls as any[]).push(gate);
@@ -5441,6 +5443,9 @@ class LevelEditorImpl implements LevelEditor {
       // Clear transient guide visuals after placement
       this.liveGuides = [];
       this.liveGuideBubbles = [];
+      if (pendingOneWayPrompt) {
+        this.promptOneWayDirection(env, pendingOneWayPrompt.index, pendingOneWayPrompt.gate as OneWayWall, 'Select Gate Orientation');
+      }
       return;
     }
 
@@ -7346,8 +7351,29 @@ class LevelEditorImpl implements LevelEditor {
     const gate = hit.object.object as OneWayWall;
     const idx = hit.object.index ?? -1;
     if (idx < 0) return;
-    const next = cycleOneWayOrientation(gate.orientation ?? this.currentOneWayOrientation, this.oneWayOrientationOrder, 1);
-    this.applyOneWayOrientation(env, idx, next);
+    this.promptOneWayDirection(env, idx, gate, 'Adjust Gate Direction…');
+  }
+
+  private promptOneWayDirection(env: EditorEnv, index: number, gate: OneWayWall, title: string): void {
+    const current = gate?.orientation ?? this.currentOneWayOrientation;
+    if (typeof env.showList === 'function') {
+      const items = this.oneWayOrientationOrder.map((dir) => ({
+        label: `${dir} — ${describeOneWayOrientation(dir)}`,
+        value: dir
+      }));
+      const startIndex = Math.max(0, items.findIndex((item) => item.value === current));
+      Promise.resolve(env.showList(title, items, startIndex >= 0 ? startIndex : 0))
+        .then((choice) => {
+          if (!choice) return;
+          const selected = ((choice as any).value ?? choice) as OneWayOrientation | undefined;
+          if (!selected || !this.oneWayOrientationOrder.includes(selected)) return;
+          this.applyOneWayOrientation(env, index, selected);
+        })
+        .catch(() => {});
+    } else {
+      const next = cycleOneWayOrientation(current, this.oneWayOrientationOrder, 1);
+      this.applyOneWayOrientation(env, index, next);
+    }
   }
 
   private applyOneWayOrientation(env: EditorEnv, index: number, orientation: OneWayOrientation): void {

@@ -372,6 +372,19 @@ class LevelEditorImpl implements LevelEditor {
   // Cup lint cache (warnings for current configuration)
   private cupLintWarnings: string[] = [];
   private cupLintLastMs: number = 0;
+
+  private isSameSelectable(a: SelectableObject | null | undefined, b: SelectableObject | null | undefined): boolean {
+    if (!a || !b) return false;
+    if (a.type !== b.type) return false;
+    const idxA = (a as any).index;
+    const idxB = (b as any).index;
+    const hasIdxA = typeof idxA === 'number';
+    const hasIdxB = typeof idxB === 'number';
+    if (hasIdxA || hasIdxB) {
+      return hasIdxA && hasIdxB && idxA === idxB;
+    }
+    return (a as any).object === (b as any).object;
+  }
   
   // Polygon vertex dragging state
   private isVertexDragging: boolean = false;
@@ -4686,6 +4699,23 @@ class LevelEditorImpl implements LevelEditor {
       }
     }
 
+    // Multi-selection: allow dragging from the group bounds even if no specific object is under cursor
+    if (this.selectedTool === 'select' && this.selectedObjects.length > 1 && !e.shiftKey && !e.altKey) {
+      const selBounds = this.selectionBoundsCache || this.getSelectionBounds();
+      if (selBounds) {
+        const withinBounds = rx >= selBounds.x && rx <= selBounds.x + selBounds.w && ry >= selBounds.y && ry <= selBounds.y + selBounds.h;
+        if (withinBounds) {
+          this.isSelectionDragging = false;
+          this.selectionBoxStart = null;
+          this.pushUndoSnapshot('Move selection');
+          this.isDragMoving = true;
+          this.dragMoveStart = { x: rx, y: ry };
+          this.dragMoveOffset = { x: 0, y: 0 };
+          return;
+        }
+      }
+    }
+
     // Hit-test objects for selection and drag-move
     const hit = this.findObjectAtPoint(rx, ry, env);
     const isLeftClick = e.button === 0;
@@ -4721,15 +4751,17 @@ class LevelEditorImpl implements LevelEditor {
       if (hit) {
         if (e.shiftKey) {
           // Toggle selection
-          const idx = this.selectedObjects.indexOf(hit);
+          const idx = this.selectedObjects.findIndex(o => this.isSameSelectable(o, hit));
           if (idx >= 0) this.selectedObjects.splice(idx, 1); else this.selectedObjects.push(hit);
         } else {
-          const alreadySelected = this.selectedObjects.some(o => o === hit);
+          const alreadySelected = this.selectedObjects.some(o => this.isSameSelectable(o, hit));
           if (!alreadySelected) {
             this.selectedObjects = [hit];
           }
         }
-        // Begin drag-move
+        // Begin drag-move (cancel marquee if it was pending)
+        this.isSelectionDragging = false;
+        this.selectionBoxStart = null;
         this.pushUndoSnapshot('Move selection');
         this.isDragMoving = true;
         this.dragMoveStart = { x: rx, y: ry };

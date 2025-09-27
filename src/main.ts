@@ -10469,7 +10469,22 @@ function snapDecorationsToTable(): void {
     const cy = d.y + d.h / 2;
     const insideX = cx >= fairX && cx <= fairX + fairW;
     const insideY = cy >= fairY && cy <= fairY + fairH;
-    const overlaps = insideX && insideY;
+    const centerInside = insideX && insideY;
+
+    const overlapsFairway = !(d.x + d.w <= fairX || d.x >= fairX + fairW || d.y + d.h <= fairY || d.y >= fairY + fairH);
+
+    // If decoration is fully inside the fairway we leave it alone.
+    if (centerInside) continue;
+
+    // Only snap if the decoration overlaps the fairway bounds or is very close to the edge.
+    if (!overlapsFairway && Math.min(
+      Math.abs(cx - fairX),
+      Math.abs(fairX + fairW - cx),
+      Math.abs(cy - fairY),
+      Math.abs(fairY + fairH - cy)
+    ) > near) {
+      continue;
+    }
 
     // Distance from center to each fairway edge
     const distLeft = Math.abs(cx - fairX);
@@ -10477,9 +10492,6 @@ function snapDecorationsToTable(): void {
     const distTop = Math.abs(cy - fairY);
     const distBottom = Math.abs(fairY + fairH - cy);
     const minDist = Math.min(distLeft, distRight, distTop, distBottom);
-
-    // Only snap if overlapping the fairway or very near an edge
-    if (!overlaps && minDist > near) continue;
 
     if (minDist === distLeft) {
       d.x = fairX - d.w - snapGap;

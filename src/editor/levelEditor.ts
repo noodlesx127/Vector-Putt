@@ -484,7 +484,10 @@ class LevelEditorImpl implements LevelEditor {
   
   // Hill direction control state
   private hillDirectionPicker: { x: number; y: number; visible: boolean; selectedDir: string } | null = null;
-  
+
+  // One-way wall direction control state
+  private oneWayDirectionPicker: { x: number; y: number; visible: boolean; selectedDir: OneWayOrientation; gateIndex: number } | null = null;
+
   // Post radius control state
   private postRadiusPicker: { x: number; y: number; visible: boolean; selectedRadius: number; postIndex: number } | null = null;
   private rotationCenter: { x: number; y: number } | null = null;
@@ -2913,6 +2916,51 @@ class LevelEditorImpl implements LevelEditor {
       ctx.fillText('Click direction', picker.x, picker.y + size/2 + 15);
     }
 
+    // One-way wall direction picker
+    if (this.oneWayDirectionPicker && this.oneWayDirectionPicker.visible) {
+      const picker = this.oneWayDirectionPicker;
+      const size = 90;
+      const x = picker.x - size / 2;
+      const y = picker.y - size / 2;
+
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+      ctx.fillRect(x, y, size, size);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, size, size);
+
+      const mid = size / 2;
+      const pad = 14;
+      const dirOptions: Array<{ dir: OneWayOrientation; cx: number; cy: number; label: string }> = [
+        { dir: 'N', cx: x + mid, cy: y + pad, label: '↑' },
+        { dir: 'S', cx: x + mid, cy: y + size - pad, label: '↓' },
+        { dir: 'W', cx: x + pad, cy: y + mid, label: '←' },
+        { dir: 'E', cx: x + size - pad, cy: y + mid, label: '→' }
+      ];
+
+      ctx.font = '24px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      for (const opt of dirOptions) {
+        const isSelected = picker.selectedDir === opt.dir;
+        if (isSelected) {
+          ctx.fillStyle = 'rgba(0, 200, 120, 0.9)';
+          ctx.beginPath();
+          ctx.arc(opt.cx, opt.cy, 18, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(opt.label, opt.cx, opt.cy);
+      }
+
+      ctx.font = '12px Arial';
+      ctx.fillStyle = '#ffffff';
+      const desc = describeOneWayOrientation(picker.selectedDir);
+      ctx.fillText(desc, picker.x, y + size + 14);
+      ctx.fillText('Click arrow', picker.x, y + size + 28);
+    }
+
     // Polygon in progress preview
     if (this.polygonInProgress && this.polygonInProgress.points.length >= 2) {
       const pts = this.polygonInProgress.points;
@@ -3787,6 +3835,9 @@ class LevelEditorImpl implements LevelEditor {
         }
       }
       if (this.selectedTool === 'hill' && this.hillDirectionPicker && this.hillDirectionPicker.visible) {
+        leftText += '  •  Pick Direction…';
+      }
+      if (this.selectedTool === 'oneWayWall' && this.oneWayDirectionPicker && this.oneWayDirectionPicker.visible) {
         leftText += '  •  Pick Direction…';
       }
       if (this.selectedTool === 'oneWayWall') {
@@ -5444,7 +5495,7 @@ class LevelEditorImpl implements LevelEditor {
       this.liveGuides = [];
       this.liveGuideBubbles = [];
       if (pendingOneWayPrompt) {
-        this.promptOneWayDirection(env, pendingOneWayPrompt.index, pendingOneWayPrompt.gate as OneWayWall, 'Select Gate Orientation');
+        this.openOneWayDirectionPicker(pendingOneWayPrompt.index, pendingOneWayPrompt.gate as OneWayWall);
       }
       return;
     }
@@ -7351,29 +7402,7 @@ class LevelEditorImpl implements LevelEditor {
     const gate = hit.object.object as OneWayWall;
     const idx = hit.object.index ?? -1;
     if (idx < 0) return;
-    this.promptOneWayDirection(env, idx, gate, 'Adjust Gate Direction…');
-  }
-
-  private promptOneWayDirection(env: EditorEnv, index: number, gate: OneWayWall, title: string): void {
-    const current = gate?.orientation ?? this.currentOneWayOrientation;
-    if (typeof env.showList === 'function') {
-      const items = this.oneWayOrientationOrder.map((dir) => ({
-        label: `${dir} — ${describeOneWayOrientation(dir)}`,
-        value: dir
-      }));
-      const startIndex = Math.max(0, items.findIndex((item) => item.value === current));
-      Promise.resolve(env.showList(title, items, startIndex >= 0 ? startIndex : 0))
-        .then((choice) => {
-          if (!choice) return;
-          const selected = ((choice as any).value ?? choice) as OneWayOrientation | undefined;
-          if (!selected || !this.oneWayOrientationOrder.includes(selected)) return;
-          this.applyOneWayOrientation(env, index, selected);
-        })
-        .catch(() => {});
-    } else {
-      const next = cycleOneWayOrientation(current, this.oneWayOrientationOrder, 1);
-      this.applyOneWayOrientation(env, index, next);
-    }
+    this.openOneWayDirectionPicker(idx, gate);
   }
 
   private applyOneWayOrientation(env: EditorEnv, index: number, orientation: OneWayOrientation): void {
@@ -7386,6 +7415,16 @@ class LevelEditorImpl implements LevelEditor {
     this.currentOneWayOrientation = orientation;
     env.setGlobalState(gs);
     try { env.showToast(`One-way direction set to ${orientation}`); } catch {}
+  }
+
+  private openOneWayDirectionPicker(index: number, gate: OneWayWall): void {
+    if (!gate) return;
+    const cx = gate.x + gate.w / 2;
+    const cy = gate.y + gate.h / 2;
+    const orientation = gate.orientation && this.oneWayOrientationOrder.includes(gate.orientation)
+      ? gate.orientation
+      : this.currentOneWayOrientation;
+    this.oneWayDirectionPicker = { x: cx, y: cy, visible: true, selectedDir: orientation, gateIndex: index } as any;
   }
 
   private findClosestInsertionIndex(points: number[], x: number, y: number): number {

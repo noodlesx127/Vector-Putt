@@ -4437,6 +4437,44 @@ class LevelEditorImpl implements LevelEditor {
       }
     }
 
+    // 2a) Handle one-way wall direction picker
+    if (this.oneWayDirectionPicker && this.oneWayDirectionPicker.visible) {
+      const picker = this.oneWayDirectionPicker;
+      const size = 90;
+      const x = picker.x - size / 2;
+      const y = picker.y - size / 2;
+
+      // Arrow centers must match render() positions
+      const mid = size / 2;
+      const pad = 14;
+      const options: Array<{ dir: OneWayOrientation; cx: number; cy: number }> = [
+        { dir: 'N', cx: x + mid, cy: y + pad },
+        { dir: 'S', cx: x + mid, cy: y + size - pad },
+        { dir: 'W', cx: x + pad, cy: y + mid },
+        { dir: 'E', cx: x + size - pad, cy: y + mid }
+      ];
+
+      // Click on an arrow to apply and close
+      const r = 18; // hit radius matches rendered circle background
+      for (const opt of options) {
+        const dx = p.x - opt.cx;
+        const dy = p.y - opt.cy;
+        if ((dx * dx + dy * dy) <= r * r) {
+          e.preventDefault();
+          picker.selectedDir = opt.dir;
+          this.applyOneWayOrientation(env, picker.gateIndex, opt.dir);
+          this.oneWayDirectionPicker = null;
+          return;
+        }
+      }
+
+      // Click outside picker closes it without applying
+      if (!(p.x >= x && p.x <= x + size && p.y >= y && p.y <= y + size)) {
+        this.oneWayDirectionPicker = null;
+        return;
+      }
+    }
+
     // 2) UI hotspots (menus)
     for (const hs of this.uiHotspots) {
       if (p.x >= hs.x && p.x <= hs.x + hs.w && p.y >= hs.y && p.y <= hs.y + hs.h) {
@@ -5922,6 +5960,7 @@ class LevelEditorImpl implements LevelEditor {
       this.openEditorMenu = null;
       this.postRadiusPicker = null;
       this.hillDirectionPicker = null;
+      this.oneWayDirectionPicker = null;
       this.suggestedCupCandidates = null;
       this.showParCandidates = false;
       this.parCandidates = null;
@@ -5957,6 +5996,21 @@ class LevelEditorImpl implements LevelEditor {
         if (key === ',') { e.preventDefault(); this.overlayTransform.rotation -= (e.shiftKey ? Math.PI/12 : Math.PI/180); return; }
         if (key === '.') { e.preventDefault(); this.overlayTransform.rotation += (e.shiftKey ? Math.PI/12 : Math.PI/180); return; }
       }
+    }
+
+    // Arrow keys: nudge selection (Shift => larger step)
+    // One-way wall quick orientation: R to cycle (Shift+R to reverse). If picker is open, apply to gate and close.
+    if (this.selectedTool === 'oneWayWall' && key.toLowerCase() === 'r') {
+      e.preventDefault();
+      const step = e.shiftKey ? -1 : 1;
+      const newOri = cycleOneWayOrientation(this.currentOneWayOrientation, this.oneWayOrientationOrder, step);
+      this.currentOneWayOrientation = newOri;
+      if (this.oneWayDirectionPicker && this.oneWayDirectionPicker.visible) {
+        const idx = this.oneWayDirectionPicker.gateIndex;
+        this.applyOneWayOrientation(env, idx, newOri);
+        this.oneWayDirectionPicker = null;
+      }
+      return;
     }
 
     // Arrow keys: nudge selection (Shift => larger step)

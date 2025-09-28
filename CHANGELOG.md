@@ -71,6 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Level Editor • Posts movement parity: fixed an issue where posts could not be moved like tees/cups via drag or arrow keys. Drag‑move commit now clamps/snaps the post center like tee/cup, and arrow key nudges no longer apply radius edge‑aligned snapping that cancelled small steps. Movement respects the View → "Object: Snap to Grid" toggle. (`src/editor/levelEditor.ts`)
  - Level Editor • Measure Tool menu interactions: starting a measurement is now suppressed when clicking on menu hotspots, so selecting a menu or menu item no longer places measurement points. (`src/editor/levelEditor.ts`)
  - Level Editor • Posts size quick edit: double‑clicking a Post with the Select tool opens the radius picker to change its size on the fly. New radius re‑snaps to grid edges when Object Snap is enabled. (`src/editor/levelEditor.ts`)
+ - Level Editor • One‑way Wall direction picker: fixed a regression where the picker appeared but clicks on the arrows did nothing. Added explicit hit‑testing in `handleMouseDown()` for the four arrow targets, apply orientation on click and close; clicking outside also closes. `Esc` closes the picker, and `R` / `Shift+R` cycles orientation and applies when the picker is open. (`src/editor/levelEditor.ts`)
 
 ## v0.3.29 — 2025-09-20
 

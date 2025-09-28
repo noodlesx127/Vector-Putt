@@ -20,7 +20,7 @@ Ideas
 
 - Align with closest object option in the right click menu. This option is for aligning currently selcted object with the closest object. 
 
-OLD
+## OLD
 -----
 Course Summary screen:
 

@@ -2919,11 +2919,11 @@ class LevelEditorImpl implements LevelEditor {
     // One-way wall direction picker
     if (this.oneWayDirectionPicker && this.oneWayDirectionPicker.visible) {
       const picker = this.oneWayDirectionPicker;
-      const size = 90;
+      const size = 80;
       const x = picker.x - size / 2;
       const y = picker.y - size / 2;
 
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
       ctx.fillRect(x, y, size, size);
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2;
@@ -2938,19 +2938,13 @@ class LevelEditorImpl implements LevelEditor {
         { dir: 'E', cx: x + size - pad, cy: y + mid, label: '→' }
       ];
 
-      ctx.font = '24px Arial';
+      ctx.font = '20px Arial';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
       for (const opt of dirOptions) {
         const isSelected = picker.selectedDir === opt.dir;
-        if (isSelected) {
-          ctx.fillStyle = 'rgba(0, 200, 120, 0.9)';
-          ctx.beginPath();
-          ctx.arc(opt.cx, opt.cy, 18, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = isSelected ? '#00ff00' : '#ffffff';
         ctx.fillText(opt.label, opt.cx, opt.cy);
       }
 
@@ -2958,7 +2952,7 @@ class LevelEditorImpl implements LevelEditor {
       ctx.fillStyle = '#ffffff';
       const desc = describeOneWayOrientation(picker.selectedDir);
       ctx.fillText(desc, picker.x, y + size + 14);
-      ctx.fillText('Click arrow', picker.x, y + size + 28);
+      ctx.fillText('Click direction', picker.x, y + size + 28);
     }
 
     // Polygon in progress preview
@@ -4440,7 +4434,7 @@ class LevelEditorImpl implements LevelEditor {
     // 2a) Handle one-way wall direction picker
     if (this.oneWayDirectionPicker && this.oneWayDirectionPicker.visible) {
       const picker = this.oneWayDirectionPicker;
-      const size = 90;
+      const size = 80;
       const x = picker.x - size / 2;
       const y = picker.y - size / 2;
 
@@ -4454,12 +4448,13 @@ class LevelEditorImpl implements LevelEditor {
         { dir: 'E', cx: x + size - pad, cy: y + mid }
       ];
 
-      // Click on an arrow to apply and close
-      const r = 18; // hit radius matches rendered circle background
+      // Click on an arrow to apply and close (box hit-test, consistent with hill picker)
+      const hitSize = 15;
       for (const opt of options) {
-        const dx = p.x - opt.cx;
-        const dy = p.y - opt.cy;
-        if ((dx * dx + dy * dy) <= r * r) {
+        if (
+          p.x >= opt.cx - hitSize / 2 && p.x <= opt.cx + hitSize / 2 &&
+          p.y >= opt.cy - hitSize / 2 && p.y <= opt.cy + hitSize / 2
+        ) {
           e.preventDefault();
           picker.selectedDir = opt.dir;
           this.applyOneWayOrientation(env, picker.gateIndex, opt.dir);

@@ -1,5 +1,7 @@
-Issues
+## Issues
 ----------
+
+- One way walls do not render after choosing a direction.
 
 The Course Summary screen is not scrollable where is list the hole, par, Stroke. *** Done ***
 
@@ -15,13 +17,14 @@ Decorations:
 - Add more Decorations to the game. 
 
 
-Ideas
+## Ideas
 ------
 
 - Align with closest object option in the right click menu. This option is for aligning currently selcted object with the closest object. 
 
 ## OLD
 -----
+
 Course Summary screen:
 
 After completing a user made level and the Course Summary screen displays, There are the following issues:

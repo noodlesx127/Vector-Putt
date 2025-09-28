@@ -7463,6 +7463,8 @@ class LevelEditorImpl implements LevelEditor {
     }
     this.currentOneWayOrientation = orientation;
     env.setGlobalState(gs);
+    // Keep editor data in sync to avoid any transient render mismatch
+    this.syncEditorDataFromGlobals(env);
     try { env.showToast(`One-way direction set to ${orientation}`); } catch {}
   }
 

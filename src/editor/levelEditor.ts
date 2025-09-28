@@ -3826,6 +3826,11 @@ class LevelEditorImpl implements LevelEditor {
         if (this.selectedTool === 'oneWayWall') {
           const desc = describeOneWayOrientation(this.currentOneWayOrientation);
           leftText += `  •  ${desc}`;
+          try {
+            const gsAny = this.env?.getGlobalState?.() as any;
+            const count = Array.isArray(gsAny?.oneWayWalls) ? gsAny.oneWayWalls.length : 0;
+            leftText += `  •  Gates: ${count}`;
+          } catch {}
         }
       }
       if (this.selectedTool === 'hill' && this.hillDirectionPicker && this.hillDirectionPicker.visible) {
@@ -5498,6 +5503,7 @@ class LevelEditorImpl implements LevelEditor {
           if (!Array.isArray(this.editorLevelData.oneWayWalls)) this.editorLevelData.oneWayWalls = [];
           (this.editorLevelData.oneWayWalls as any[]).push(gate);
         }
+        try { env.showToast?.(`One-way Wall placed (#${(gs.oneWayWalls as any[]).length})`); } catch {}
       } else if (this.editorDragTool === 'bridge') {
         const o: any = { x: sx, y: sy, w: sw, h: sh, rot: 0 };
         (gs.bridges as any[]).push(o);
@@ -7476,6 +7482,10 @@ class LevelEditorImpl implements LevelEditor {
       ? gate.orientation
       : this.currentOneWayOrientation;
     this.oneWayDirectionPicker = { x: cx, y: cy, visible: true, selectedDir: orientation, gateIndex: index } as any;
+    try {
+      const count = Array.isArray(this.env?.getGlobalState()?.oneWayWalls) ? this.env.getGlobalState().oneWayWalls.length : 0;
+      this.env?.showToast?.(`One-way Direction Picker opened for gate #${index + 1} (total: ${count})`);
+    } catch {}
   }
 
   private findClosestInsertionIndex(points: number[], x: number, y: number): number {

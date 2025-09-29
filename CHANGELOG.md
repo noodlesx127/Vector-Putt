@@ -40,6 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Level Editor • Selection & Polygon Editing:
     - Polygons — Vertex insert/remove actions: Alt+Click removes a vertex (min 3); Double‑click near an edge inserts a vertex at the closest point and begins dragging.
 
+### Fixed
+
+- Level Editor • One-way Walls: fixed critical bug where one-way walls were not being loaded into the global state when applying a level, preventing them from being rendered or selected. Also fixed drag-move to properly handle one-way wall type. (`src/editor/levelEditor.ts`)
+
 ### Changed
 
 - Play Area Visual Refresh: Sand polygons now render with the same inset inner shadow used for large sand rectangles, ensuring consistent recessed styling across both runtime and editor previews. (`src/main.ts`, `src/editor/levelEditor.ts`)

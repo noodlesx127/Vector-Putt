@@ -5614,7 +5614,7 @@ class LevelEditorImpl implements LevelEditor {
             nx = clampX(snap(nx));
             ny = clampY(snap(ny));
             o.x = nx; o.y = ny;
-          } else if (t === 'wall' || t === 'water' || t === 'sand' || t === 'bridge' || t === 'hill' || t === 'decoration') {
+          } else if (t === 'wall' || t === 'oneWayWall' || t === 'water' || t === 'sand' || t === 'bridge' || t === 'hill' || t === 'decoration') {
             if (typeof o.x === 'number') o.x += dx;
             if (typeof o.y === 'number') o.y += dy;
           }
@@ -6424,6 +6424,7 @@ class LevelEditorImpl implements LevelEditor {
         height: this.editorLevelData.canvas?.height ?? globalState.HEIGHT
       },
       walls: this.editorLevelData.walls ?? [],
+      oneWayWalls: this.editorLevelData.oneWayWalls ?? [],
       sands: this.editorLevelData.sand ?? [],
       sandsPoly: this.editorLevelData.sandPoly ?? [],
       waters: this.editorLevelData.water ?? [],
